@@ -1,0 +1,4 @@
+interface:
+  display_name: "设计视频暂停交互"
+  short_description: "为已有或规划中的课程 MP4 设计结构化暂停互动和反馈"
+  default_prompt: "使用 $design-video-interactions 为这个课程视频设计结构化暂停互动文档。"

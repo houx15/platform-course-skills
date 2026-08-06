@@ -1,0 +1,25 @@
+.DS_Store
+__pycache__/
+*.pyc
+
+# Local source materials and generated end-to-end evidence
+/course_example.zip
+/for_test.docx
+/e2e/
+/docs/for-test-e2e-report.md
+/docs/superpowers/plans/
+
+# Legacy course-example inputs; not part of the reusable toolkit
+/01nasa.png
+/02economist.png
+/Interactive HTML Content Design Guideline v1.md
+/example.html
+/index.md
+/video_example_interaction.md
+
+# Local installation and editor state
+/.agents/
+/.claude/
+/.codex/
+.venv/
+venv/

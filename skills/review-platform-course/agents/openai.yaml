@@ -1,0 +1,4 @@
+interface:
+  display_name: "验收平台课程"
+  short_description: "对照原材料、确认记录和平台契约，检查课程包是否可以上传"
+  default_prompt: "使用 $review-platform-course 检查这个课程目录是否已经可以上传。"

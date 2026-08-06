@@ -1,0 +1,17 @@
+{
+  "skill": "design-course-html",
+  "prompts": [
+    "把这个课堂模拟做成 HTML 交互。",
+    "检查现有 HTML 是否符合平台 iframe 协议。"
+  ],
+  "requiredPhrases": [
+    "学习目标",
+    "教师确认",
+    "单个 HTML 文件",
+    "1:1",
+    "横向 4:3",
+    "完成任务",
+    "INTERACTION_COMPLETE",
+    "静态检查不能证明"
+  ]
+}

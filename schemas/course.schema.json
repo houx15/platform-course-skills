@@ -1,0 +1,396 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/schemas/course.schema.json",
+  "title": "Platform Course",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "course"],
+  "properties": {
+    "schemaVersion": {
+      "const": "1.0"
+    },
+    "course": {
+      "$ref": "#/$defs/course"
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "nonEmptyString": {
+      "type": "string",
+      "minLength": 1
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": {
+        "pattern": "(^/|^[A-Za-z]:|(^|/)\\.\\.(/|$))"
+      }
+    },
+    "completion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rule"],
+      "properties": {
+        "rule": {
+          "type": "string",
+          "enum": [
+            "submit-any",
+            "submit-correct",
+            "video-ended",
+            "interaction-complete"
+          ]
+        },
+        "maxAttempts": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "course": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "language", "parts"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "language": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "parts": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/part"
+          }
+        }
+      }
+    },
+    "part": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "pieces"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "pieces": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/piece"
+          }
+        }
+      }
+    },
+    "piece": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "blocks"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "blocks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/textBlock"
+              },
+              {
+                "$ref": "#/$defs/imagesBlock"
+              },
+              {
+                "$ref": "#/$defs/videoBlock"
+              },
+              {
+                "$ref": "#/$defs/htmlBlock"
+              },
+              {
+                "$ref": "#/$defs/fillBlankBlock"
+              },
+              {
+                "$ref": "#/$defs/singleChoiceBlock"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "textBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "content"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "text"
+        },
+        "content": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "imageItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "alt"],
+      "properties": {
+        "source": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "alt": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "imagesBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "items"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "images"
+        },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/imageItem"
+          }
+        }
+      }
+    },
+    "videoInteractionRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["data", "document"],
+      "properties": {
+        "data": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "document": {
+          "$ref": "#/$defs/relativePath"
+        }
+      }
+    },
+    "videoBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "blocking", "source"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "video"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "interaction": {
+          "$ref": "#/$defs/videoInteractionRef"
+        },
+        "completion": {
+          "$ref": "#/$defs/completion"
+        }
+      }
+    },
+    "htmlBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "blocking", "source"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "interactiveHtml"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "source": {
+          "$ref": "#/$defs/relativePath"
+        },
+        "completion": {
+          "$ref": "#/$defs/completion"
+        }
+      }
+    },
+    "gradedFillAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "acceptedAnswers"],
+      "properties": {
+        "mode": {
+          "const": "graded"
+        },
+        "acceptedAnswers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "caseSensitive": {
+          "type": "boolean"
+        },
+        "correctFeedback": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "incorrectFeedback": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "reflectionAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "rubric"],
+      "properties": {
+        "mode": {
+          "const": "reflection"
+        },
+        "rubric": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "fillBlankBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "blocking", "prompt", "assessment"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "fillBlank"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "assessment": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/gradedFillAssessment"
+            },
+            {
+              "$ref": "#/$defs/reflectionAssessment"
+            }
+          ]
+        },
+        "completion": {
+          "$ref": "#/$defs/completion"
+        }
+      }
+    },
+    "choiceOption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "gradedChoiceAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "correctOptionId"],
+      "properties": {
+        "mode": {
+          "const": "graded"
+        },
+        "correctOptionId": {
+          "$ref": "#/$defs/id"
+        },
+        "correctFeedback": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "incorrectFeedback": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "surveyChoiceAssessment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "const": "survey"
+        }
+      }
+    },
+    "singleChoiceBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "blocking", "prompt", "options", "assessment"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "singleChoice"
+        },
+        "blocking": {
+          "type": "boolean"
+        },
+        "prompt": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "options": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "$ref": "#/$defs/choiceOption"
+          }
+        },
+        "assessment": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/gradedChoiceAssessment"
+            },
+            {
+              "$ref": "#/$defs/surveyChoiceAssessment"
+            }
+          ]
+        },
+        "completion": {
+          "$ref": "#/$defs/completion"
+        }
+      }
+    }
+  }
+}

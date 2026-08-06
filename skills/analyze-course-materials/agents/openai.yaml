@@ -1,0 +1,4 @@
+interface:
+  display_name: "分析课程材料"
+  short_description: "提取教师已有课程材料，建立来源定位、冲突清单和内容覆盖记录"
+  default_prompt: "使用 $analyze-course-materials 分析这些课程材料并列出需要确认的信息。"

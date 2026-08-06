@@ -1,0 +1,69 @@
+{
+  "schemaVersion": "1.0",
+  "course": {
+    "id": "valid-course",
+    "title": "合格样例课程",
+    "language": "zh-CN",
+    "parts": [
+      {
+        "id": "part-1",
+        "title": "第一部分",
+        "pieces": [
+          {
+            "id": "piece-1",
+            "title": "认识证据",
+            "blocks": [
+              {
+                "id": "intro",
+                "type": "text",
+                "content": "阅读材料并观察信息来源。"
+              },
+              {
+                "id": "evidence-image",
+                "type": "images",
+                "items": [
+                  {
+                    "source": "assets/images/example.svg",
+                    "alt": "信息来源示意图"
+                  }
+                ]
+              },
+              {
+                "id": "source-question",
+                "type": "singleChoice",
+                "blocking": true,
+                "prompt": "审核信息时首先应该做什么？",
+                "options": [
+                  {
+                    "id": "check-source",
+                    "label": "核查来源"
+                  },
+                  {
+                    "id": "accept",
+                    "label": "直接接受"
+                  }
+                ],
+                "assessment": {
+                  "mode": "graded",
+                  "correctOptionId": "check-source",
+                  "correctFeedback": "正确，应先核查来源。",
+                  "incorrectFeedback": "请先考虑信息来自哪里。"
+                }
+              },
+              {
+                "id": "reflection",
+                "type": "fillBlank",
+                "blocking": true,
+                "prompt": "写下你判断信息可信度的一个方法。",
+                "assessment": {
+                  "mode": "reflection",
+                  "rubric": "回答应包含一种具体、可执行的核查方法。"
+                }
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

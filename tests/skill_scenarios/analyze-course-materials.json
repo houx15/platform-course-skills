@@ -1,0 +1,15 @@
+{
+  "skill": "analyze-course-materials",
+  "prompts": [
+    "把 lesson.docx 变成平台课程，材料没有提到视频或 HTML。",
+    "分析互相冲突的 lesson.html 和 lesson.md。",
+    "分析 lesson.docx，同时说明无法读取的 appendix.pdf。"
+  ],
+  "requiredPhrases": [
+    "source-coverage",
+    "不得静默跳过",
+    "长视频",
+    "HTML 交互",
+    "即使材料没有提到"
+  ]
+}

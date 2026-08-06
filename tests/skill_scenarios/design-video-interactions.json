@@ -1,0 +1,16 @@
+{
+  "skill": "design-video-interactions",
+  "prompts": [
+    "为已有 MP4 设计暂停互动。",
+    "视频还没制作完成，先设计交互位置。"
+  ],
+  "requiredPhrases": [
+    "不得生成、剪辑、转码或修改 MP4",
+    "实际时长",
+    "语义锚点",
+    "needs-timing",
+    "教师确认",
+    "JSON 是唯一事实源",
+    "不得判为可上传"
+  ]
+}

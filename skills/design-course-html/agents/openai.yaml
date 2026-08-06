@@ -1,0 +1,4 @@
+interface:
+  display_name: "设计课程 HTML 交互"
+  short_description: "先确认教学互动设计，再生成并检查平台兼容的单文件 HTML"
+  default_prompt: "使用 $design-course-html 为这段课程内容设计并检查 HTML 交互。"

@@ -1,0 +1,20 @@
+{
+  "skill": "build-platform-course",
+  "prompts": [
+    "把这些已有材料整理成可上传的平台课程。",
+    "继续上次没有完成的课程构建。"
+  ],
+  "requiredPhrases": [
+    "唯一教师入口",
+    "analyze-course-materials",
+    "即使材料没有提到",
+    "design-video-interactions",
+    "design-course-html",
+    "Part/Piece",
+    "等待教师确认",
+    ".course-work",
+    "course.json 是唯一事实源",
+    "review-platform-course",
+    "不得报告可上传"
+  ]
+}

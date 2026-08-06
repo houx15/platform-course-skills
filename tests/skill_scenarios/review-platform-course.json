@@ -1,0 +1,19 @@
+{
+  "skill": "review-platform-course",
+  "prompts": [
+    "检查这个课程目录是否可以上传。",
+    "对照原材料检查最终课程有没有漏内容。"
+  ],
+  "requiredPhrases": [
+    "重新读取原始材料",
+    "source-coverage.json",
+    "decisions.json",
+    "忽略 ZIP",
+    "validate-course.py",
+    "重新运行完整 Review",
+    "可上传",
+    "修改后可上传",
+    "缺少必要材料，暂不可上传",
+    "不能证明真实学习效果"
+  ]
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "构建平台课程"
+  short_description: "将教师已有材料逐步转化为经过独立验收的标准平台课程"
+  default_prompt: "使用 $build-platform-course，把这些已有材料整理成可上传的平台课程。"

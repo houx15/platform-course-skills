@@ -1,0 +1,45 @@
+{
+  "schemaVersion": "1.0",
+  "video": {
+    "title": "当前样例视频交互",
+    "source": "video_example.mp4",
+    "durationSeconds": 32.533333,
+    "events": [
+      {
+        "id": "credibility-check",
+        "timeSeconds": 8,
+        "blocking": true,
+        "prompt": "视频里说的内容一定可信吗？",
+        "interaction": {
+          "type": "singleChoice",
+          "options": [
+            {
+              "id": "credible",
+              "label": "可信"
+            },
+            {
+              "id": "not-credible",
+              "label": "不可信"
+            }
+          ],
+          "assessment": {
+            "mode": "survey"
+          }
+        }
+      },
+      {
+        "id": "nasa-question",
+        "timeSeconds": 90,
+        "blocking": true,
+        "prompt": "视频中提到的 NASA 是什么？",
+        "interaction": {
+          "type": "fillBlank",
+          "assessment": {
+            "mode": "reflection",
+            "rubric": "解释 NASA 的机构性质。"
+          }
+        }
+      }
+    ]
+  }
+}

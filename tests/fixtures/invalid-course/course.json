@@ -1,0 +1,9 @@
+{
+  "schemaVersion": "1.0",
+  "course": {
+    "id": "invalid-course",
+    "title": "无效课程",
+    "language": "zh-CN",
+    "parts": []
+  }
+}
