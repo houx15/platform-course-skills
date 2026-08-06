@@ -70,7 +70,9 @@ class HtmlValidationTests(unittest.TestCase):
     def test_sample_fails_standardized_button_label(self):
         codes = {
             issue.code
-            for issue in validate_interactive_html(ROOT / "example.html")
+            for issue in validate_interactive_html(
+                ROOT / "tests" / "fixtures" / "legacy-html-wrong-button.html"
+            )
         }
         self.assertIn("missing-complete-button", codes)
 
