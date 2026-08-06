@@ -9,7 +9,7 @@
 | `course.json` 是课程主数据 | `schemas/course.schema.json`、`course_toolkit/course_validation.py` | `tests/test_contracts.py`、`tests/test_course_validation.py` |
 | `index.md` 是确定性视图 | `course_toolkit/index_renderer.py`、`scripts/render-index.py` | `tests/test_index_renderer.py` |
 | 视频交互 JSON 和 Markdown | `course_toolkit/video_interactions.py`、对应 CLI | `tests/test_video_interactions.py` |
-| 不依赖外部工具读取 MP4 时长 | `course_toolkit/mp4.py` | 使用根目录真实 `video_example.mp4` 的测试 |
+| 不依赖外部工具读取 MP4 时长 | `course_toolkit/mp4.py` | 测试在临时目录动态构造最小 MP4，并验证时长与越界事件 |
 | HTML 平台协议 | `course_toolkit/html_validation.py`、`scripts/validate-html.py` | `tests/test_html_validation.py` |
 | DOCX、HTML、Markdown、文本提取 | `course_toolkit/materials.py`、`scripts/extract-materials.py` | `tests/test_materials.py`，包含 DOCX 表格行列定位 |
 | 来源覆盖与 AI 新增确认 | `course_toolkit/coverage.py` | 提取清单逐项对账、真实 Block 去向、未确认决定和 unresolved 阻塞测试 |
@@ -21,7 +21,7 @@
 
 ## 发布仓库说明
 
-- `video_example.mp4` 只用于自动测试 MP4 时长读取和事件越界检测，不会被安装到 Skill 目录。
+- 仓库不发布课程样例 MP4；测试会动态构造只含必要 `moov/mvhd` 元数据的极小 MP4。
 - 教师材料、ZIP、端到端生成物和浏览器截图不属于发布包。
 - 安装器始终忽略 ZIP。
 
@@ -40,6 +40,6 @@
 - 生成 7 个 Part、17 个 Piece、26 个 Block，以及两份各含 5 个语义锚点的视频交互设计。
 - HTML 静态合同通过；浏览器完成消息包含 4 条结构化 interaction 且全部正确后才提交。
 - 独立 Review 返回“缺少必要材料，暂不可上传”。阻塞项是两份最终 MP4、10 个事件时间码和真实教师确认；没有课程 schema、生成视图、HTML、来源覆盖或路径格式错误。
-- 全套自动测试：55 项通过；5 个 Skill 均通过官方 `quick_validate.py`。
+- 全套自动测试：56 项通过；5 个 Skill 均通过官方 `quick_validate.py`。
 
 端到端验证使用的教师材料与生成物保留在发布者本地，不进入 GitHub 仓库。

@@ -20,6 +20,29 @@ class PackageReviewTests(unittest.TestCase):
         self.assertEqual(result.status, "uploadable")
         self.assertEqual(result.issues, ())
 
+    def test_valid_fixture_uses_refined_flicc_learning_goal(self):
+        data = load_json(
+            ROOT / "tests" / "fixtures" / "valid-course" / "course.json"
+        )
+        course = data["course"]
+        piece = course["parts"][0]["pieces"][0]
+        choice = piece["blocks"][2]
+
+        self.assertEqual(
+            course["title"],
+            "科学否认的五种手法：用 FLICC 核查气候视频",
+        )
+        self.assertEqual(course["parts"][0]["title"], "从相信谁，转向怎样核查")
+        self.assertEqual(piece["title"], "课程挑战")
+        self.assertEqual(
+            choice["prompt"],
+            "这门课最核心的学习目标是什么？",
+        )
+        self.assertEqual(
+            choice["assessment"]["correctOptionId"],
+            "same-tool",
+        )
+
     def test_missing_course_json_is_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = review_package(Path(tmp))

@@ -1,22 +1,22 @@
 {
   "schemaVersion": "1.0",
   "course": {
-    "id": "valid-course",
-    "title": "合格样例课程",
+    "id": "flicc-course-example",
+    "title": "科学否认的五种手法：用 FLICC 核查气候视频",
     "language": "zh-CN",
     "parts": [
       {
         "id": "part-1",
-        "title": "第一部分",
+        "title": "从相信谁，转向怎样核查",
         "pieces": [
           {
             "id": "piece-1",
-            "title": "认识证据",
+            "title": "课程挑战",
             "blocks": [
               {
                 "id": "intro",
                 "type": "text",
-                "content": "阅读材料并观察信息来源。"
+                "content": "多数“拆穿视频”的课，会让学生看完一段视频，再记住另一段视频给出的结论。这门课要求学生把核查视频也视为需要核查的对象，并对不同立场使用同一套方法：确认来源、检查证据、分析推理。"
               },
               {
                 "id": "evidence-image",
@@ -24,40 +24,44 @@
                 "items": [
                   {
                     "source": "assets/images/example.svg",
-                    "alt": "信息来源示意图"
+                    "alt": "从选择相信对象转向使用统一核查方法的示意图"
                   }
                 ]
               },
               {
-                "id": "source-question",
+                "id": "learning-goal-check",
                 "type": "singleChoice",
                 "blocking": true,
-                "prompt": "审核信息时首先应该做什么？",
+                "prompt": "这门课最核心的学习目标是什么？",
                 "options": [
                   {
-                    "id": "check-source",
-                    "label": "核查来源"
+                    "id": "remember-review",
+                    "label": "记住核查视频给出的所有结论"
                   },
                   {
-                    "id": "accept",
-                    "label": "直接接受"
+                    "id": "same-tool",
+                    "label": "对不同立场使用同一套核查工具"
+                  },
+                  {
+                    "id": "choose-side",
+                    "label": "判断应该相信原视频还是核查视频"
                   }
                 ],
                 "assessment": {
                   "mode": "graded",
-                  "correctOptionId": "check-source",
-                  "correctFeedback": "正确，应先核查来源。",
-                  "incorrectFeedback": "请先考虑信息来自哪里。"
+                  "correctOptionId": "same-tool",
+                  "correctFeedback": "正确。核查者也可能出错，工具需要对所有来源一致。",
+                  "incorrectFeedback": "回看课程挑战：目标是掌握可以迁移的核查方法，而不是更换相信对象。"
                 }
               },
               {
                 "id": "reflection",
                 "type": "fillBlank",
                 "blocking": true,
-                "prompt": "写下你判断信息可信度的一个方法。",
+                "prompt": "写下你会如何核查气候视频中的一条具体主张。",
                 "assessment": {
                   "mode": "reflection",
-                  "rubric": "回答应包含一种具体、可执行的核查方法。"
+                  "rubric": "回答应指出要核查的具体主张，并包含至少一项明确、可执行的来源或证据核查动作。"
                 }
               }
             ]

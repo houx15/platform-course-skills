@@ -63,6 +63,6 @@ python3 -m unittest discover -s tests -v
 python3 scripts/validate-course.py tests/fixtures/valid-course --json
 ```
 
-仓库中的 `video_example.mp4` 只用于验证 MP4 时长读取和越界检测，不是课程模板，也不会被安装到 Skill 目录。
+视频测试会在临时目录中动态构造只含必要元数据的极小 MP4，用于验证时长读取和越界检测。仓库不包含课程样例视频，也不会安装或生成 MP4。
 
 详细设计见 [平台课程标准化 Skills 设计](docs/superpowers/specs/2026-08-06-course-authoring-skills-design.md)，当前验证结果见 [验证报告](docs/validation-report.md)。
