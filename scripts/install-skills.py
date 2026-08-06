@@ -21,7 +21,7 @@ def _skill_sources(root: Path) -> List[Path]:
 def _parents(home: Path, target: str) -> List[Path]:
     parents = []
     if target in {"codex", "both"}:
-        parents.append(home / ".agents" / "skills")
+        parents.append(home / ".codex" / "skills")
     if target in {"claude", "both"}:
         parents.append(home / ".claude" / "skills")
     return parents

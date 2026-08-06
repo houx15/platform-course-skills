@@ -599,10 +599,12 @@ PDF、PPT 等格式由 `analyze-course-materials` 检查当前 AI 环境可用�
 
 Skill 源码只维护一份。工具包提供安装方式，将同一组 Skill 暴露给：
 
-- Codex：`.agents/skills/`
+- Codex：`.codex/skills/`
 - Claude Code：`.claude/skills/`
 
 使用两端都支持的符号链接或复制安装方式，避免维护两份内容。每个 Skill 的 `SKILL.md` 只使用开放 Agent Skills 标准允许的基础 frontmatter，以保持可移植性。
+
+Codex 的公开安装入口是仓库根 HTTPS 链接。教师只需要说“帮我安装这套 Skills：<仓库链接>”。README 首屏向 AI 声明这是多 Skill 工具包，要求 AI 克隆仓库并运行 `python3 scripts/install-skills.py --target codex`，验证 5 个 Skill 与 `_course-toolkit` 后提示下一轮使用。AI 不应要求教师手动执行命令，也不应把仓库根目录误装成单个 Skill。
 
 ## 23. 测试
 

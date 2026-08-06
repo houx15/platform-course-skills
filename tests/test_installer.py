@@ -45,11 +45,11 @@ class InstallerTests(unittest.TestCase):
     def test_installs_codex_copy_and_preserves_unrelated_skill(self):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
-            unrelated = home / ".agents" / "skills" / "my-skill"
+            unrelated = home / ".codex" / "skills" / "my-skill"
             unrelated.mkdir(parents=True)
             (unrelated / "SKILL.md").write_text("keep", encoding="utf-8")
             self.run_installer(home, "--target", "codex")
-            self.assert_install(home / ".agents" / "skills")
+            self.assert_install(home / ".codex" / "skills")
             self.assertEqual(
                 (unrelated / "SKILL.md").read_text(encoding="utf-8"),
                 "keep",
@@ -59,7 +59,7 @@ class InstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             home = Path(tmp)
             self.run_installer(home, "--target", "both")
-            self.assert_install(home / ".agents" / "skills")
+            self.assert_install(home / ".codex" / "skills")
             self.assert_install(home / ".claude" / "skills")
 
     def test_symlink_mode_links_skills_and_runtime(self):
@@ -83,7 +83,19 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 2)
             self.run_installer(home, "--target", "codex", "--replace")
-            self.assert_install(home / ".agents" / "skills")
+            self.assert_install(home / ".codex" / "skills")
+
+    def test_readme_exposes_one_sentence_codex_install_contract(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn(
+            "帮我安装这套 Skills：https://github.com/houx15/platform-course-skills",
+            readme,
+        )
+        self.assertIn(
+            "python3 scripts/install-skills.py --target codex",
+            readme,
+        )
+        self.assertIn("不要把仓库根目录当作单个 Skill", readme)
 
 
 if __name__ == "__main__":

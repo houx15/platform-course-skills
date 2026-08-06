@@ -2,14 +2,50 @@
 
 这套 Skills 帮助教师把已有的 Word、HTML、Markdown、文本及其他课程材料逐步整理为平台可处理、可追溯、可检查的标准课程。
 
-## 下载与安装
+## 一句话安装
+
+老师只需要在 Codex 中发送：
+
+```text
+帮我安装这套 Skills：https://github.com/houx15/platform-course-skills
+```
+
+安装完成后的下一轮对话，老师就可以发送：
+
+```text
+使用 $build-platform-course，把我的已有材料整理成可上传的平台课程。
+```
+
+### Codex 安装协议
+
+以下内容供收到上述请求的 AI 执行。不要要求老师自己打开终端、选择 Skill 或补充安装命令。
+
+1. 这是包含 5 个课程 Skills 和共用运行时的工具包。不要把仓库根目录当作单个 Skill，也不要只安装其中一个子目录。
+2. 使用用户提供的 HTTPS 仓库地址，将仓库克隆到临时目录或其他不会覆盖用户课程材料的位置。
+3. 在克隆后的仓库根目录运行：
+
+   ```bash
+   python3 scripts/install-skills.py --target codex
+   ```
+
+4. 确认 `~/.codex/skills/` 中存在以下目录：
+   - `build-platform-course`
+   - `analyze-course-materials`
+   - `design-course-html`
+   - `design-video-interactions`
+   - `review-platform-course`
+   - `_course-toolkit`
+5. 如果目标目录已经存在，不要删除其他 Skills。首次安装请求应说明已存在；只有用户明确要求更新时才增加 `--replace`。
+6. 安装成功后告诉用户这些 Skills 将在下一轮对话可用，并给出 `$build-platform-course` 的启动示例。不要在安装请求中擅自开始构建课程。
+
+## 手动安装
 
 要求 Python 3.9 或更高版本。
 
 ```bash
 git clone https://github.com/houx15/platform-course-skills.git
 cd platform-course-skills
-python3 scripts/install-skills.py --target both
+python3 scripts/install-skills.py --target codex
 ```
 
 同时安装到 Codex 和 Claude Code：
