@@ -1,45 +1,84 @@
 # Review rubric
 
-## 1. Source fidelity
+## 1. Source and audience fidelity
 
-- Every extracted source item has a resolved disposition.
-- `materials-extracted.json` and `source-coverage.json` have exactly matching source IDs, source files, and locations.
-- Every merge retains all source IDs and destinations.
-- Every mapped destination names an actual block in `course.json`.
-- Every discard records the teacher's confirmation and reason.
+- Every extracted source ID appears exactly once in `audience-classification.json` and `source-coverage.json`.
+- Student core/evidence reaches real course blocks or has teacher-approved exclusion.
+- Teacher design, AI/system rules, references, and proposed exclusions remain outside learner output.
+- Every merge retains all source IDs and real destinations.
 - Every substantive AI addition is confirmed.
-- Every blocking item in `unresolved.json` is resolved before upload.
-- Conflicting source claims remain visible until the teacher resolves them.
+- Conflicting source claims remain unresolved until the teacher decides.
 
-## 2. Course contract
+## 2. Part-by-Part pedagogical review
 
-- `course.json` uses schema version 1.0.
-- Course, Part, Piece, block, event, and option IDs are valid and unique.
-- Only the six v1 block types appear.
-- Required assessments, answers, rubrics, feedback, blocking flags, and completion rules are present.
-- All paths stay inside `course/` and referenced files exist.
-- `index.md` is the exact generated view.
+Review each Part independently. A polished file does not compensate for a failed dimension.
 
-## 3. HTML
+### `instructionalGoalStructure` — 教学目标与结构
 
-- One self-contained HTML file.
-- Valid canvas, standardized completion button, confirmed completion condition.
-- `INTERACTION_COMPLETE` version 1.0 and required payload fields.
-- Structured interaction records.
-- No prohibited external runtime resources.
+- The Part has one clear stage goal.
+- Pieces form an intelligible learning sequence.
+- Each Piece contributes to that goal instead of mirroring source headings.
 
-## 4. Video interactions
+### `contentCompleteness` — 内容完整性
 
-- The MP4 itself is not generated or modified.
-- JSON is canonical and Markdown is generated.
-- Declared duration matches the actual MP4.
-- Final event times are ordered, unique, and inside the video.
-- No event remains `needs-timing`.
+- Each Piece is a sufficiently complete student teaching unit.
+- Explanations, examples, instructions, and conclusions needed for understanding are present.
+- Source tables, relationships, and evidence were not flattened or fragmented into meaningless text.
+
+### `studentFacingPresentation` — 学生呈现
+
+- Titles and content directly address student learning.
+- No design rationale, teacher notes, AI roles, system rules, backend behavior, coverage commentary, or unconfirmed suggestion appears.
+- Text is concise and coherent rather than many tiny blocks or raw document dumps.
+
+### `modalityChoice` — 模态选择
+
+- Every block type serves a learning function.
+- Text was not used by default where comparison, observation, temporal process, manipulation, or practice calls for another supported modality.
+- Images, video, and HTML are used only with real assets and confirmed designs.
+
+### `practiceFeedback` — 练习与反馈
+
+- Activities appear after adequate instruction.
+- Questions have valid answers or rubrics, useful feedback, and appropriate blocking/completion rules.
+- Practice provides evidence related to the Part goal.
+
+### `resourcesFormat` — 资源与格式
+
+- All referenced resources exist, use safe relative paths, and meet their specific contracts.
+- Images have meaningful alt text.
+- Video and HTML interaction records match actual files.
+- The Part's Piece/block structure matches the confirmed storyboard.
+
+For every dimension record `status: pass|revise` and concrete evidence. The Part conclusion is `pass` only if all six dimensions pass.
+
+## 3. Overall review
+
+The second table and `overallChecks` must include:
+
+- `allPartsPass`
+- `sourceClassificationCoverage`
+- `resourcesPresent`
+- `courseJsonSchema`
+- `indexConsistency`
+- `images`
+- `video`
+- `html`
+- `assessments`
+- `unresolved`
+
+Every check needs `status: pass|revise` plus concrete evidence. A category that is intentionally unused can pass only with evidence that no block or confirmed design requires it.
+
+## 4. Media contracts
+
+HTML must be one self-contained file with a confirmed task, standardized completion action, valid `INTERACTION_COMPLETE` 1.0 payload, and no prohibited runtime dependency.
+
+The MP4 itself is never generated or modified. Video JSON is canonical, Markdown is generated, declared duration matches the actual MP4, final times are ordered/unique/in range, and no event remains `needs-timing`.
 
 ## 5. Outcome labels
 
-- `可上传`: no blocking issue remains.
+- `可上传`: every Part dimension and overall check passes; deterministic validation has no issue.
 - `修改后可上传`: only explicitly listed mechanical repairs remain.
-- `缺少必要材料，暂不可上传`: missing evidence, unresolved teacher choice, invalid contract, unsafe path, missing file, invalid HTML, or provisional/invalid video timing remains.
+- `缺少必要材料，暂不可上传`: any Part needs revision, evidence/asset/decision is missing, or a contract fails.
 
 Never upgrade a result because the files look polished.

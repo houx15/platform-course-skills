@@ -3,6 +3,15 @@ from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
 from .course_validation import validate_course_data
+from .course_design import (
+    extracted_source_ids,
+    render_review_report,
+    render_storyboard,
+    validate_audience_classification,
+    validate_learner_facing_course,
+    validate_review_report,
+    validate_storyboard,
+)
 from .coverage import (
     validate_coverage,
     validate_coverage_inventory,
@@ -180,13 +189,21 @@ def _validate_work_records(
     decisions_path = work_root / "decisions.json"
     unresolved_path = work_root / "unresolved.json"
     session_path = work_root / "session.json"
+    audience_path = work_root / "audience-classification.json"
+    storyboard_path = work_root / "course-storyboard.json"
+    storyboard_markdown_path = work_root / "course-storyboard.md"
+    review_report_path = work_root / "review-report.json"
+    review_markdown_path = work_root / "review-report.md"
     loaded_records = {}
     for path in (
         extracted_path,
         coverage_path,
+        audience_path,
+        storyboard_path,
         decisions_path,
         unresolved_path,
         session_path,
+        review_report_path,
     ):
         if not path.is_file():
             issues.append(
@@ -239,6 +256,65 @@ def _validate_work_records(
     extracted = loaded_records.get("materials-extracted.json")
     if extracted is not None and coverage is not None:
         issues.extend(validate_coverage_inventory(extracted, coverage))
+    audience = loaded_records.get("audience-classification.json")
+    if audience is not None:
+        audience_issues = validate_audience_classification(
+            audience,
+            extracted_source_ids(extracted),
+        )
+        issues.extend(_prefixed("audience-classification.json", audience_issues))
+    storyboard = loaded_records.get("course-storyboard.json")
+    if storyboard is not None:
+        storyboard_issues = validate_storyboard(storyboard, course_data)
+        issues.extend(_prefixed("course-storyboard.json", storyboard_issues))
+        if not storyboard_issues:
+            issues.extend(
+                _compare_generated(
+                    storyboard_markdown_path,
+                    render_storyboard(storyboard),
+                    storyboard_markdown_path.name,
+                )
+            )
+    elif not storyboard_markdown_path.is_file():
+        issues.append(
+            ValidationIssue(
+                storyboard_markdown_path.name,
+                "missing-file",
+                f"work record is required: {storyboard_markdown_path.name}",
+            )
+        )
+    review_report = loaded_records.get("review-report.json")
+    if review_report is not None:
+        review_issues = validate_review_report(review_report, course_data)
+        issues.extend(_prefixed("review-report.json", review_issues))
+        if (
+            isinstance(review_report, dict)
+            and review_report.get("finalStatus") == "blocked"
+            and not review_issues
+        ):
+            issues.append(
+                ValidationIssue(
+                    "review-report.json.finalStatus",
+                    "part-review-blocked",
+                    "the Part-level review report blocks upload",
+                )
+            )
+        if not review_issues:
+            issues.extend(
+                _compare_generated(
+                    review_markdown_path,
+                    render_review_report(review_report),
+                    review_markdown_path.name,
+                )
+            )
+    elif not review_markdown_path.is_file():
+        issues.append(
+            ValidationIssue(
+                review_markdown_path.name,
+                "missing-file",
+                f"work record is required: {review_markdown_path.name}",
+            )
+        )
     return issues
 
 
@@ -275,6 +351,7 @@ def review_package(
             issues.extend(structure_issues)
             if isinstance(loaded, dict):
                 data = loaded
+                issues.extend(validate_learner_facing_course(data))
                 issues.extend(validate_referenced_paths(course_root, data))
                 if not structure_issues:
                     issues.extend(

@@ -23,19 +23,24 @@ Store authoring traceability at `.course-work/source-coverage.json`:
 Allowed statuses:
 
 - `unresolved`: no accepted disposition yet;
-- `mapped`: placed in one or more course blocks;
-- `merged`: combined with other source items; keep every source ID;
-- `discard-proposed`: AI recommends omission but the teacher has not agreed;
-- `discard-approved`: teacher agreed; include `reason` and `teacherConfirmed: true`.
+- `mapped`: placed in one or more learner-facing course blocks;
+- `merged`: combined with other source items; keep every source ID and real destinations;
+- `discard-proposed`: AI recommends excluding it from the learner course but the teacher has not agreed;
+- `discard-approved`: teacher agreed it stays outside the learner course; include `reason` and `teacherConfirmed: true`.
 
-Final Review blocks `unresolved`, `discard-proposed`, missing destinations, and unconfirmed discards.
+Audience and coverage are separate judgments:
 
-Final Review also reconciles this file against `.course-work/materials-extracted.json`:
+- `.course-work/audience-classification.json` says who the source item is for;
+- `source-coverage.json` says where it went in the final learner course;
+- confirmed `teacher-design`, `ai-system`, and `reference` items normally become `discard-approved` with a reason such as “保留在作者工作记录，不进入学生课程”;
+- `proposed-exclusion` cannot become `discard-approved` until the teacher confirms the grouped exclusion.
 
-- every extracted `sourceId` must appear exactly once;
-- `sourceFile` and `location` must match the extracted item;
-- no invented or stale `sourceId` may remain;
-- every mapped destination must name an existing `part-id/piece-id/block-id`;
-- DOCX table evidence uses locations such as `table:2/row:3/cell:1/paragraph:1`, not an untraceable flattened paragraph number.
+Final Review blocks `unresolved`, `discard-proposed`, missing destinations, and unconfirmed discards. It also reconciles both records against `.course-work/materials-extracted.json`:
 
-Present the teacher with a readable summary instead of raw JSON unless they ask for the file.
+- every extracted `sourceId` appears exactly once in coverage and exactly once in audience classification;
+- `sourceFile` and `location` match the extracted item;
+- no invented or stale `sourceId` remains;
+- every mapped destination names an existing `part-id/piece-id/block-id`;
+- DOCX table evidence retains locations such as `table:2/row:3/cell:1/paragraph:1`, never an untraceable flattened paragraph.
+
+Present readable grouped summaries to the teacher instead of raw JSON unless requested.

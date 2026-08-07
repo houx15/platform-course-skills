@@ -5,8 +5,9 @@ import unittest
 from pathlib import Path
 
 from course_toolkit.jsonio import dump_json, load_json
+from course_toolkit.course_design import render_review_report
 from course_toolkit.package_review import review_package
-from tests.helpers import ROOT
+from tests.helpers import ROOT, write_valid_work_records
 
 
 class PackageReviewTests(unittest.TestCase):
@@ -19,6 +20,126 @@ class PackageReviewTests(unittest.TestCase):
         result = review_package(ROOT / "tests" / "fixtures" / "valid-course")
         self.assertEqual(result.status, "uploadable")
         self.assertEqual(result.issues, ())
+
+    def test_complete_teacher_confirmed_work_records_are_uploadable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            data = load_json(course / "course.json")
+            work = root / ".course-work"
+            write_valid_work_records(work, data)
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "uploadable")
+        self.assertEqual(result.issues, ())
+
+    def test_missing_storyboard_record_blocks_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            (work / "course-storyboard.json").unlink()
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("missing-file", {issue.code for issue in result.issues})
+
+    def test_storyboard_markdown_drift_needs_fix(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            (work / "course-storyboard.md").write_text("# 旧设计\n", encoding="utf-8")
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "uploadable-after-fixes")
+        self.assertIn("generated-view-drift", {issue.code for issue in result.issues})
+
+    def test_storyboard_must_match_course_modalities(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            storyboard = load_json(work / "course-storyboard.json")
+            storyboard["parts"][0]["pieces"][0]["modalities"] = ["text"]
+            (work / "course-storyboard.json").write_text(
+                dump_json(storyboard),
+                encoding="utf-8",
+            )
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("modality-mismatch", {issue.code for issue in result.issues})
+
+    def test_incomplete_part_review_blocks_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            report = load_json(work / "review-report.json")
+            del report["partReviews"][0]["dimensions"]["contentCompleteness"]
+            (work / "review-report.json").write_text(
+                dump_json(report),
+                encoding="utf-8",
+            )
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn(
+            "missing-review-dimension",
+            {issue.code for issue in result.issues},
+        )
+
+    def test_valid_blocked_part_review_still_blocks_package(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            report = load_json(work / "review-report.json")
+            report["partReviews"][0]["dimensions"]["modalityChoice"][
+                "status"
+            ] = "revise"
+            report["partReviews"][0]["conclusion"] = "revise"
+            report["partReviews"][0]["recommendations"] = [
+                "将长段说明拆成观察图与核查活动"
+            ]
+            report["overallChecks"]["allPartsPass"]["status"] = "revise"
+            report["finalStatus"] = "blocked"
+            (work / "review-report.json").write_text(
+                dump_json(report),
+                encoding="utf-8",
+            )
+            (work / "review-report.md").write_text(
+                render_review_report(report),
+                encoding="utf-8",
+            )
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("part-review-blocked", {issue.code for issue in result.issues})
+
+    def test_design_metadata_in_course_is_blocked(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            data["course"]["parts"][0]["pieces"][0]["title"] = "设计思路"
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+
+            result = review_package(course)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("non-learner-content", {issue.code for issue in result.issues})
 
     def test_valid_fixture_uses_refined_flicc_learning_goal(self):
         data = load_json(

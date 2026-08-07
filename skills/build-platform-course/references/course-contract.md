@@ -14,20 +14,25 @@ course/
     └── video/
 ```
 
-`.course-work/` remains outside the upload directory.
+`.course-work/` remains outside the upload directory. ZIP is never required.
 
-Required authoring records beside the upload directory:
+Required authoring records:
 
 ```text
 .course-work/
 ├── materials-extracted.json
 ├── source-coverage.json
+├── audience-classification.json
+├── course-storyboard.json
+├── course-storyboard.md
 ├── decisions.json
 ├── unresolved.json
-└── session.json
+├── session.json
+├── review-report.json
+└── review-report.md
 ```
 
-Review reconciles the extracted source inventory with coverage, checks that mapped destinations are real course blocks, and blocks every open item marked `blocking: true`.
+Review reconciles extraction, audience classification, coverage, storyboard, actual course blocks, and Part review evidence.
 
 ## Canonical hierarchy
 
@@ -35,9 +40,9 @@ Review reconciles the extracted source inventory with coverage, checks that mapp
 course → parts[] → pieces[] → blocks[]
 ```
 
-- Part: one platform page.
-- Piece: one click-revealed content group on that page.
-- Block: one ordered content unit.
+- Part: one platform page and one coherent learning stage.
+- Piece: one click-revealed, sufficiently complete student teaching unit.
+- Block: one ordered presentation or activity unit inside the Piece.
 
 Allowed v1 block types:
 
@@ -50,4 +55,6 @@ Allowed v1 block types:
 
 Use schema version `1.0`, stable lowercase hyphenated IDs, course-root-relative safe paths, non-empty image alt text, explicit blocking flags, and consistent assessment modes.
 
-Use the bundled `schemas/course.schema.json` and `schemas/video-interactions.schema.json` as the detailed public contracts. Use `scripts/render-index.py` and `scripts/render-video-interactions.py` for views; never hand-maintain generated Markdown.
+`course.json` is canonical and learner-facing. `index.md` is its exact generated learner view. Do not place authoring records, teaching rationale, AI/system instructions, or proposed content in either file.
+
+Use `scripts/render-index.py`, `scripts/render-video-interactions.py`, `scripts/render-course-storyboard.py`, and `scripts/render-review-report.py`; never hand-maintain generated Markdown.

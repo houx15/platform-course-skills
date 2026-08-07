@@ -8,6 +8,14 @@
   "requiredPhrases": [
     "source-coverage",
     "不得静默跳过",
+    "audience-classification.json",
+    "student-core",
+    "student-evidence",
+    "teacher-design",
+    "ai-system",
+    "reference",
+    "proposed-exclusion",
+    "分组确认",
     "长视频",
     "HTML 交互",
     "即使材料没有提到"

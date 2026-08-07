@@ -6,39 +6,48 @@ Persist the current state in `.course-work/session.json`.
 
 ### 1. `materials-intake`
 
-- Collect explicit input paths.
-- Inventory without modifying originals.
-- Invoke material analysis.
-- Persist the exact extraction at `.course-work/materials-extracted.json`; later Review reconciles every source ID against it.
-- Exit only after unreadable files are surfaced and the material summary is confirmed.
+- Collect explicit input paths and preserve originals.
+- Invoke material extraction.
+- Persist `.course-work/materials-extracted.json`.
+- Surface unreadable inputs and conflicts.
+- Exit only after the material summary is confirmed.
 
-### 2. `media-intent`
+### 2. `audience-classification`
 
-- Present detected video and HTML candidates with source evidence.
+- Classify every source item as `student-core`, `student-evidence`, `teacher-design`, `ai-system`, `reference`, or `proposed-exclusion`.
+- Present grouped non-student items and proposed exclusions.
+- Persist `.course-work/audience-classification.json`.
+- Exit only after teacher confirmation.
+
+### 3. `media-intent`
+
+- Present detected video and HTML candidates with evidence.
 - Ask explicitly about both categories when absent.
-- Record accepted and rejected candidates in `decisions.json`.
+- Record decisions.
 - Exit only when video and HTML intent are explicit.
 
-### 3. `media-design`
+### 4. `media-design`
 
 - Invoke the relevant specialist for every accepted candidate.
-- Preserve provisional video anchors.
-- Exit only after the teacher confirms each readable design. Provisional timing may remain, but must stay in `unresolved.json`.
+- Preserve provisional video semantic anchors.
+- Exit only after readable designs are confirmed. Provisional timing remains blocking in `unresolved.json`.
 
-### 4. `structure-proposal`
+### 5. `course-storyboard`
 
-- Propose Parts (pages), Pieces (one-click content groups), and ordered blocks.
-- Show source IDs, purpose, modality, blocking, and unresolved decisions.
-- Exit only after explicit teacher confirmation.
+- Design Parts as learning stages and Pieces as complete student-facing teaching units.
+- Decide presentation modality from learning function; never default to text.
+- Persist `.course-work/course-storyboard.json`.
+- Render `.course-work/course-storyboard.md` with counts and one row per Piece.
+- Exit only after the teacher confirms the complete table and all required assets or open items are explicit.
 
-### 5. `part-detail`
+### 6. `part-detail`
 
-- Work Part by Part.
-- Ask for missing goals, assessment meaning, answers/rubrics, feedback, and blocking behavior.
+- Work Part by Part using the confirmed storyboard.
+- Supply complete student content, meaningful exercises, answers/rubrics, feedback, and blocking behavior.
 - Record substantive AI suggestions and teacher confirmation.
-- Preview and confirm each Part.
+- Never copy authoring rationale into learner output.
 
-### 6. `generation`
+### 7. `generation`
 
 - Create a clean `course/`.
 - Write canonical course and video JSON.
@@ -46,17 +55,18 @@ Persist the current state in `.course-work/session.json`.
 - Copy only referenced delivery assets.
 - Never generate or include ZIP.
 
-### 7. `review`
+### 8. `review`
 
-- Invoke the independent review skill.
-- Treat open blocking items in `.course-work/unresolved.json` and unconfirmed substantive decisions as blockers even when generated files are structurally valid.
+- Invoke independent Part-level review.
+- Persist `review-report.json` and generated `review-report.md`.
+- Treat any failed Part dimension, open blocking item, unconfirmed substantive decision, or contract error as blocking.
 - Auto-fix only mechanical problems.
-- Return semantic issues to the teacher.
-- Repeat until one final status is justified.
+- Return semantic issues to the storyboard, obtain confirmation, rebuild, and repeat the full review.
 
 ## Resume rules
 
 - Never repeat a confirmed question.
 - Hash or compare source files and reopen only affected decisions.
 - Do not mark an unresolved item resolved because output files exist.
-- Preserve every approved discard and substantive AI addition.
+- Preserve every approved exclusion and substantive AI addition.
+- A changed storyboard invalidates the previous review report.

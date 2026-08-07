@@ -96,6 +96,10 @@ class InstallerTests(unittest.TestCase):
             readme,
         )
         self.assertIn("不要把仓库根目录当作单个 Skill", readme)
+        self.assertIn("一行对应一个 Piece", readme)
+        self.assertIn("course.json 和 index.md 只包含学生最终会看到的内容", readme)
+        self.assertIn("Part 逐项 Review", readme)
+        self.assertIn("整体 Review", readme)
 
 
 if __name__ == "__main__":
