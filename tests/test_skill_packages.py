@@ -39,6 +39,34 @@ class SkillPackageTests(unittest.TestCase):
     def test_build_platform_course(self):
         self.assert_skill("build-platform-course")
 
+    def test_pdf_rules_are_consistent_across_skill_references(self):
+        required = {
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "course-contract.md": (
+                "assets/pdfs/",
+                "`pdf`",
+                "不得包含 `blocking`",
+            ),
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "workflow.md": ("完整 PDF", "blocking: true"),
+            ROOT
+            / "skills"
+            / "review-platform-course"
+            / "references"
+            / "review-rubric.md": ("`pdf`", "完整文档", "%PDF-", "%%EOF"),
+        }
+        for path, phrases in required.items():
+            text = path.read_text(encoding="utf-8")
+            for phrase in phrases:
+                with self.subTest(path=path.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -35,8 +35,10 @@ Resolve paths relative to this `SKILL.md` directory:
    - `proposed-exclusion`: redundant, obsolete, contradictory, or unsuitable content proposed for omission.
 
 8. Present a concise grouped summary. Ask for one 分组确认 covering `teacher-design`, `ai-system`, `reference`, and `proposed-exclusion`; do not burden the teacher with one question per source item. Record `teacherConfirmed: true` only after the teacher approves the grouped classification.
-9. Scan the student material for 长视频, MP4, timed pauses, video questions, simulations, experiments, drag, match, exploration, clicks, webpages, and HTML 交互.
-10. Report detected video and HTML candidates with source evidence. 即使材料没有提到长视频或 HTML 交互, require the caller to ask explicitly whether either element is planned.
+9. For every PDF, distinguish two separate intents: `构建输入`, where its content is extracted and reorganized, and `学生完整材料`, where learners must receive the unchanged complete file. The same PDF may serve both intents, but record them separately. If the material says 论文原文、原始报告、完整政策文件、附件供学生阅读, or asks learners to return to a primary source, identify a 完整 PDF candidate and 主动建议 `pdf` Block. Confirm the exact file; do not infer that a summary or screenshot satisfies the request.
+10. If a PDF cannot be read reliably, state that limitation. It can still be recorded as a teacher-confirmed complete delivery asset, but do not claim its subject content was understood or use it to invent explanations, answers, or citations.
+11. Scan the student material for 长视频, MP4, timed pauses, video questions, simulations, experiments, drag, match, exploration, clicks, webpages, and HTML 交互.
+12. Report detected video and HTML candidates with source evidence. 即使材料没有提到长视频或 HTML 交互, require the caller to ask explicitly whether either element is planned.
 
 ## Audience record
 
@@ -61,4 +63,4 @@ Use this shape:
 
 ## Return to the caller
 
-Return a teacher-readable material summary, grouped audience classification, conflicts and missing information, detected video/HTML candidates, and explicit media-intent questions. Do not propose the final Part/Piece structure here. The caller must obtain the classification and media-intent confirmations first.
+Return a teacher-readable material summary, grouped audience classification, conflicts and missing information, complete-PDF candidates, detected video/HTML candidates, and explicit media-intent questions. Do not propose the final Part/Piece structure here. The caller must obtain the classification and media-intent confirmations first.

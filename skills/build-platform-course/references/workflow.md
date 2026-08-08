@@ -23,8 +23,10 @@ Persist the current state in `.course-work/session.json`.
 
 - Present detected video and HTML candidates with evidence.
 - Ask explicitly about both categories when absent.
+- Present every detected 完整 PDF candidate separately from PDFs used only as authoring input.
+- Confirm the exact file and whether students locate, compare, verify, or simply consult it.
 - Record decisions.
-- Exit only when video and HTML intent are explicit.
+- Exit only when video, HTML, and detected full-document intent are explicit.
 
 ### 4. `media-design`
 
@@ -36,6 +38,7 @@ Persist the current state in `.course-work/session.json`.
 
 - Design Parts as learning stages and Pieces as complete student-facing teaching units.
 - Decide presentation modality from learning function; never default to text.
+- Record missing required PDFs in `assetNeeds` and as open unresolved items with `blocking: true`; never put a nonexistent placeholder path into the course.
 - Persist `.course-work/course-storyboard.json`.
 - Render `.course-work/course-storyboard.md` with counts and one row per Piece.
 - Exit only after the teacher confirms the complete table and all required assets or open items are explicit.
@@ -52,7 +55,7 @@ Persist the current state in `.course-work/session.json`.
 - Create a clean `course/`.
 - Write canonical course and video JSON.
 - Generate Markdown views.
-- Copy only referenced delivery assets.
+- Copy only referenced delivery assets. Preserve every PDF's original bytes under `assets/pdfs/`.
 - Never generate or include ZIP.
 
 ### 8. `review`

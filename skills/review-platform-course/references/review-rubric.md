@@ -35,7 +35,8 @@ Review each Part independently. A polished file does not compensate for a failed
 
 - Every block type serves a learning function.
 - Text was not used by default where comparison, observation, temporal process, manipulation, or practice calls for another supported modality.
-- Images, video, and HTML are used only with real assets and confirmed designs.
+- Images, `pdf`, video, and HTML are used only with real assets and confirmed designs.
+- A PDF Piece tells students what to locate, compare, verify, or consult; it does not present a raw file without a learning purpose.
 
 ### `practiceFeedback` — 练习与反馈
 
@@ -47,6 +48,7 @@ Review each Part independently. A polished file does not compensate for a failed
 
 - All referenced resources exist, use safe relative paths, and meet their specific contracts.
 - Images have meaningful alt text.
+- Every PDF has a learner-facing title, safe `.pdf` path, `%PDF-` header, `%%EOF` trailer, and the complete document required by the teacher.
 - Video and HTML interaction records match actual files.
 - The Part's Piece/block structure matches the confirmed storyboard.
 
@@ -62,6 +64,7 @@ The second table and `overallChecks` must include:
 - `courseJsonSchema`
 - `indexConsistency`
 - `images`
+- `pdf`
 - `video`
 - `html`
 - `assessments`
@@ -70,6 +73,8 @@ The second table and `overallChecks` must include:
 Every check needs `status: pass|revise` plus concrete evidence. A category that is intentionally unused can pass only with evidence that no block or confirmed design requires it.
 
 ## 4. Media contracts
+
+PDF files are copied without changing their bytes. When the teacher requested a 论文原文、报告全文或其他完整文档, a summary, screenshot excerpt, reconstructed file, or unconfirmed replacement fails Review. Static header/trailer checks do not prove every page renders in the real platform or that the file is an authoritative edition; test embedded reading and download before upload.
 
 HTML must be one self-contained file with a confirmed task, standardized completion action, valid `INTERACTION_COMPLETE` 1.0 payload, and no prohibited runtime dependency.
 

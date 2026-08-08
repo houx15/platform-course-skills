@@ -57,6 +57,17 @@ class ContractTests(unittest.TestCase):
             },
         )
 
+    def test_public_docs_describe_pdf_course_delivery(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        report = (ROOT / "docs" / "validation-report.md").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("PDF", readme)
+        self.assertIn("`pdf`", readme)
+        self.assertIn("PDF", report)
+        self.assertIn("invalid-pdf-header", report)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,6 +1,6 @@
 ---
 name: review-platform-course
-description: Use when a standardized platform course is believed complete, before upload, or when checking source coverage, course.json, generated Markdown, HTML interactions, video timing, resource paths, and unresolved teacher decisions.
+description: Use when a standardized platform course is believed complete, before upload, or when checking source coverage, course.json, generated Markdown, PDF documents, HTML interactions, video timing, resource paths, and unresolved teacher decisions.
 ---
 
 # Review Platform Course
@@ -22,7 +22,8 @@ Do not accept the builder's completion claim. Reconstruct the evidence chain fro
    scripts/validate-course.py course/ --work-dir .course-work --json
    ```
 
-7. Perform a separate Part 逐项 Review for every Part. Inspect every Piece within it and record evidence for all six dimensions:
+7. Inspect 逐个 PDF Block. Require a real safe relative file path, `.pdf` extension, `%PDF-` header, `%%EOF` trailer, a learner-facing title, and a confirmed Piece purpose that explains what students locate, compare, or verify. When the teacher requires the 完整文档, confirm it was not replaced by a summary, excerpt screenshot, reconstructed file, or unconfirmed substitute. A missing, damaged, mislinked, or substituted PDF blocks upload.
+8. Perform a separate Part 逐项 Review for every Part. Inspect every Piece within it and record evidence for all six dimensions:
 
    - 教学目标与结构;
    - 内容完整性;
@@ -32,11 +33,11 @@ Do not accept the builder's completion claim. Reconstruct the evidence chain fro
    - 资源与格式.
 
    任一维度 fails means that Part is `revise`; any `revise` Part blocks the whole course.
-8. Perform the 整体 Review: all Parts pass, source classification/coverage, resources present, course JSON schema, index consistency, images, video, HTML, assessments, and unresolved decisions.
-9. Persist the structured result at `.course-work/review-report.json`, then render `.course-work/review-report.md` with `scripts/render-review-report.py`.
-10. Automatically fix only mechanical issues that cannot change teaching meaning: generated Markdown drift, deterministic formatting, and unambiguous safe-path corrections.
-11. For pedagogical failures, provide concrete restructuring advice to the builder. The builder must produce a revised course-storyboard table. Ask the teacher to confirm any semantic change, then rebuild.
-12. After any fix, 重新运行完整 Review from original sources through the deterministic validator and both tables. Never reuse a previous pass.
+9. Perform the 整体 Review: all Parts pass, source classification/coverage, resources present, course JSON schema, index consistency, images, video, HTML, assessments, and unresolved decisions. Also execute the 整体 `pdf` Review. If no PDF is used, `pdf` may pass only with evidence that neither the storyboard nor confirmed teacher requirements need one.
+10. Persist the structured result at `.course-work/review-report.json`, then render `.course-work/review-report.md` with `scripts/render-review-report.py`.
+11. Automatically fix only mechanical issues that cannot change teaching meaning: generated Markdown drift, deterministic formatting, and unambiguous safe-path corrections.
+12. For pedagogical failures, provide concrete restructuring advice to the builder. The builder must produce a revised course-storyboard table. Ask the teacher to confirm any semantic change, then rebuild.
+13. After any fix, 重新运行完整 Review from original sources through the deterministic validator and both tables. Never reuse a previous pass.
 
 ## Required result tables
 
@@ -58,4 +59,4 @@ Return exactly one leading status:
 - `修改后可上传`
 - `缺少必要材料，暂不可上传`
 
-`review-report.json` may claim `uploadable` only when every Part dimension and every overall check passes. Static/content review can verify structure, traceability, and recorded pedagogical completeness; it 不能证明真实学习效果, subject-matter truth, or real iframe behavior without corresponding evidence.
+`review-report.json` may claim `uploadable` only when every Part dimension and every overall check passes. 静态检查不能证明 PDF 每一页能在真实平台中正确渲染、文件是权威出版版本，或学生已经阅读理解；真实上传前仍需测试平台内嵌阅读和下载。 Static/content review can verify structure, traceability, and recorded pedagogical completeness; it 不能证明真实学习效果, subject-matter truth, or real iframe behavior without corresponding evidence.

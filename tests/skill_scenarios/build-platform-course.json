@@ -25,6 +25,11 @@
     ".course-work",
     "course.json 是唯一事实源",
     "review-platform-course",
-    "不得报告可上传"
+    "不得报告可上传",
+    "`pdf`",
+    "assets/pdfs/",
+    "原始字节",
+    "不得用摘要替代全文",
+    "blocking: true"
   ]
 }
