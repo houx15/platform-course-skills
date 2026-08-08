@@ -8,6 +8,7 @@ ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BLOCK_TYPES = {
     "text",
     "images",
+    "pdf",
     "video",
     "interactiveHtml",
     "fillBlank",
@@ -197,6 +198,11 @@ def _validate_block(
                 if item is not None:
                     _string(item.get("source"), f"{item_path}.source", issues)
                     _string(item.get("alt"), f"{item_path}.alt", issues)
+        return
+
+    if block_type == "pdf":
+        _string(block.get("title"), f"{path}.title", issues)
+        _string(block.get("source"), f"{path}.source", issues)
         return
 
     _boolean(block.get("blocking"), f"{path}.blocking", issues)

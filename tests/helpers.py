@@ -34,6 +34,16 @@ def write_test_mp4(path: Path, duration_seconds: float = 32.533333) -> Path:
     return path
 
 
+def write_test_pdf(path: Path, *, header: bool = True, eof: bool = True) -> Path:
+    content = b"%PDF-1.4\n" if header else b"not-a-pdf\n"
+    content += b"1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+    if eof:
+        content += b"%%EOF\n"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(content)
+    return path
+
+
 def minimal_course():
     return {
         "schemaVersion": "1.0",

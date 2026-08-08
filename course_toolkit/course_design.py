@@ -36,6 +36,7 @@ OVERALL_CHECKS: Tuple[str, ...] = (
     "courseJsonSchema",
     "indexConsistency",
     "images",
+    "pdf",
     "video",
     "html",
     "assessments",

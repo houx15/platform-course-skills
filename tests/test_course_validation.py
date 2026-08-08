@@ -5,6 +5,15 @@ from course_toolkit.course_validation import validate_course_data
 from tests.helpers import minimal_course
 
 
+def pdf_block():
+    return {
+        "id": "source-paper",
+        "type": "pdf",
+        "title": "研究论文原文（结构测试材料）",
+        "source": "assets/pdfs/source-paper.pdf",
+    }
+
+
 class CourseValidationTests(unittest.TestCase):
     def codes(self, data):
         return {issue.code for issue in validate_course_data(data)}
@@ -32,6 +41,29 @@ class CourseValidationTests(unittest.TestCase):
             }
         ]
         self.assertIn("required", self.codes(data))
+
+    def test_pdf_block_is_valid(self):
+        data = minimal_course()
+        data["course"]["parts"][0]["pieces"][0]["blocks"] = [pdf_block()]
+        self.assertEqual(validate_course_data(data), [])
+
+    def test_pdf_block_requires_title_and_source(self):
+        for field in ("title", "source"):
+            data = minimal_course()
+            block = pdf_block()
+            del block[field]
+            data["course"]["parts"][0]["pieces"][0]["blocks"] = [block]
+            with self.subTest(field=field):
+                self.assertIn("required", self.codes(data))
+
+    def test_pdf_block_does_not_accept_completion_fields(self):
+        data = minimal_course()
+        block = pdf_block()
+        block["blocking"] = True
+        block["completion"] = {"rule": "submit-any"}
+        data["course"]["parts"][0]["pieces"][0]["blocks"] = [block]
+
+        self.assertEqual(validate_course_data(data), [])
 
     def test_graded_choice_needs_correct_option(self):
         data = minimal_course()

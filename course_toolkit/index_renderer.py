@@ -16,6 +16,15 @@ def _render_images(block: dict) -> List[str]:
     return lines
 
 
+def _render_pdf(block: dict) -> List[str]:
+    return [
+        "[PDF]",
+        "",
+        f"- 标题：{block['title']}",
+        f"- 文件：[查看或下载完整 PDF]({block['source']})",
+    ]
+
+
 def _render_video(block: dict) -> List[str]:
     lines = [
         "[视频]",
@@ -100,6 +109,7 @@ def _render_single_choice(block: dict) -> List[str]:
 RENDERERS: Dict[str, Callable[[dict], List[str]]] = {
     "text": _render_text,
     "images": _render_images,
+    "pdf": _render_pdf,
     "video": _render_video,
     "interactiveHtml": _render_html,
     "fillBlank": _render_fill_blank,

@@ -84,6 +84,7 @@ OVERALL_CHECKS = (
     "courseJsonSchema",
     "indexConsistency",
     "images",
+    "pdf",
     "video",
     "html",
     "assessments",
@@ -165,6 +166,27 @@ class StoryboardTests(unittest.TestCase):
         issues = validate_storyboard(data, minimal_course())
         self.assertIn("teacher-confirmation-required", {issue.code for issue in issues})
 
+    def test_storyboard_accepts_pdf_modality_that_matches_course(self):
+        course = minimal_course()
+        course["course"]["parts"][0]["pieces"][0]["blocks"] = [
+            {
+                "id": "source-paper",
+                "type": "pdf",
+                "title": "研究论文原文（结构测试材料）",
+                "source": "assets/pdfs/source-paper.pdf",
+            }
+        ]
+        storyboard = valid_storyboard()
+        storyboard["parts"][0]["pieces"][0]["modalities"] = ["pdf"]
+        storyboard["parts"][0]["pieces"][0][
+            "studentSees"
+        ] = "一份可以翻阅和下载的完整结构测试 PDF"
+        storyboard["parts"][0]["pieces"][0][
+            "studentAction"
+        ] = "打开完整文档并定位其标题和章节结构"
+
+        self.assertEqual(validate_storyboard(storyboard, course), [])
+
 
 class LearnerFacingBoundaryTests(unittest.TestCase):
     def test_course_rejects_design_metadata_in_learner_content(self):
@@ -187,6 +209,7 @@ class ReviewReportTests(unittest.TestCase):
         self.assertIn("## 整体 Review", rendered)
         self.assertIn("| part-1 | 第一部分 |", rendered)
         self.assertIn("| courseJsonSchema |", rendered)
+        self.assertIn("| pdf |", rendered)
 
     def test_missing_part_dimension_blocks_uploadable_claim(self):
         report = valid_review_report()
@@ -209,6 +232,14 @@ class ReviewReportTests(unittest.TestCase):
     def test_missing_overall_check_blocks_uploadable_claim(self):
         report = valid_review_report()
         del report["overallChecks"]["resourcesPresent"]
+        issues = validate_review_report(report, minimal_course())
+        codes = {issue.code for issue in issues}
+        self.assertIn("missing-overall-check", codes)
+        self.assertIn("invalid-uploadable-claim", codes)
+
+    def test_missing_pdf_overall_check_blocks_uploadable_claim(self):
+        report = valid_review_report()
+        del report["overallChecks"]["pdf"]
         issues = validate_review_report(report, minimal_course())
         codes = {issue.code for issue in issues}
         self.assertIn("missing-overall-check", codes)

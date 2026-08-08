@@ -7,7 +7,7 @@ from pathlib import Path
 from course_toolkit.jsonio import dump_json, load_json
 from course_toolkit.course_design import render_review_report
 from course_toolkit.package_review import review_package
-from tests.helpers import ROOT, write_valid_work_records
+from tests.helpers import ROOT, write_test_pdf, write_valid_work_records
 
 
 class PackageReviewTests(unittest.TestCase):
@@ -177,6 +177,29 @@ class PackageReviewTests(unittest.TestCase):
             result = review_package(course)
         self.assertEqual(result.status, "blocked")
         self.assertIn("missing-file", {issue.code for issue in result.issues})
+
+    def test_invalid_pdf_header_blocks_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            data["course"]["parts"][0]["pieces"][0]["blocks"].append(
+                {
+                    "id": "source-paper",
+                    "type": "pdf",
+                    "title": "研究论文原文（结构测试材料）",
+                    "source": "assets/pdfs/source-paper-test.pdf",
+                }
+            )
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+            write_test_pdf(
+                course / "assets" / "pdfs" / "source-paper-test.pdf",
+                header=False,
+            )
+
+            result = review_package(course)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("invalid-pdf-header", {issue.code for issue in result.issues})
 
     def test_generated_markdown_drift_needs_fix(self):
         with tempfile.TemporaryDirectory() as tmp:

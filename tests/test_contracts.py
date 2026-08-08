@@ -25,6 +25,27 @@ class ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Invalid JSON"):
                 load_json(path)
 
+    def test_course_schema_defines_non_blocking_pdf_block(self):
+        schema = json.loads(
+            (ROOT / "schemas" / "course.schema.json").read_text(encoding="utf-8")
+        )
+        pdf_schema = schema["$defs"]["pdfBlock"]
+        block_refs = {
+            entry["$ref"]
+            for entry in schema["$defs"]["piece"]["properties"]["blocks"]["items"][
+                "oneOf"
+            ]
+        }
+
+        self.assertIn("#/$defs/pdfBlock", block_refs)
+        self.assertEqual(
+            pdf_schema["required"],
+            ["id", "type", "title", "source"],
+        )
+        self.assertFalse(pdf_schema["additionalProperties"])
+        self.assertNotIn("blocking", pdf_schema["properties"])
+        self.assertNotIn("completion", pdf_schema["properties"])
+
     def test_validation_issue_serializes(self):
         issue = ValidationIssue("course.parts", "required", "parts is required")
         self.assertEqual(

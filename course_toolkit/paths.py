@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Iterable, List, Tuple
 
 from .errors import ValidationIssue
+from .pdf_validation import validate_pdf_file
 
 
 def resolve_course_path(course_root: Path, raw_path: str) -> Path:
@@ -39,7 +40,7 @@ def iter_references(data: object) -> Iterable[Tuple[str, str]]:
                     for item_index, item in enumerate(block.get("items", [])):
                         if isinstance(item, dict) and isinstance(item.get("source"), str):
                             yield f"{base}.items[{item_index}].source", item["source"]
-                elif block_type in {"video", "interactiveHtml"}:
+                elif block_type in {"pdf", "video", "interactiveHtml"}:
                     if isinstance(block.get("source"), str):
                         yield f"{base}.source", block["source"]
                     interaction = block.get("interaction")
@@ -47,6 +48,30 @@ def iter_references(data: object) -> Iterable[Tuple[str, str]]:
                         for key in ("data", "document"):
                             if isinstance(interaction.get(key), str):
                                 yield f"{base}.interaction.{key}", interaction[key]
+
+
+def iter_pdf_references(data: object) -> Iterable[Tuple[str, str]]:
+    if not isinstance(data, dict):
+        return
+    course = data.get("course")
+    if not isinstance(course, dict):
+        return
+    for part_index, part in enumerate(course.get("parts", [])):
+        if not isinstance(part, dict):
+            continue
+        for piece_index, piece in enumerate(part.get("pieces", [])):
+            if not isinstance(piece, dict):
+                continue
+            for block_index, block in enumerate(piece.get("blocks", [])):
+                if not isinstance(block, dict) or block.get("type") != "pdf":
+                    continue
+                source = block.get("source")
+                if isinstance(source, str):
+                    yield (
+                        f"course.parts[{part_index}].pieces[{piece_index}]"
+                        f".blocks[{block_index}].source",
+                        source,
+                    )
 
 
 def validate_referenced_paths(
@@ -64,4 +89,13 @@ def validate_referenced_paths(
             issues.append(
                 ValidationIssue(path, "missing-file", f"referenced file does not exist: {raw}")
             )
+    for path, raw in iter_pdf_references(data):
+        try:
+            resolved = resolve_course_path(course_root, raw)
+        except ValueError:
+            continue
+        if not resolved.is_file():
+            continue
+        for issue in validate_pdf_file(resolved):
+            issues.append(ValidationIssue(path, issue.code, issue.message))
     return issues

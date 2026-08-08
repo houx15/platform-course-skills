@@ -5,10 +5,22 @@ from pathlib import Path
 
 from course_toolkit.index_renderer import render_index
 from course_toolkit.paths import resolve_course_path, validate_referenced_paths
-from tests.helpers import minimal_course
+from tests.helpers import minimal_course, write_test_pdf
 
 
 class IndexRendererTests(unittest.TestCase):
+    def pdf_course(self, source="assets/pdfs/source-paper.pdf"):
+        data = minimal_course()
+        data["course"]["parts"][0]["pieces"][0]["blocks"] = [
+            {
+                "id": "source-paper",
+                "type": "pdf",
+                "title": "研究论文原文（结构测试材料）",
+                "source": source,
+            }
+        ]
+        return data
+
     def test_rejects_absolute_and_parent_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -46,6 +58,41 @@ class IndexRendererTests(unittest.TestCase):
             path.write_bytes(b"png")
             self.assertEqual(validate_referenced_paths(root, data), [])
 
+    def test_valid_pdf_reference_passes(self):
+        data = self.pdf_course()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_test_pdf(root / "assets" / "pdfs" / "source-paper.pdf")
+            self.assertEqual(validate_referenced_paths(root, data), [])
+
+    def test_pdf_reference_requires_pdf_extension(self):
+        data = self.pdf_course("assets/pdfs/source-paper.txt")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_test_pdf(root / "assets" / "pdfs" / "source-paper.txt")
+            issues = validate_referenced_paths(root, data)
+        self.assertIn("invalid-pdf-extension", {issue.code for issue in issues})
+
+    def test_pdf_reference_requires_header_and_eof(self):
+        for missing, options, expected in (
+            ("header", {"header": False}, "invalid-pdf-header"),
+            ("eof", {"eof": False}, "invalid-pdf-eof"),
+        ):
+            with self.subTest(missing=missing), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                write_test_pdf(
+                    root / "assets" / "pdfs" / "source-paper.pdf",
+                    **options,
+                )
+                issues = validate_referenced_paths(root, self.pdf_course())
+                self.assertIn(expected, {issue.code for issue in issues})
+
+    def test_pdf_reference_rejects_parent_path(self):
+        data = self.pdf_course("../source-paper.pdf")
+        with tempfile.TemporaryDirectory() as tmp:
+            issues = validate_referenced_paths(Path(tmp), data)
+        self.assertIn("unsafe-path", {issue.code for issue in issues})
+
     def test_render_is_deterministic_and_structured(self):
         data = minimal_course()
         first = render_index(data)
@@ -57,6 +104,17 @@ class IndexRendererTests(unittest.TestCase):
         self.assertIn("[文字]", first)
         self.assertNotIn("最终产物不需要", first)
         self.assertTrue(first.endswith("\n"))
+
+    def test_renders_pdf_as_complete_document_link(self):
+        text = render_index(self.pdf_course())
+
+        self.assertIn("[PDF]", text)
+        self.assertIn("- 标题：研究论文原文（结构测试材料）", text)
+        self.assertIn(
+            "- 文件：[查看或下载完整 PDF](assets/pdfs/source-paper.pdf)",
+            text,
+        )
+        self.assertNotIn("- 阻塞：", text)
 
     def test_renders_images_video_html_and_assessments(self):
         data = minimal_course()

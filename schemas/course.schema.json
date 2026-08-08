@@ -115,6 +115,9 @@
                 "$ref": "#/$defs/imagesBlock"
               },
               {
+                "$ref": "#/$defs/pdfBlock"
+              },
+              {
                 "$ref": "#/$defs/videoBlock"
               },
               {
@@ -177,6 +180,25 @@
           "items": {
             "$ref": "#/$defs/imageItem"
           }
+        }
+      }
+    },
+    "pdfBlock": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "title", "source"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "pdf"
+        },
+        "title": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "source": {
+          "$ref": "#/$defs/relativePath"
         }
       }
     },
