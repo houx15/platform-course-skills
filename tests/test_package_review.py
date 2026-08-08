@@ -164,6 +164,25 @@ class PackageReviewTests(unittest.TestCase):
             "same-tool",
         )
 
+    def test_valid_fixture_includes_complete_test_pdf_piece(self):
+        fixture = ROOT / "tests" / "fixtures" / "valid-course"
+        data = load_json(fixture / "course.json")
+        pieces = data["course"]["parts"][0]["pieces"]
+        pdf_piece = next(piece for piece in pieces if piece["id"] == "source-check")
+        pdf_block = next(
+            block for block in pdf_piece["blocks"] if block["type"] == "pdf"
+        )
+
+        self.assertEqual(
+            pdf_block["title"],
+            "PDF 原始材料（结构测试，非真实论文）",
+        )
+        self.assertEqual(
+            pdf_block["source"],
+            "assets/pdfs/source-paper-test.pdf",
+        )
+        self.assertTrue((fixture / pdf_block["source"]).is_file())
+
     def test_missing_course_json_is_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = review_package(Path(tmp))

@@ -65,6 +65,39 @@
                 }
               }
             ]
+          },
+          {
+            "id": "source-check",
+            "title": "从完整文档定位证据（结构测试）",
+            "blocks": [
+              {
+                "id": "source-check-instruction",
+                "type": "text",
+                "content": "核查引用时，先打开完整原始文档，再定位具体章节或图表。下面的文件是结构测试材料，不是气候研究论文，也不能作为气候结论的证据。请用它练习在完整文档中定位信息。"
+              },
+              {
+                "id": "source-paper",
+                "type": "pdf",
+                "title": "PDF 原始材料（结构测试，非真实论文）",
+                "source": "assets/pdfs/source-paper-test.pdf"
+              },
+              {
+                "id": "source-heading-check",
+                "type": "fillBlank",
+                "blocking": true,
+                "prompt": "打开完整 PDF，填写第 2 页的章节标题。",
+                "assessment": {
+                  "mode": "graded",
+                  "acceptedAnswers": [
+                    "2. Evidence Check",
+                    "Evidence Check"
+                  ],
+                  "caseSensitive": false,
+                  "correctFeedback": "正确。你已经从完整文档中定位到指定章节。",
+                  "incorrectFeedback": "请翻到第 2 页，读取页面顶部的章节标题。"
+                }
+              }
+            ]
           }
         ]
       }

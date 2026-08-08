@@ -33,10 +33,10 @@
 
 ### 新课程结构
 
-- 生成 6 个 Part、12 个 Piece、24 个 Block。
-- Block 构成：12 个 `text`、7 个 `singleChoice`、4 个 `fillBlank`、1 个 `interactiveHtml`。
+- 生成 6 个 Part、13 个 Piece、27 个 Block。
+- Block 构成：13 个 `text`、7 个 `singleChoice`、5 个 `fillBlank`、1 个 `pdf`、1 个 `interactiveHtml`。
 - 每个 Piece 均包含学生行动或学习证据；没有纯文本 Piece。
-- 12 个文本 Block 平均 194 字，最长 374 字；旧样例中从 Word 大段复制、表格转项目符号的做法已移除。
+- 13 个文本 Block 平均 185 字，最长 374 字；旧样例中从 Word 大段复制、表格转项目符号的做法已移除。
 - 学生课程中没有“设计总览”“AI 角色”“老师 vs 系统”、作者 coverage 说明或平台实现信息。
 - 原 Word 的 FLICC 表、主张库、图表溯源、level/trend 带练、独立证据链和核查射程均转成学生可使用的对照、步骤、交互或评价活动。
 
@@ -49,8 +49,8 @@
 
 ### 设计与 Review 表
 
-- `.course-work/course-storyboard.md` 输出 6 Part / 12 Piece 总数，并一行对应一个 Piece，列出阶段目标、学生所见、教学重点、模态、学生行动、完成标准、资源与待确认项。
-- `.course-work/review-report.md` 先输出 6 行 Part 逐项 Review，再输出 10 项整体 Review。
+- `.course-work/course-storyboard.md` 输出 6 Part / 13 Piece 总数，并一行对应一个 Piece，列出阶段目标、学生所见、教学重点、模态、学生行动、完成标准、资源与待确认项。
+- `.course-work/review-report.md` 先输出 6 行 Part 逐项 Review，再输出 11 项整体 Review（新增 `pdf`）。
 - 每个 Part 分别检查教学目标与结构、内容完整性、学生呈现、模态选择、练习与反馈、资源与格式。
 - 端到端确定性 Review 返回 `可上传`，无 schema、生成视图、资源路径、HTML、来源覆盖、受众分类、storyboard 或 review-report 错误。
 
