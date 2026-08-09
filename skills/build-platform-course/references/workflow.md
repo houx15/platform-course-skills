@@ -36,12 +36,15 @@ Persist the current state in `.course-work/session.json`.
 
 ### 5. `course-storyboard`
 
+- Draft the student-facing 课程开场 and conclusion from confirmed teacher intent and source evidence.
+- Add `courseFrame` with exact introduction/conclusion content, source IDs, pending confirmations, and one `objectiveAlignment` entry per objective.
+- Map every objective to real Part IDs and at least one real evidence-producing Block; static text, images, and PDF alone are not evidence.
 - Design Parts as learning stages and Pieces as complete student-facing teaching units.
 - Decide presentation modality from learning function; never default to text.
 - Record missing required PDFs in `assetNeeds` and as open unresolved items with `blocking: true`; never put a nonexistent placeholder path into the course.
 - Persist `.course-work/course-storyboard.json`.
-- Render `.course-work/course-storyboard.md` with counts and one row per Piece.
-- Exit only after the teacher confirms the complete table and all required assets or open items are explicit.
+- Render `.course-work/course-storyboard.md` with the 课程首尾设计表 first, then counts and one row per Piece.
+- Exit only after the teacher confirms both tables and all required assets or open items are explicit.
 
 ### 6. `part-detail`
 
@@ -53,7 +56,8 @@ Persist the current state in `.course-work/session.json`.
 ### 7. `generation`
 
 - Create a clean `course/`.
-- Write canonical course and video JSON.
+- Write canonical `course.json` schema 1.1 and video JSON.
+- Render the fixed `开始学习` course-start action before Parts and conclusion report content after Parts.
 - Generate Markdown views.
 - Copy only referenced delivery assets. Preserve every PDF's original bytes under `assets/pdfs/`.
 - Never generate or include ZIP.

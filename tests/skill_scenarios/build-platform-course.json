@@ -30,6 +30,12 @@
     "assets/pdfs/",
     "原始字节",
     "不得用摘要替代全文",
-    "blocking: true"
+    "blocking: true",
+    "课程首尾设计表",
+    "courseFrame",
+    "objectiveAlignment",
+    "schemaVersion: 1.1",
+    "开始学习",
+    "不能声称学生已经掌握"
   ]
 }

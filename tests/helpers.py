@@ -1,3 +1,4 @@
+import copy
 import struct
 from pathlib import Path
 
@@ -46,11 +47,21 @@ def write_test_pdf(path: Path, *, header: bool = True, eof: bool = True) -> Path
 
 def minimal_course():
     return {
-        "schemaVersion": "1.0",
+        "schemaVersion": "1.1",
         "course": {
             "id": "sample-course",
             "title": "样例课程",
             "language": "zh-CN",
+            "introduction": {
+                "overview": "这门课帮助你理解课程内容，并用一个练习检查自己的理解。",
+                "objectives": [
+                    {
+                        "id": "explain-course-content",
+                        "text": "解释课程的关键内容，并用自己的话完成一次应用",
+                    }
+                ],
+                "keyPoints": ["识别关键内容", "用自己的话进行应用"],
+            },
             "parts": [
                 {
                     "id": "part-1",
@@ -64,12 +75,27 @@ def minimal_course():
                                     "id": "intro",
                                     "type": "text",
                                     "content": "课程内容",
+                                },
+                                {
+                                    "id": "course-content-response",
+                                    "type": "fillBlank",
+                                    "blocking": True,
+                                    "prompt": "请用自己的话说明课程内容。",
+                                    "assessment": {
+                                        "mode": "reflection",
+                                        "rubric": "回答应准确说明课程的关键内容。",
+                                    },
                                 }
                             ],
                         }
                     ],
                 }
             ],
+            "conclusion": {
+                "summary": "本课介绍课程内容，并安排一次应用练习来检查理解。",
+                "takeaways": ["先识别关键内容", "再用自己的话应用所学"],
+                "transferApplications": ["后续课程学习"],
+            },
         },
     }
 
@@ -109,9 +135,35 @@ def storyboard_for_course(course_data):
                 "pieces": pieces,
             }
         )
+    evidence_blocks = []
+    part_ids = []
+    for part in course_data["course"]["parts"]:
+        part_ids.append(part["id"])
+        for piece in part["pieces"]:
+            for block in piece["blocks"]:
+                if block.get("type") in {"fillBlank", "singleChoice", "interactiveHtml"}:
+                    evidence_blocks.append(block["id"])
+                elif block.get("type") == "video" and isinstance(block.get("interaction"), dict):
+                    evidence_blocks.append(block["id"])
+    first_evidence = evidence_blocks[0] if evidence_blocks else "missing-evidence"
     return {
         "schemaVersion": "1.0",
         "teacherConfirmed": True,
+        "courseFrame": {
+            "teacherConfirmed": True,
+            "introduction": copy.deepcopy(course_data["course"]["introduction"]),
+            "conclusion": copy.deepcopy(course_data["course"]["conclusion"]),
+            "sourceIds": ["source-1"],
+            "objectiveAlignment": [
+                {
+                    "objectiveId": objective["id"],
+                    "partIds": part_ids,
+                    "evidenceBlockIds": [first_evidence],
+                }
+                for objective in course_data["course"]["introduction"]["objectives"]
+            ],
+            "pendingConfirmations": [],
+        },
         "summary": {
             "partCount": len(parts),
             "pieceCount": piece_count,

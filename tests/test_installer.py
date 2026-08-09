@@ -100,6 +100,9 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("course.json 和 index.md 只包含学生最终会看到的内容", readme)
         self.assertIn("Part 逐项 Review", readme)
         self.assertIn("整体 Review", readme)
+        self.assertIn("课程首尾设计表", readme)
+        self.assertIn("开始学习", readme)
+        self.assertIn("courseIntroduction", readme)
 
 
 if __name__ == "__main__":

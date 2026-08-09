@@ -32,6 +32,11 @@
     "完整文档",
     "%PDF-",
     "%%EOF",
-    "静态检查不能证明"
+    "静态检查不能证明",
+    "courseIntroduction",
+    "courseConclusion",
+    "migration-required",
+    "目标与真实 Part",
+    "学习证据 Block"
   ]
 }

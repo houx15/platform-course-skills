@@ -21,6 +21,65 @@ class CourseValidationTests(unittest.TestCase):
     def test_minimal_course_is_valid(self):
         self.assertEqual(validate_course_data(minimal_course()), [])
 
+    def test_course_11_requires_introduction_and_conclusion(self):
+        for field in ("introduction", "conclusion"):
+            data = minimal_course()
+            del data["course"][field]
+            with self.subTest(field=field):
+                self.assertIn("required", self.codes(data))
+
+    def test_course_10_requires_migration(self):
+        data = minimal_course()
+        data["schemaVersion"] = "1.0"
+        self.assertIn("migration-required", self.codes(data))
+
+    def test_unknown_course_version_fails(self):
+        data = minimal_course()
+        data["schemaVersion"] = "2.0"
+        self.assertIn("invalid-version", self.codes(data))
+
+    def test_objective_ids_are_globally_unique(self):
+        data = minimal_course()
+        data["course"]["introduction"]["objectives"][0]["id"] = "intro"
+        self.assertIn("duplicate-id", self.codes(data))
+
+    def test_course_frame_lists_enforce_item_limits(self):
+        cases = (
+            ("objectives", [], "required"),
+            (
+                "objectives",
+                [
+                    {"id": f"objective-{index}", "text": "目标"}
+                    for index in range(6)
+                ],
+                "too-many-items",
+            ),
+            ("keyPoints", ["一条"], "required"),
+            ("keyPoints", [str(index) for index in range(7)], "too-many-items"),
+        )
+        for field, value, expected in cases:
+            data = minimal_course()
+            data["course"]["introduction"][field] = value
+            with self.subTest(field=field, count=len(value)):
+                self.assertIn(expected, self.codes(data))
+
+    def test_conclusion_lists_enforce_item_limits(self):
+        cases = (
+            ("takeaways", ["一条"], "required"),
+            ("takeaways", [str(index) for index in range(7)], "too-many-items"),
+            ("transferApplications", [], "required"),
+            (
+                "transferApplications",
+                [str(index) for index in range(9)],
+                "too-many-items",
+            ),
+        )
+        for field, value, expected in cases:
+            data = minimal_course()
+            data["course"]["conclusion"][field] = value
+            with self.subTest(field=field, count=len(value)):
+                self.assertIn(expected, self.codes(data))
+
     def test_duplicate_ids_fail(self):
         data = minimal_course()
         data["course"]["parts"][0]["pieces"][0]["id"] = "part-1"

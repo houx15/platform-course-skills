@@ -16,8 +16,18 @@ Act as the 唯一教师入口 and course director. The teacher supplies subject 
 3. Explicitly ask whether the course uses long video or independent HTML interaction. 即使材料没有提到 either element, never infer “none.”
 4. Review every complete-PDF candidate with the teacher. Use a `pdf` Block when learners need the 论文原文、完整报告、政策文件或其他一手材料, and confirm the exact source file and learning purpose. If a required file is absent, add an open `.course-work/unresolved.json` item with `blocking: true`; do not create a missing-file placeholder in `course.json` and 不得用摘要替代全文.
 5. For accepted video work, invoke `design-video-interactions`. For accepted HTML work, invoke `design-course-html`. Confirm complex-media designs before finalizing the surrounding Piece.
-6. Design the student journey from the learning goal and desired student change. Do not mirror source headings mechanically. Use the Part/Piece hierarchy: Parts are learning stages and Pieces are complete student-facing learning units.
-7. For every Piece decide:
+6. Establish the working course intent before dividing Parts. Use confirmed teacher intent and source evidence to draft the overview, objectives, and key points below; keep the summary, takeaways, and transfer applications provisional until the complete learning path exists:
+
+   - one concise course overview;
+   - 1–5 concrete course objectives;
+   - 2–6 learning key points;
+   - one concise course summary;
+   - 2–6 takeaways;
+   - 1–8 transfer applications.
+
+   Preserve meaning while packaging long teacher prose into readable text and bullets. Never present teacher planning language verbatim merely because it was labeled `课程目标`, `课程总结`, or `学生收获`. Ask only for missing intent or a meaning-changing ambiguity.
+7. Design the student journey from the confirmed objectives and desired student change. Do not mirror source headings mechanically. Use the Part/Piece hierarchy: Parts are learning stages and Pieces are complete student-facing learning units. Every objective must map to at least one real Part and at least one 学习证据 Block located inside those aligned Parts. Valid evidence includes a response/assessment block, an interactive HTML activity that records a result, or a video interaction; static text, images, and PDF do not by themselves prove an objective was addressed.
+8. For every Piece decide:
 
    - 学生看到什么;
    - 教学重点;
@@ -27,7 +37,7 @@ Act as the 唯一教师入口 and course director. The teacher supplies subject 
    - source IDs;
    - required assets and pending confirmations.
 
-8. 不得默认使用 text. Choose from `text`, `images`, `pdf`, `video`, `interactiveHtml`, `fillBlank`, and `singleChoice` because the learning function requires it:
+9. 不得默认使用 text. Choose from `text`, `images`, `pdf`, `video`, `interactiveHtml`, `fillBlank`, and `singleChoice` because the learning function requires it:
 
    - use concise text for explanation, framing, or synthesis;
    - use images when spatial relations, comparison, observation, or visual evidence matter;
@@ -36,19 +46,25 @@ Act as the 唯一教师入口 and course director. The teacher supplies subject 
    - use interactive HTML when manipulation, simulation, or state exploration matters;
    - use questions only after students have enough content to answer, with a real answer/rubric and feedback.
 
-9. Merge fragments that belong to one explanation. Do not turn every paragraph or heading into a text block. Each Piece must stand on its own as a sufficiently complete teaching unit: clear purpose, adequate content, and a meaningful student action or evidence where appropriate.
-10. If a flowchart, 流程图、示意图或信息图 would materially improve learning, propose it in the design table and offer to help create it. Do not generate any visual until the teacher gives 教师明确授权. For real photographs, cited charts, or data graphics, request the source or teacher-provided asset.
-11. Persist the complete design at `.course-work/course-storyboard.json` and render `.course-work/course-storyboard.md`. Present this table before generation; 一行对应一个 Piece:
+10. Merge fragments that belong to one explanation. Do not turn every paragraph or heading into a text block. Each Piece must stand on its own as a sufficiently complete teaching unit: clear purpose, adequate content, and a meaningful student action or evidence where appropriate.
+11. If a flowchart, 流程图、示意图或信息图 would materially improve learning, propose it in the design table and offer to help create it. Do not generate any visual until the teacher gives 教师明确授权. For real photographs, cited charts, or data graphics, request the source or teacher-provided asset.
+12. After every Part and Piece is designed, finalize the student-facing introduction and conclusion against the complete path. Persist the complete design at `.course-work/course-storyboard.json`. Its `courseFrame` must contain the exact proposed introduction and conclusion, source IDs, pending confirmations, and `objectiveAlignment` entries that link each objective ID to real Part IDs and evidence Block IDs. Render `.course-work/course-storyboard.md` and present a 课程首尾设计表 first:
+
+   | 区域 | 学生最终会看到的内容 | 来源与判断依据 | 待确认 |
+   | --- | --- | --- | --- |
+
+   Then present the Part/Piece table; 一行对应一个 Piece:
 
    | Part / Piece | Part 阶段目标 | 学生看到什么 | 教学重点 | 呈现方式 | 学生行动 | 完成标准 | 资源与待确认项 |
    | --- | --- | --- | --- | --- | --- | --- | --- |
 
-   State the total Part and Piece count. 等待教师确认 the complete table. If the teacher changes a row, update the JSON and re-render the table.
-12. Read [course-contract.md](references/course-contract.md). Build `course/course.json` first; course.json 是唯一事实源. Generate `index.md` with the runtime renderer. Copy every teacher-confirmed PDF to `course/assets/pdfs/` using its 原始字节; filename normalization may change the safe relative path, but the document itself must not be converted, rebuilt, summarized, or flattened.
-13. course.json 和 index.md 只能包含面向学生的 final course. Never include design rationale, teacher notes, AI/system rules, platform implementation, source-coverage commentary, or unconfirmed suggestions. Those belong only in `.course-work/`.
-14. Update `.course-work/source-coverage.json`, `audience-classification.json`, `decisions.json`, `unresolved.json`, and `session.json` at every confirmed gate.
-15. Invoke `review-platform-course`. Apply safe mechanical fixes. Send pedagogical or semantic problems back through a revised storyboard table and obtain teacher confirmation before rebuilding.
-16. Run the full Review again after every rebuild. Before Review returns `可上传`, 不得报告可上传.
+   State the total Part and Piece count. 等待教师确认 both tables as one complete design gate. If the teacher changes any course-frame or Piece row, update the JSON, objective alignment, and rendered tables.
+13. Read [course-contract.md](references/course-contract.md). Build `course/course.json` first with `schemaVersion: 1.1`; course.json 是唯一事实源. The first learner screen comes from `course.introduction`, ends with the fixed `开始学习` button, and is not a Part or completion activity. The final learner content comes from `course.conclusion` after all Parts. Generate `index.md` with the runtime renderer. Copy every teacher-confirmed PDF to `course/assets/pdfs/` using its 原始字节; filename normalization may change the safe relative path, but the document itself must not be converted, rebuilt, summarized, or flattened.
+14. Write the conclusion as a recap and transfer prompt based on the course design. It 不能声称学生已经掌握, completed, improved, or demonstrated an outcome merely because the static course was generated. Claims about individual learning require actual collected evidence.
+15. course.json 和 index.md 只能包含面向学生的 final course. Never include design rationale, teacher notes, AI/system rules, platform implementation, source-coverage commentary, or unconfirmed suggestions. Those belong only in `.course-work/`.
+16. Update `.course-work/source-coverage.json`, `audience-classification.json`, `decisions.json`, `unresolved.json`, and `session.json` at every confirmed gate.
+17. Invoke `review-platform-course`. Apply safe mechanical fixes. Send pedagogical or semantic problems back through revised course-frame and Part/Piece tables and obtain teacher confirmation before rebuilding.
+18. Run the full Review again after every rebuild. Before Review returns `可上传`, 不得报告可上传.
 
 ## Question policy
 

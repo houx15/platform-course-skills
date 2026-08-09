@@ -105,6 +105,29 @@ class IndexRendererTests(unittest.TestCase):
         self.assertNotIn("最终产物不需要", first)
         self.assertTrue(first.endswith("\n"))
 
+    def test_renders_fixed_course_start_before_parts_and_conclusion_after_parts(self):
+        text = render_index(minimal_course())
+
+        self.assertLess(text.index("[课程开始页]"), text.index("## 第一部分"))
+        self.assertLess(text.index("## 第一部分"), text.index("[结课报告内容]"))
+        self.assertIn("## 课程介绍", text)
+        self.assertIn("## 你将学会", text)
+        self.assertIn("- 解释课程的关键内容，并用自己的话完成一次应用", text)
+        self.assertIn("## 学习关键点", text)
+        self.assertIn("[开始学习]", text)
+        self.assertIn("## 课程总结", text)
+        self.assertIn("## 你可以带走什么", text)
+        self.assertIn("## 你可以在哪里使用", text)
+
+    def test_start_button_label_is_fixed_platform_output(self):
+        data = minimal_course()
+        data["course"]["introduction"]["startButtonLabel"] = "进入"
+
+        text = render_index(data)
+
+        self.assertIn("[开始学习]", text)
+        self.assertNotIn("[进入]", text)
+
     def test_renders_pdf_as_complete_document_link(self):
         text = render_index(self.pdf_course())
 

@@ -23,7 +23,7 @@ Resolve paths relative to this `SKILL.md` directory:
 2. Run `scripts/extract-materials.py` against DOCX, HTML, Markdown, and text inputs. Persist the exact result at `.course-work/materials-extracted.json`.
 3. Use available document-reading capabilities for PDF and presentations. If reliable extraction is unavailable, report the exact file and request DOCX, HTML, Markdown, or text. 不得静默跳过任何输入文件。
 4. Summarize evidence with source file, stable source ID, and original location. Preserve DOCX table row/cell structure. Separate concepts, facts, examples, evidence, activities, questions, answers, media notes, teacher notes, and system rules.
-5. Identify duplicate claims, conflicts, unsupported claims, and missing information that would change the learning goal, correct answer, feedback, or media behavior.
+5. Identify duplicate claims, conflicts, unsupported claims, and missing information that would change the learning goal, correct answer, feedback, or media behavior. Specifically extract any teacher-provided `课程目标`, `课程总结`, and `学生收获`. Preserve their source IDs and 区分教师意图与学生措辞: the former is authoring evidence, while the latter must later be rewritten as concise learner-facing prose and bullets. If any of the three is absent or too vague to guide design, record the gap and ask the teacher for the missing intent; do not invent a confirmed goal.
 6. Create `.course-work/source-coverage.json` using [source-coverage.md](references/source-coverage.md). It must contain exactly one entry for every extracted item.
 7. Create `.course-work/audience-classification.json`. Classify every source ID exactly once into:
 
@@ -39,6 +39,7 @@ Resolve paths relative to this `SKILL.md` directory:
 10. If a PDF cannot be read reliably, state that limitation. It can still be recorded as a teacher-confirmed complete delivery asset, but do not claim its subject content was understood or use it to invent explanations, answers, or citations.
 11. Scan the student material for 长视频, MP4, timed pauses, video questions, simulations, experiments, drag, match, exploration, clicks, webpages, and HTML 交互.
 12. Report detected video and HTML candidates with source evidence. 即使材料没有提到长视频或 HTML 交互, require the caller to ask explicitly whether either element is planned.
+13. Return the extracted goal, summary, and gains as authoring evidence, not ready-to-publish learner copy. Flag contradictions such as a stated objective that no student activity or source content can support.
 
 ## Audience record
 
@@ -63,4 +64,4 @@ Use this shape:
 
 ## Return to the caller
 
-Return a teacher-readable material summary, grouped audience classification, conflicts and missing information, complete-PDF candidates, detected video/HTML candidates, and explicit media-intent questions. Do not propose the final Part/Piece structure here. The caller must obtain the classification and media-intent confirmations first.
+Return a teacher-readable material summary, grouped audience classification, course-goal/summary/gains evidence and gaps, conflicts and missing information, complete-PDF candidates, detected video/HTML candidates, and explicit media-intent questions. Do not propose the final Part/Piece structure here. The caller must obtain the classification and media-intent confirmations first.

@@ -35,6 +35,8 @@ OVERALL_CHECKS: Tuple[str, ...] = (
     "resourcesPresent",
     "courseJsonSchema",
     "indexConsistency",
+    "courseIntroduction",
+    "courseConclusion",
     "images",
     "pdf",
     "video",
@@ -87,6 +89,256 @@ def _course_pieces(course_data: Optional[dict]) -> Dict[Tuple[str, str], dict]:
             if isinstance(piece, dict) and isinstance(piece.get("id"), str):
                 pieces[(part_id, piece["id"])] = piece
     return pieces
+
+
+def _course_root(course_data: Optional[dict]) -> Dict[str, object]:
+    if not isinstance(course_data, dict):
+        return {}
+    course = course_data.get("course")
+    return course if isinstance(course, dict) else {}
+
+
+def _course_objectives(course_data: Optional[dict]) -> Dict[str, dict]:
+    introduction = _course_root(course_data).get("introduction")
+    if not isinstance(introduction, dict):
+        return {}
+    objectives: Dict[str, dict] = {}
+    for objective in introduction.get("objectives", []):
+        if isinstance(objective, dict) and isinstance(objective.get("id"), str):
+            objectives[objective["id"]] = objective
+    return objectives
+
+
+def _course_blocks(course_data: Optional[dict]) -> Dict[str, dict]:
+    blocks: Dict[str, dict] = {}
+    for part in _course_parts(course_data).values():
+        for piece in part.get("pieces", []):
+            if not isinstance(piece, dict):
+                continue
+            for block in piece.get("blocks", []):
+                if isinstance(block, dict) and isinstance(block.get("id"), str):
+                    blocks[block["id"]] = block
+    return blocks
+
+
+def _course_block_parts(course_data: Optional[dict]) -> Dict[str, str]:
+    locations: Dict[str, str] = {}
+    for part_id, part in _course_parts(course_data).items():
+        for piece in part.get("pieces", []):
+            if not isinstance(piece, dict):
+                continue
+            for block in piece.get("blocks", []):
+                if isinstance(block, dict) and isinstance(block.get("id"), str):
+                    locations[block["id"]] = part_id
+    return locations
+
+
+def _is_evidence_block(block: dict) -> bool:
+    block_type = block.get("type")
+    if block_type in {"fillBlank", "singleChoice", "interactiveHtml"}:
+        return True
+    return block_type == "video" and isinstance(block.get("interaction"), dict)
+
+
+def _validate_course_frame(
+    frame: object,
+    course_data: Optional[dict],
+    valid_source_ids: Optional[Set[str]],
+) -> List[ValidationIssue]:
+    if not isinstance(frame, dict):
+        return [_issue("courseFrame", "required", "courseFrame is required")]
+
+    issues: List[ValidationIssue] = []
+    if frame.get("teacherConfirmed") is not True:
+        issues.append(
+            _issue(
+                "courseFrame.teacherConfirmed",
+                "teacher-confirmation-required",
+                "the course introduction and conclusion need teacher confirmation",
+            )
+        )
+
+    for field in ("introduction", "conclusion"):
+        value = frame.get(field)
+        if not isinstance(value, dict):
+            issues.append(
+                _issue(f"courseFrame.{field}", "required", f"{field} is required")
+            )
+            continue
+        course_value = _course_root(course_data).get(field)
+        if course_data is not None and value != course_value:
+            issues.append(
+                _issue(
+                    f"courseFrame.{field}",
+                    "course-frame-drift",
+                    f"courseFrame {field} does not match course.json",
+                )
+            )
+
+    source_ids = frame.get("sourceIds")
+    if not isinstance(source_ids, list) or not source_ids:
+        issues.append(
+            _issue(
+                "courseFrame.sourceIds",
+                "required",
+                "courseFrame sourceIds must not be empty",
+            )
+        )
+    else:
+        for index, source_id in enumerate(source_ids):
+            path = f"courseFrame.sourceIds[{index}]"
+            if not isinstance(source_id, str) or not source_id.strip():
+                issues.append(_issue(path, "required", "sourceId is required"))
+            elif valid_source_ids is not None and source_id not in valid_source_ids:
+                issues.append(
+                    _issue(
+                        path,
+                        "unknown-course-frame-source",
+                        f"courseFrame source was not extracted: {source_id}",
+                    )
+                )
+
+    pending = frame.get("pendingConfirmations")
+    if not isinstance(pending, list):
+        issues.append(
+            _issue(
+                "courseFrame.pendingConfirmations",
+                "required",
+                "pendingConfirmations must be a list",
+            )
+        )
+    elif pending:
+        issues.append(
+            _issue(
+                "courseFrame.pendingConfirmations",
+                "pending-confirmation",
+                "courseFrame still contains unresolved teacher confirmations",
+            )
+        )
+
+    alignments = frame.get("objectiveAlignment")
+    if not isinstance(alignments, list):
+        return issues + [
+            _issue(
+                "courseFrame.objectiveAlignment",
+                "required",
+                "objectiveAlignment must be a list",
+            )
+        ]
+
+    objectives = _course_objectives(course_data)
+    parts = _course_parts(course_data)
+    blocks = _course_blocks(course_data)
+    block_parts = _course_block_parts(course_data)
+    seen: Set[str] = set()
+    for index, alignment in enumerate(alignments):
+        path = f"courseFrame.objectiveAlignment[{index}]"
+        if not isinstance(alignment, dict):
+            issues.append(_issue(path, "required", "alignment must be an object"))
+            continue
+        objective_id = _non_empty_string(
+            alignment.get("objectiveId"), f"{path}.objectiveId", issues
+        )
+        if objective_id is not None:
+            if objective_id in seen:
+                issues.append(
+                    _issue(
+                        f"{path}.objectiveId",
+                        "duplicate-objective-alignment",
+                        f"objective {objective_id} is aligned more than once",
+                    )
+                )
+            seen.add(objective_id)
+            if course_data is not None and objective_id not in objectives:
+                issues.append(
+                    _issue(
+                        f"{path}.objectiveId",
+                        "unknown-objective",
+                        f"unknown course objective: {objective_id}",
+                    )
+                )
+
+        part_ids = alignment.get("partIds")
+        aligned_part_ids: Set[str] = set()
+        if not isinstance(part_ids, list) or not part_ids:
+            issues.append(
+                _issue(f"{path}.partIds", "required", "partIds must not be empty")
+            )
+        else:
+            for part_index, part_id in enumerate(part_ids):
+                if not isinstance(part_id, str) or not part_id.strip():
+                    issues.append(
+                        _issue(
+                            f"{path}.partIds[{part_index}]",
+                            "required",
+                            "partId is required",
+                        )
+                    )
+                elif course_data is not None and part_id not in parts:
+                    issues.append(
+                        _issue(
+                            f"{path}.partIds[{part_index}]",
+                            "unknown-objective-part",
+                            f"objective points to unknown Part: {part_id}",
+                        )
+                    )
+                else:
+                    aligned_part_ids.add(part_id)
+
+        evidence_ids = alignment.get("evidenceBlockIds")
+        if not isinstance(evidence_ids, list) or not evidence_ids:
+            issues.append(
+                _issue(
+                    f"{path}.evidenceBlockIds",
+                    "required",
+                    "evidenceBlockIds must not be empty",
+                )
+            )
+        else:
+            for block_index, block_id in enumerate(evidence_ids):
+                block_path = f"{path}.evidenceBlockIds[{block_index}]"
+                if not isinstance(block_id, str) or not block_id.strip():
+                    issues.append(_issue(block_path, "required", "Block id is required"))
+                    continue
+                block = blocks.get(block_id)
+                if course_data is not None and block is None:
+                    issues.append(
+                        _issue(
+                            block_path,
+                            "unknown-objective-evidence",
+                            f"objective points to unknown Block: {block_id}",
+                        )
+                    )
+                elif block is not None and not _is_evidence_block(block):
+                    issues.append(
+                        _issue(
+                            block_path,
+                            "invalid-objective-evidence",
+                            f"Block {block_id} does not collect learning evidence",
+                        )
+                    )
+                elif (
+                    block is not None
+                    and block_parts.get(block_id) not in aligned_part_ids
+                ):
+                    issues.append(
+                        _issue(
+                            block_path,
+                            "objective-evidence-part-mismatch",
+                            f"evidence Block {block_id} is outside the objective's aligned Parts",
+                        )
+                    )
+
+    if course_data is not None:
+        for objective_id in sorted(set(objectives) - seen):
+            issues.append(
+                _issue(
+                    f"courseFrame.objectiveAlignment:{objective_id}",
+                    "missing-objective-alignment",
+                    "every course objective needs exactly one alignment",
+                )
+            )
+    return issues
 
 
 def _source_ids(extracted_data: object) -> Set[str]:
@@ -192,6 +444,7 @@ def validate_audience_classification(
 def validate_storyboard(
     data: object,
     course_data: Optional[dict] = None,
+    valid_source_ids: Optional[Set[str]] = None,
 ) -> List[ValidationIssue]:
     if not isinstance(data, dict):
         return [_issue("$", "required", "course storyboard must be an object")]
@@ -208,6 +461,13 @@ def validate_storyboard(
                 "the complete Part/Piece storyboard needs teacher confirmation",
             )
         )
+    issues.extend(
+        _validate_course_frame(
+            data.get("courseFrame"),
+            course_data,
+            valid_source_ids,
+        )
+    )
     parts = data.get("parts")
     if not isinstance(parts, list) or not parts:
         return issues + [_issue("parts", "required", "storyboard parts are required")]
@@ -368,10 +628,35 @@ def _markdown(value: object) -> str:
     return text.replace("|", "\\|").replace("\n", "<br>")
 
 
+def _source_summary(source_ids: object) -> object:
+    if not isinstance(source_ids, list) or len(source_ids) <= 4:
+        return source_ids
+    return f"共 {len(source_ids)} 项来源：{'、'.join(str(item) for item in source_ids[:3])}…"
+
+
 def render_storyboard(data: dict) -> str:
     summary = data["summary"]
+    frame = data["courseFrame"]
+    introduction = frame["introduction"]
+    conclusion = frame["conclusion"]
+    objectives = [item["text"] for item in introduction["objectives"]]
+    sources = _source_summary(frame.get("sourceIds", []))
+    pending = frame.get("pendingConfirmations", [])
     lines = [
         "# 课程设计确认表",
+        "",
+        "## 课程首尾设计",
+        "",
+        "| 区域 | 学生最终会看到的内容 | 来源与判断依据 | 待确认 |",
+        "| --- | --- | --- | --- |",
+        f"| 课程介绍 | {_markdown(introduction['overview'])} | {_markdown(sources)} | {_markdown(pending)} |",
+        f"| 课程目标 | {_markdown(objectives)} | {_markdown(sources)} | {_markdown(pending)} |",
+        f"| 学习关键点 | {_markdown(introduction['keyPoints'])} | {_markdown(sources)} | {_markdown(pending)} |",
+        f"| 课程总结 | {_markdown(conclusion['summary'])} | {_markdown(sources)} | {_markdown(pending)} |",
+        f"| 学生带走什么 | {_markdown(conclusion['takeaways'])} | {_markdown(sources)} | {_markdown(pending)} |",
+        f"| 可以迁移到哪里 | {_markdown(conclusion['transferApplications'])} | {_markdown(sources)} | {_markdown(pending)} |",
+        "",
+        "## Part/Piece 设计",
         "",
         f"共 {summary['partCount']} 个 Part、{summary['pieceCount']} 个 Piece。",
         "",

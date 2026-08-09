@@ -7,7 +7,7 @@
   "required": ["schemaVersion", "course"],
   "properties": {
     "schemaVersion": {
-      "const": "1.0"
+      "const": "1.1"
     },
     "course": {
       "$ref": "#/$defs/course"
@@ -49,10 +49,75 @@
         }
       }
     },
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "text"],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "text": {
+          "$ref": "#/$defs/nonEmptyString"
+        }
+      }
+    },
+    "introduction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["overview", "objectives", "keyPoints"],
+      "properties": {
+        "overview": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "objectives": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "items": {
+            "$ref": "#/$defs/objective"
+          }
+        },
+        "keyPoints": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
+    "conclusion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["summary", "takeaways", "transferApplications"],
+      "properties": {
+        "summary": {
+          "$ref": "#/$defs/nonEmptyString"
+        },
+        "takeaways": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 6,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        },
+        "transferApplications": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "$ref": "#/$defs/nonEmptyString"
+          }
+        }
+      }
+    },
     "course": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "title", "language", "parts"],
+      "required": ["id", "title", "language", "introduction", "parts", "conclusion"],
       "properties": {
         "id": {
           "$ref": "#/$defs/id"
@@ -63,12 +128,18 @@
         "language": {
           "$ref": "#/$defs/nonEmptyString"
         },
+        "introduction": {
+          "$ref": "#/$defs/introduction"
+        },
         "parts": {
           "type": "array",
           "minItems": 1,
           "items": {
             "$ref": "#/$defs/part"
           }
+        },
+        "conclusion": {
+          "$ref": "#/$defs/conclusion"
         }
       }
     },

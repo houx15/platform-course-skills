@@ -46,6 +46,30 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("blocking", pdf_schema["properties"])
         self.assertNotIn("completion", pdf_schema["properties"])
 
+    def test_course_schema_requires_11_introduction_and_conclusion(self):
+        schema = json.loads(
+            (ROOT / "schemas" / "course.schema.json").read_text(encoding="utf-8")
+        )
+        course = schema["$defs"]["course"]
+        introduction = schema["$defs"]["introduction"]
+        conclusion = schema["$defs"]["conclusion"]
+
+        self.assertEqual(schema["properties"]["schemaVersion"]["const"], "1.1")
+        self.assertIn("introduction", course["required"])
+        self.assertIn("conclusion", course["required"])
+        self.assertFalse(introduction["additionalProperties"])
+        self.assertEqual(
+            introduction["properties"]["objectives"]["maxItems"],
+            5,
+        )
+        self.assertEqual(introduction["properties"]["keyPoints"]["minItems"], 2)
+        self.assertFalse(conclusion["additionalProperties"])
+        self.assertEqual(conclusion["properties"]["takeaways"]["minItems"], 2)
+        self.assertEqual(
+            conclusion["properties"]["transferApplications"]["maxItems"],
+            8,
+        )
+
     def test_validation_issue_serializes(self):
         issue = ValidationIssue("course.parts", "required", "parts is required")
         self.assertEqual(

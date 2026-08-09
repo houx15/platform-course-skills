@@ -1,4 +1,5 @@
 import subprocess
+import copy
 import sys
 import tempfile
 import unittest
@@ -38,9 +39,24 @@ def valid_audience_classification():
 
 
 def valid_storyboard():
+    course = minimal_course()["course"]
     return {
         "schemaVersion": "1.0",
         "teacherConfirmed": True,
+        "courseFrame": {
+            "teacherConfirmed": True,
+            "introduction": copy.deepcopy(course["introduction"]),
+            "conclusion": copy.deepcopy(course["conclusion"]),
+            "sourceIds": ["source-1"],
+            "objectiveAlignment": [
+                {
+                    "objectiveId": "explain-course-content",
+                    "partIds": ["part-1"],
+                    "evidenceBlockIds": ["course-content-response"],
+                }
+            ],
+            "pendingConfirmations": [],
+        },
         "summary": {
             "partCount": 1,
             "pieceCount": 1,
@@ -56,7 +72,7 @@ def valid_storyboard():
                         "title": "第一内容块",
                         "studentSees": "一个简洁的概念说明",
                         "teachingFocus": "辨认概念的关键特征",
-                        "modalities": ["text"],
+                        "modalities": ["fillBlank", "text"],
                         "studentAction": "阅读后用自己的话复述",
                         "completion": "能够准确说出关键特征",
                         "sourceIds": ["source-1"],
@@ -83,6 +99,8 @@ OVERALL_CHECKS = (
     "resourcesPresent",
     "courseJsonSchema",
     "indexConsistency",
+    "courseIntroduction",
+    "courseConclusion",
     "images",
     "pdf",
     "video",
@@ -150,9 +168,22 @@ class StoryboardTests(unittest.TestCase):
         issues = validate_storyboard(data, minimal_course())
         self.assertEqual(issues, [])
         rendered = render_storyboard(data)
+        self.assertIn("## 课程首尾设计", rendered)
+        self.assertIn("| 课程目标 |", rendered)
+        self.assertLess(rendered.index("## 课程首尾设计"), rendered.index("## Part/Piece 设计"))
         self.assertIn("共 1 个 Part、1 个 Piece", rendered)
         self.assertIn("| Part / Piece | Part 阶段目标 | 学生看到什么 |", rendered)
         self.assertEqual(rendered.count("| part-1 / piece-1 |"), 1)
+
+    def test_storyboard_compacts_long_course_frame_source_list(self):
+        data = valid_storyboard()
+        data["courseFrame"]["sourceIds"] = [f"source-{index}" for index in range(12)]
+
+        rendered = render_storyboard(data)
+
+        self.assertIn("共 12 项来源", rendered)
+        self.assertIn("source-0", rendered)
+        self.assertNotIn("source-11", rendered)
 
     def test_storyboard_rejects_modality_that_does_not_match_course(self):
         data = valid_storyboard()
@@ -166,6 +197,123 @@ class StoryboardTests(unittest.TestCase):
         issues = validate_storyboard(data, minimal_course())
         self.assertIn("teacher-confirmation-required", {issue.code for issue in issues})
 
+    def test_storyboard_requires_confirmed_course_frame(self):
+        data = valid_storyboard()
+        data["courseFrame"]["teacherConfirmed"] = False
+        data["courseFrame"]["pendingConfirmations"] = ["确认课程总结"]
+
+        codes = {issue.code for issue in validate_storyboard(data, minimal_course())}
+
+        self.assertIn("teacher-confirmation-required", codes)
+        self.assertIn("pending-confirmation", codes)
+
+    def test_storyboard_course_frame_must_match_course(self):
+        data = valid_storyboard()
+        data["courseFrame"]["introduction"]["overview"] = "旧版本介绍"
+
+        codes = {issue.code for issue in validate_storyboard(data, minimal_course())}
+
+        self.assertIn("course-frame-drift", codes)
+
+    def test_course_frame_sources_must_exist_in_extracted_materials(self):
+        data = valid_storyboard()
+        data["courseFrame"]["sourceIds"] = ["source-missing"]
+
+        codes = {
+            issue.code
+            for issue in validate_storyboard(data, minimal_course(), {"source-1"})
+        }
+
+        self.assertIn("unknown-course-frame-source", codes)
+
+    def test_objective_alignment_requires_real_part_and_evidence_block(self):
+        cases = (
+            ("partIds", ["missing-part"], "unknown-objective-part"),
+            ("evidenceBlockIds", ["missing-block"], "unknown-objective-evidence"),
+            ("evidenceBlockIds", ["intro"], "invalid-objective-evidence"),
+        )
+        for field, value, expected in cases:
+            data = valid_storyboard()
+            data["courseFrame"]["objectiveAlignment"][0][field] = value
+            with self.subTest(field=field, expected=expected):
+                codes = {
+                    issue.code for issue in validate_storyboard(data, minimal_course())
+                }
+                self.assertIn(expected, codes)
+
+    def test_objective_evidence_must_belong_to_an_aligned_part(self):
+        course = minimal_course()
+        course["course"]["parts"].append(
+            {
+                "id": "part-2",
+                "title": "第二部分",
+                "pieces": [
+                    {
+                        "id": "piece-2",
+                        "title": "第二内容块",
+                        "blocks": [
+                            {
+                                "id": "part-2-response",
+                                "type": "fillBlank",
+                                "blocking": True,
+                                "prompt": "说明第二部分的内容。",
+                                "assessment": {
+                                    "mode": "reflection",
+                                    "rubric": "回答应说明第二部分的关键内容。",
+                                },
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+        data = valid_storyboard()
+        data["summary"] = {"partCount": 2, "pieceCount": 2}
+        data["parts"].append(
+            {
+                "id": "part-2",
+                "title": "第二部分",
+                "stageGoal": "理解第二部分",
+                "pieces": [
+                    {
+                        "id": "piece-2",
+                        "title": "第二内容块",
+                        "studentSees": "第二部分完整内容",
+                        "teachingFocus": "第二部分重点",
+                        "modalities": ["fillBlank"],
+                        "studentAction": "完成第二部分练习",
+                        "completion": "提交说明",
+                        "sourceIds": ["source-2"],
+                        "assetNeeds": [],
+                        "pendingConfirmations": [],
+                    }
+                ],
+            }
+        )
+        data["courseFrame"]["objectiveAlignment"][0]["evidenceBlockIds"] = [
+            "part-2-response"
+        ]
+
+        codes = {issue.code for issue in validate_storyboard(data, course)}
+
+        self.assertIn("objective-evidence-part-mismatch", codes)
+
+    def test_every_course_objective_has_exactly_one_alignment(self):
+        for alignments, expected in (
+            ([], "missing-objective-alignment"),
+            (
+                valid_storyboard()["courseFrame"]["objectiveAlignment"] * 2,
+                "duplicate-objective-alignment",
+            ),
+        ):
+            data = valid_storyboard()
+            data["courseFrame"]["objectiveAlignment"] = alignments
+            with self.subTest(expected=expected):
+                codes = {
+                    issue.code for issue in validate_storyboard(data, minimal_course())
+                }
+                self.assertIn(expected, codes)
+
     def test_storyboard_accepts_pdf_modality_that_matches_course(self):
         course = minimal_course()
         course["course"]["parts"][0]["pieces"][0]["blocks"] = [
@@ -174,10 +322,20 @@ class StoryboardTests(unittest.TestCase):
                 "type": "pdf",
                 "title": "研究论文原文（结构测试材料）",
                 "source": "assets/pdfs/source-paper.pdf",
-            }
+            },
+            {
+                "id": "course-content-response",
+                "type": "fillBlank",
+                "blocking": True,
+                "prompt": "请说明这份论文材料如何支持课程内容。",
+                "assessment": {
+                    "mode": "reflection",
+                    "rubric": "回答应引用论文材料中的具体内容。",
+                },
+            },
         ]
         storyboard = valid_storyboard()
-        storyboard["parts"][0]["pieces"][0]["modalities"] = ["pdf"]
+        storyboard["parts"][0]["pieces"][0]["modalities"] = ["fillBlank", "pdf"]
         storyboard["parts"][0]["pieces"][0][
             "studentSees"
         ] = "一份可以翻阅和下载的完整结构测试 PDF"
@@ -209,6 +367,8 @@ class ReviewReportTests(unittest.TestCase):
         self.assertIn("## 整体 Review", rendered)
         self.assertIn("| part-1 | 第一部分 |", rendered)
         self.assertIn("| courseJsonSchema |", rendered)
+        self.assertIn("| courseIntroduction |", rendered)
+        self.assertIn("| courseConclusion |", rendered)
         self.assertIn("| pdf |", rendered)
 
     def test_missing_part_dimension_blocks_uploadable_claim(self):
@@ -244,6 +404,18 @@ class ReviewReportTests(unittest.TestCase):
         codes = {issue.code for issue in issues}
         self.assertIn("missing-overall-check", codes)
         self.assertIn("invalid-uploadable-claim", codes)
+
+    def test_missing_course_frame_overall_checks_block_uploadable_claim(self):
+        for check in ("courseIntroduction", "courseConclusion"):
+            report = valid_review_report()
+            del report["overallChecks"][check]
+            with self.subTest(check=check):
+                codes = {
+                    issue.code
+                    for issue in validate_review_report(report, minimal_course())
+                }
+                self.assertIn("missing-overall-check", codes)
+                self.assertIn("invalid-uploadable-claim", codes)
 
 
 class RenderingCliTests(unittest.TestCase):

@@ -71,13 +71,86 @@ def _list(
     path: str,
     issues: List[ValidationIssue],
     minimum: int = 1,
+    maximum: Optional[int] = None,
 ) -> Optional[list]:
     if not isinstance(value, list) or len(value) < minimum:
         issues.append(
             _issue(path, "required", f"{path} must contain at least {minimum} item(s)")
         )
         return None
+    if maximum is not None and len(value) > maximum:
+        issues.append(
+            _issue(
+                path,
+                "too-many-items",
+                f"{path} must contain at most {maximum} item(s)",
+            )
+        )
     return value
+
+
+def _string_list(
+    value: object,
+    path: str,
+    issues: List[ValidationIssue],
+    minimum: int,
+    maximum: int,
+) -> Optional[list]:
+    items = _list(value, path, issues, minimum=minimum, maximum=maximum)
+    if items is not None:
+        for index, item in enumerate(items):
+            _string(item, f"{path}[{index}]", issues)
+    return items
+
+
+def _validate_course_frame(
+    course: dict,
+    issues: List[ValidationIssue],
+    seen: Dict[str, str],
+) -> None:
+    introduction = _mapping(course.get("introduction"), "course.introduction", issues)
+    if introduction is not None:
+        _string(introduction.get("overview"), "course.introduction.overview", issues)
+        objectives = _list(
+            introduction.get("objectives"),
+            "course.introduction.objectives",
+            issues,
+            minimum=1,
+            maximum=5,
+        )
+        if objectives is not None:
+            for index, objective_value in enumerate(objectives):
+                path = f"course.introduction.objectives[{index}]"
+                objective = _mapping(objective_value, path, issues)
+                if objective is None:
+                    continue
+                _register_id(objective.get("id"), f"{path}.id", issues, seen)
+                _string(objective.get("text"), f"{path}.text", issues)
+        _string_list(
+            introduction.get("keyPoints"),
+            "course.introduction.keyPoints",
+            issues,
+            minimum=2,
+            maximum=6,
+        )
+
+    conclusion = _mapping(course.get("conclusion"), "course.conclusion", issues)
+    if conclusion is not None:
+        _string(conclusion.get("summary"), "course.conclusion.summary", issues)
+        _string_list(
+            conclusion.get("takeaways"),
+            "course.conclusion.takeaways",
+            issues,
+            minimum=2,
+            maximum=6,
+        )
+        _string_list(
+            conclusion.get("transferApplications"),
+            "course.conclusion.transferApplications",
+            issues,
+            minimum=1,
+            maximum=8,
+        )
 
 
 def _validate_completion(
@@ -258,9 +331,19 @@ def validate_course_data(data: object) -> List[ValidationIssue]:
     root = _mapping(data, "$", issues)
     if root is None:
         return issues
-    if root.get("schemaVersion") != "1.0":
+    version = root.get("schemaVersion")
+    legacy = version == "1.0"
+    if legacy:
         issues.append(
-            _issue("schemaVersion", "invalid-version", "schemaVersion must be 1.0")
+            _issue(
+                "schemaVersion",
+                "migration-required",
+                "schemaVersion 1.0 must be upgraded with a confirmed course introduction and conclusion",
+            )
+        )
+    elif version != "1.1":
+        issues.append(
+            _issue("schemaVersion", "invalid-version", "schemaVersion must be 1.1")
         )
     course = _mapping(root.get("course"), "course", issues)
     if course is None:
@@ -270,6 +353,8 @@ def validate_course_data(data: object) -> List[ValidationIssue]:
     _register_id(course.get("id"), "course.id", issues, seen)
     _string(course.get("title"), "course.title", issues)
     _string(course.get("language"), "course.language", issues)
+    if not legacy:
+        _validate_course_frame(course, issues, seen)
     parts = _list(course.get("parts"), "course.parts", issues)
     if parts is None:
         return issues

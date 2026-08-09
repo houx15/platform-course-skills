@@ -21,6 +21,31 @@ class PackageReviewTests(unittest.TestCase):
         self.assertEqual(result.status, "uploadable")
         self.assertEqual(result.issues, ())
 
+    def test_valid_fixture_has_course_start_and_conclusion(self):
+        fixture = ROOT / "tests" / "fixtures" / "valid-course"
+        data = load_json(fixture / "course.json")
+        index = (fixture / "index.md").read_text(encoding="utf-8")
+
+        self.assertEqual(data["schemaVersion"], "1.1")
+        self.assertIn("introduction", data["course"])
+        self.assertIn("conclusion", data["course"])
+        self.assertLess(index.index("[课程开始页]"), index.index("## 从相信谁"))
+        self.assertLess(index.index("## 从相信谁"), index.index("[结课报告内容]"))
+
+    def test_legacy_course_requires_confirmed_migration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            data["schemaVersion"] = "1.0"
+            del data["course"]["introduction"]
+            del data["course"]["conclusion"]
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+
+            result = review_package(course)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("migration-required", {issue.code for issue in result.issues})
+
     def test_complete_teacher_confirmed_work_records_are_uploadable(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -77,6 +102,27 @@ class PackageReviewTests(unittest.TestCase):
 
         self.assertEqual(result.status, "blocked")
         self.assertIn("modality-mismatch", {issue.code for issue in result.issues})
+
+    def test_course_frame_cannot_cite_an_unextracted_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            work = root / ".course-work"
+            write_valid_work_records(work, load_json(course / "course.json"))
+            storyboard = load_json(work / "course-storyboard.json")
+            storyboard["courseFrame"]["sourceIds"] = ["source-not-extracted"]
+            (work / "course-storyboard.json").write_text(
+                dump_json(storyboard),
+                encoding="utf-8",
+            )
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn(
+            "unknown-course-frame-source",
+            {issue.code for issue in result.issues},
+        )
 
     def test_incomplete_part_review_blocks_upload(self):
         with tempfile.TemporaryDirectory() as tmp:

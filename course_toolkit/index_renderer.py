@@ -117,9 +117,49 @@ RENDERERS: Dict[str, Callable[[dict], List[str]]] = {
 }
 
 
+def _render_introduction(course: dict) -> List[str]:
+    introduction = course["introduction"]
+    lines = [
+        "[课程开始页]",
+        "",
+        "## 课程介绍",
+        "",
+        introduction["overview"],
+        "",
+        "## 你将学会",
+        "",
+    ]
+    lines.extend(f"- {objective['text']}" for objective in introduction["objectives"])
+    lines.extend(["", "## 学习关键点", ""])
+    lines.extend(f"- {point}" for point in introduction["keyPoints"])
+    lines.extend(["", "[开始学习]", ""])
+    return lines
+
+
+def _render_conclusion(course: dict) -> List[str]:
+    conclusion = course["conclusion"]
+    lines = [
+        "[结课报告内容]",
+        "",
+        "## 课程总结",
+        "",
+        conclusion["summary"],
+        "",
+        "## 你可以带走什么",
+        "",
+    ]
+    lines.extend(f"- {takeaway}" for takeaway in conclusion["takeaways"])
+    lines.extend(["", "## 你可以在哪里使用", ""])
+    lines.extend(
+        f"- {application}" for application in conclusion["transferApplications"]
+    )
+    return lines
+
+
 def render_index(data: dict) -> str:
     course = data["course"]
     lines: List[str] = [f"# {course['title']}", ""]
+    lines.extend(_render_introduction(course))
     for part in course["parts"]:
         lines.extend([f"## {part['title']}", ""])
         for piece in part["pieces"]:
@@ -128,4 +168,5 @@ def render_index(data: dict) -> str:
                 renderer = RENDERERS[block["type"]]
                 lines.extend(renderer(block))
                 lines.append("")
+    lines.extend(_render_conclusion(course))
     return "\n".join(lines).rstrip() + "\n"

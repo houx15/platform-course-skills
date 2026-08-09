@@ -265,7 +265,11 @@ def _validate_work_records(
         issues.extend(_prefixed("audience-classification.json", audience_issues))
     storyboard = loaded_records.get("course-storyboard.json")
     if storyboard is not None:
-        storyboard_issues = validate_storyboard(storyboard, course_data)
+        storyboard_issues = validate_storyboard(
+            storyboard,
+            course_data,
+            extracted_source_ids(extracted) if extracted is not None else None,
+        )
         issues.extend(_prefixed("course-storyboard.json", storyboard_issues))
         if not storyboard_issues:
             issues.extend(

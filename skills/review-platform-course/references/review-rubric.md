@@ -9,7 +9,15 @@
 - Every substantive AI addition is confirmed.
 - Conflicting source claims remain unresolved until the teacher decides.
 
-## 2. Part-by-Part pedagogical review
+## 2. Course-frame review
+
+- `courseFrame.introduction` and `courseFrame.conclusion` exactly match `course.json`.
+- The introduction gives students a concise overview, 1–5 concrete objectives, 2–6 key points, and the fixed `开始学习` action before any Part.
+- Every objective appears exactly once in `objectiveAlignment`, points to a real Part, and points to at least one real 学习证据 Block inside those aligned Parts. `fillBlank`, `singleChoice`, result-producing `interactiveHtml`, and video interaction may provide evidence; static text, images, and PDF do not by themselves.
+- The conclusion appears after all Parts, accurately summarizes the designed course, gives takeaways and transfer applications, and does not claim an individual student has already mastered or demonstrated an outcome.
+- Every substantive AI-authored framing statement has source evidence and teacher confirmation.
+
+## 3. Part-by-Part pedagogical review
 
 Review each Part independently. A polished file does not compensate for a failed dimension.
 
@@ -54,7 +62,7 @@ Review each Part independently. A polished file does not compensate for a failed
 
 For every dimension record `status: pass|revise` and concrete evidence. The Part conclusion is `pass` only if all six dimensions pass.
 
-## 3. Overall review
+## 4. Overall review
 
 The second table and `overallChecks` must include:
 
@@ -63,6 +71,8 @@ The second table and `overallChecks` must include:
 - `resourcesPresent`
 - `courseJsonSchema`
 - `indexConsistency`
+- `courseIntroduction`
+- `courseConclusion`
 - `images`
 - `pdf`
 - `video`
@@ -72,7 +82,9 @@ The second table and `overallChecks` must include:
 
 Every check needs `status: pass|revise` plus concrete evidence. A category that is intentionally unused can pass only with evidence that no block or confirmed design requires it.
 
-## 4. Media contracts
+Schema 1.0 returns `migration-required`. It cannot pass until the missing course frame is drafted from source evidence, confirmed by the teacher, written as schema 1.1, and fully reviewed.
+
+## 5. Media contracts
 
 PDF files are copied without changing their bytes. When the teacher requested a 论文原文、报告全文或其他完整文档, a summary, screenshot excerpt, reconstructed file, or unconfirmed replacement fails Review. Static header/trailer checks do not prove every page renders in the real platform or that the file is an authoritative edition; test embedded reading and download before upload.
 
@@ -80,7 +92,7 @@ HTML must be one self-contained file with a confirmed task, standardized complet
 
 The MP4 itself is never generated or modified. Video JSON is canonical, Markdown is generated, declared duration matches the actual MP4, final times are ordered/unique/in range, and no event remains `needs-timing`.
 
-## 5. Outcome labels
+## 6. Outcome labels
 
 - `可上传`: every Part dimension and overall check passes; deterministic validation has no issue.
 - `修改后可上传`: only explicitly listed mechanical repairs remain.

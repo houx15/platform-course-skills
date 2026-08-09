@@ -67,6 +67,44 @@ class SkillPackageTests(unittest.TestCase):
                 with self.subTest(path=path.name, phrase=phrase):
                     self.assertIn(phrase, text)
 
+    def test_course_frame_rules_are_consistent_across_skill_references(self):
+        required = {
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "course-contract.md": (
+                'schema version `1.1`',
+                "course.introduction",
+                "course.conclusion",
+                "开始学习",
+            ),
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "workflow.md": (
+                "课程首尾设计表",
+                "objectiveAlignment",
+                "课程开场",
+            ),
+            ROOT
+            / "skills"
+            / "review-platform-course"
+            / "references"
+            / "review-rubric.md": (
+                "courseIntroduction",
+                "courseConclusion",
+                "migration-required",
+                "学习证据",
+            ),
+        }
+        for path, phrases in required.items():
+            text = path.read_text(encoding="utf-8")
+            for phrase in phrases:
+                with self.subTest(path=path.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
 
 if __name__ == "__main__":
     unittest.main()
