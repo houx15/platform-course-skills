@@ -22,8 +22,10 @@ Do not accept the builder's completion claim. Reconstruct the evidence chain fro
    scripts/validate-course.py course/ --work-dir .course-work --json
    ```
 
-7. Inspect 逐个 PDF Block. Require a real safe relative file path, `.pdf` extension, `%PDF-` header, `%%EOF` trailer, a learner-facing title, and a confirmed Piece purpose that explains what students locate, compare, or verify. When the teacher requires the 完整文档, confirm it was not replaced by a summary, excerpt screenshot, reconstructed file, or unconfirmed substitute. A missing, damaged, mislinked, or substituted PDF blocks upload.
-8. Perform a separate Part 逐项 Review for every Part. Inspect every Piece within it and record evidence for all six dimensions:
+7. Inspect every video Block, including videos without interaction JSON. Require MP4 container, H.264 video, AAC audio when audio exists, and faststart. `unsupported-video-codec`, `unsupported-audio-codec`, `missing-faststart`, and an unverified video profile mean `缺少必要材料，暂不可上传`. Show `long-video`, `sparse-video-interactions`, and `large-video` as separate teacher-facing warnings; these do not by themselves fail the course. For a video 超过 10 分钟, inspect whether the checkpoint gaps are pedagogically justified rather than adding arbitrary pauses.
+8. Inspect every HTML Block and its `.course-work/html-reports/<block-id>.json` and `.md`. Require current SHA-256, all static checks passing, base/content/control text at least `16px`, explicit auxiliary text at least `14px`, and a deterministic Markdown match. A missing report or `stale-html-report` blocks full Review. The report cannot replace testing in the 真实 iframe.
+9. Inspect 逐个 PDF Block. Require a real safe relative file path, `.pdf` extension, `%PDF-` header, `%%EOF` trailer, a learner-facing title, and a confirmed Piece purpose that explains what students locate, compare, or verify. When the teacher requires the 完整文档, confirm it was not replaced by a summary, excerpt screenshot, reconstructed file, or unconfirmed substitute. A missing, damaged, mislinked, or substituted PDF blocks upload.
+10. Perform a separate Part 逐项 Review for every Part. Inspect every Piece within it and record evidence for all six dimensions:
 
    - 教学目标与结构;
    - 内容完整性;
@@ -33,12 +35,12 @@ Do not accept the builder's completion claim. Reconstruct the evidence chain fro
    - 资源与格式.
 
    任一维度 fails means that Part is `revise`; any `revise` Part blocks the whole course.
-9. Perform the 整体 Review: all Parts pass, source classification/coverage, resources present, course JSON schema, index consistency, `courseIntroduction`, `courseConclusion`, images, video, HTML, assessments, and unresolved decisions. `courseIntroduction` must verify the first learner screen, student-facing overview/objectives/key points, and fixed `开始学习` action. `courseConclusion` must verify the final summary/takeaways/transfer applications, source consistency, and absence of unsupported claims that a student has already mastered the course. Also execute the 整体 `pdf` Review. If no PDF is used, `pdf` may pass only with evidence that neither the storyboard nor confirmed teacher requirements need one.
-10. Persist the structured result at `.course-work/review-report.json`, then render `.course-work/review-report.md` with `scripts/render-review-report.py`.
-11. Automatically fix only mechanical issues that cannot change teaching meaning: generated Markdown drift, deterministic formatting, and unambiguous safe-path corrections.
-12. For pedagogical failures, provide concrete restructuring advice to the builder. The builder must produce a revised course-storyboard table. Ask the teacher to confirm any semantic change, then rebuild.
-13. A `schemaVersion` 1.0 course must return `migration-required`; migrate it to 1.1, draft the missing course frame from source evidence, and obtain teacher confirmation before it can pass. Do not silently infer approval from old content.
-14. After any fix, 重新运行完整 Review from original sources through the deterministic validator and both tables. Never reuse a previous pass.
+11. Perform the 整体 Review: all Parts pass, source classification/coverage, resources present, course JSON schema, index consistency, `courseIntroduction`, `courseConclusion`, images, video, HTML, assessments, and unresolved decisions. `courseIntroduction` must verify the first learner screen, student-facing overview/objectives/key points, and fixed `开始学习` action. `courseConclusion` must verify the final summary/takeaways/transfer applications, source consistency, and absence of unsupported claims that a student has already mastered the course. Also execute the 整体 `pdf` Review. If no PDF is used, `pdf` may pass only with evidence that neither the storyboard nor confirmed teacher requirements need one.
+12. Persist the structured result at `.course-work/review-report.json`, then render `.course-work/review-report.md` with `scripts/render-review-report.py`.
+13. Automatically fix only mechanical issues that cannot change teaching meaning: generated Markdown drift, deterministic formatting, and unambiguous safe-path corrections.
+14. For pedagogical failures, provide concrete restructuring advice to the builder. The builder must produce a revised course-storyboard table. Ask the teacher to confirm any semantic change, then rebuild.
+15. A `schemaVersion` 1.0 course must return `migration-required`; migrate it to 1.1, draft the missing course frame from source evidence, and obtain teacher confirmation before it can pass. Do not silently infer approval from old content.
+16. After any fix, 重新运行完整 Review from original sources through the deterministic validator and both tables. Never reuse a previous pass.
 
 ## Required result tables
 

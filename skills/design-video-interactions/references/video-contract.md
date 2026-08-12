@@ -32,6 +32,7 @@ Use one JSON file and one generated Markdown view per interactive MP4.
 Rules:
 
 - Resolve `source` from the `course/` root.
+- The Video Block `source` and `video.source` in its interaction JSON must resolve to the same file. A mismatch blocks Review.
 - Keep event IDs unique.
 - Put finalized events in strictly increasing time order.
 - Do not reuse one timestamp for two events.
@@ -39,3 +40,7 @@ Rules:
 - Use `graded`, `survey`, or `reflection` assessment consistently.
 - A provisional event requires non-empty `anchor`, null `timeSeconds`, and `status: needs-timing`.
 - Final Review blocks every provisional event.
+- The final asset uses an MP4 container, H.264 (`avc1` or `avc3`) video, AAC (`mp4a`) audio when an audio track exists, and faststart (`moov` before `mdat`). Silent H.264 MP4 is allowed.
+- An unverified container/codec profile, unsupported video codec, unsupported audio codec, or missing faststart blocks upload.
+- Duration above 600 seconds emits `long-video`. A gap above 600 seconds between the beginning, confirmed interaction points, and the end also emits `sparse-video-interactions`; review whether to 增加交互点 for a learning reason.
+- Size above `500 MiB` emits `large-video`. These three warnings require teacher-facing notice but do not by themselves block upload.

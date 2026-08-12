@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from course_toolkit.jsonio import load_json
-from course_toolkit.video_interactions import validate_video_interactions
+from course_toolkit.video_interactions import inspect_video_interactions
 
 
 def main() -> int:
@@ -18,24 +18,32 @@ def main() -> int:
     args = parser.parse_args()
     try:
         data = load_json(args.interaction_json)
-        issues = validate_video_interactions(data, args.course_dir)
+        result = inspect_video_interactions(data, args.course_dir)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     if args.json:
         print(
             json.dumps(
-                {"valid": not issues, "issues": [issue.as_dict() for issue in issues]},
+                {
+                    "valid": not result.issues,
+                    "issues": [issue.as_dict() for issue in result.issues],
+                    "warnings": [warning.as_dict() for warning in result.warnings],
+                },
                 ensure_ascii=False,
                 indent=2,
             )
         )
-    elif issues:
-        for issue in issues:
+    elif result.issues:
+        for issue in result.issues:
             print(f"- [{issue.code}] {issue.path}: {issue.message}")
     else:
         print("视频交互检查通过")
-    return 1 if issues else 0
+    if result.warnings and not args.json:
+        print("提醒：")
+        for warning in result.warnings:
+            print(f"- [{warning.code}] {warning.path}: {warning.message}")
+    return 1 if result.issues else 0
 
 
 if __name__ == "__main__":

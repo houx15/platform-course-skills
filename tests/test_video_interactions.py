@@ -1,11 +1,17 @@
 import copy
+import json
+import os
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from course_toolkit.mp4 import read_mp4_duration
-from course_toolkit.jsonio import load_json
+from course_toolkit.mp4 import inspect_mp4, read_mp4_duration
+from course_toolkit.jsonio import dump_json, load_json
 from course_toolkit.video_interactions import (
+    inspect_video_interactions,
     render_video_interactions,
     validate_video_interactions,
 )
@@ -43,11 +49,17 @@ class VideoInteractionTests(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.course_root = Path(self.temp_dir.name)
+        self.probe_patch = patch(
+            "course_toolkit.video_interactions._probe_with_ffprobe",
+            return_value=None,
+        )
+        self.probe_patch.start()
         self.video_path = write_test_mp4(
             self.course_root / "video_example.mp4"
         )
 
     def tearDown(self):
+        self.probe_patch.stop()
         self.temp_dir.cleanup()
 
     def codes(self, data):
@@ -60,6 +72,105 @@ class VideoInteractionTests(unittest.TestCase):
         duration = read_mp4_duration(self.video_path)
         self.assertGreater(duration, 32)
         self.assertLess(duration, 33)
+
+    def test_zero_duration_mp4_is_unverifiable(self):
+        write_test_mp4(self.video_path, duration_seconds=0)
+        self.assertIn("video-profile-unverified", self.codes(valid_video_data()))
+
+    def test_inspects_h264_aac_faststart_profile(self):
+        profile = inspect_mp4(self.video_path)
+        self.assertEqual(profile.video_codecs, ("h264",))
+        self.assertEqual(profile.audio_codecs, ("aac",))
+        self.assertTrue(profile.faststart)
+        self.assertGreater(profile.duration_seconds, 32)
+
+    def test_accepts_silent_h264_video(self):
+        path = write_test_mp4(
+            self.course_root / "silent.mp4",
+            audio_codec=None,
+        )
+        profile = inspect_mp4(path)
+        self.assertEqual(profile.video_codecs, ("h264",))
+        self.assertEqual(profile.audio_codecs, ())
+
+    def test_reports_unsupported_video_audio_and_faststart(self):
+        data = valid_video_data()
+        write_test_mp4(
+            self.video_path,
+            video_codec=b"hvc1",
+            audio_codec=b"ac-3",
+            faststart=False,
+        )
+        codes = self.codes(data)
+        self.assertIn("unsupported-video-codec", codes)
+        self.assertIn("unsupported-audio-codec", codes)
+        self.assertIn("missing-faststart", codes)
+
+    def test_long_sparse_video_emits_nonblocking_warnings(self):
+        data = valid_video_data()
+        data["video"]["durationSeconds"] = 1200
+        write_test_mp4(self.video_path, duration_seconds=1200)
+
+        result = inspect_video_interactions(data, self.course_root)
+
+        self.assertEqual(result.issues, ())
+        codes = {warning.code for warning in result.warnings}
+        self.assertIn("long-video", codes)
+        self.assertIn("sparse-video-interactions", codes)
+
+    def test_large_video_emits_nonblocking_warning(self):
+        with self.video_path.open("r+b") as handle:
+            handle.truncate(500 * 1024 * 1024 + 1)
+
+        result = inspect_video_interactions(valid_video_data(), self.course_root)
+
+        self.assertEqual(result.issues, ())
+        self.assertIn("large-video", {warning.code for warning in result.warnings})
+
+    def test_ffprobe_conflict_blocks_upload(self):
+        probe = {
+            "format_names": ("mov", "mp4"),
+            "video_codecs": ("hevc",),
+            "audio_codecs": ("aac",),
+            "duration_seconds": 32.533333,
+            "size_bytes": self.video_path.stat().st_size,
+        }
+        with patch(
+            "course_toolkit.video_interactions._probe_with_ffprobe",
+            return_value=probe,
+        ):
+            result = inspect_video_interactions(valid_video_data(), self.course_root)
+
+        codes = {issue.code for issue in result.issues}
+        self.assertIn("unsupported-video-codec", codes)
+        self.assertIn("video-tool-conflict", codes)
+
+    def test_cli_json_exposes_nonblocking_warnings(self):
+        data = valid_video_data()
+        data["video"]["durationSeconds"] = 1200
+        write_test_mp4(self.video_path, duration_seconds=1200)
+        data_path = self.course_root / "interactions.json"
+        data_path.write_text(dump_json(data), encoding="utf-8")
+        environment = os.environ.copy()
+        environment["PATH"] = ""
+
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "validate-video-interactions.py"),
+                str(self.course_root),
+                str(data_path),
+                "--json",
+            ],
+            cwd=ROOT,
+            env=environment,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        payload = json.loads(completed.stdout)
+        self.assertTrue(payload["valid"])
+        self.assertIn("long-video", {warning["code"] for warning in payload["warnings"]})
 
     def test_valid_video_interactions_pass(self):
         self.assertEqual(

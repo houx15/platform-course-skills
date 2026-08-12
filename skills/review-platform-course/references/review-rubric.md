@@ -88,9 +88,9 @@ Schema 1.0 returns `migration-required`. It cannot pass until the missing course
 
 PDF files are copied without changing their bytes. When the teacher requested a 论文原文、报告全文或其他完整文档, a summary, screenshot excerpt, reconstructed file, or unconfirmed replacement fails Review. Static header/trailer checks do not prove every page renders in the real platform or that the file is an authoritative edition; test embedded reading and download before upload.
 
-HTML must be one self-contained file with a confirmed task, standardized completion action, valid `INTERACTION_COMPLETE` 1.0 payload, and no prohibited runtime dependency.
+HTML must be one self-contained file with a confirmed task, standardized completion action, valid `INTERACTION_COMPLETE` 1.0 payload, and no prohibited runtime dependency. Base/content/control text is at least `16px`; only explicit auxiliary text may use `14px`, and nothing is smaller. Full Review requires matching `.course-work/html-reports/<block-id>.json` and `.md`; missing, failing, or `stale-html-report` records block upload. A passing static report still requires a 真实 iframe check.
 
-The MP4 itself is never generated or modified. Video JSON is canonical, Markdown is generated, declared duration matches the actual MP4, final times are ordered/unique/in range, and no event remains `needs-timing`.
+The final video uses an MP4 container, H.264 video, AAC audio when audio exists, and faststart. `unsupported-video-codec`, `unsupported-audio-codec`, `missing-faststart`, and any unverified profile block upload. A Video Block and its interaction JSON must resolve to the same source file; `video-source-mismatch` blocks upload. Video JSON is canonical, Markdown is generated, declared duration matches the actual MP4, final times are ordered/unique/in range, and no event remains `needs-timing`. Report `long-video`, `sparse-video-interactions`, and `large-video` as warnings without changing an otherwise passing status.
 
 ## 6. Outcome labels
 

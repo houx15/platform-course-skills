@@ -105,6 +105,46 @@ class SkillPackageTests(unittest.TestCase):
                 with self.subTest(path=path.name, phrase=phrase):
                     self.assertIn(phrase, text)
 
+    def test_video_and_html_quality_rules_are_consistent_across_references(self):
+        required = {
+            ROOT
+            / "skills"
+            / "design-video-interactions"
+            / "references"
+            / "video-contract.md": (
+                "H.264",
+                "AAC",
+                "faststart",
+                "long-video",
+                "500 MiB",
+            ),
+            ROOT
+            / "skills"
+            / "design-course-html"
+            / "references"
+            / "html-contract.md": (
+                "16px",
+                "14px",
+                "html-reports",
+                "browserCheckRequired",
+            ),
+            ROOT
+            / "skills"
+            / "review-platform-course"
+            / "references"
+            / "review-rubric.md": (
+                "unsupported-video-codec",
+                "missing-faststart",
+                "stale-html-report",
+                "真实 iframe",
+            ),
+        }
+        for path, phrases in required.items():
+            text = path.read_text(encoding="utf-8")
+            for phrase in phrases:
+                with self.subTest(path=path.name, phrase=phrase):
+                    self.assertIn(phrase, text)
+
 
 if __name__ == "__main__":
     unittest.main()

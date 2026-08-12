@@ -40,6 +40,7 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((runtime / "course_toolkit" / "package_review.py").is_file())
         self.assertTrue((runtime / "schemas" / "course.schema.json").is_file())
         self.assertTrue((runtime / "scripts" / "validate-course.py").is_file())
+        self.assertTrue((runtime / "scripts" / "generate-html-report.py").is_file())
         self.assertFalse(any(parent.rglob("*.zip")))
 
     def test_installs_codex_copy_and_preserves_unrelated_skill(self):

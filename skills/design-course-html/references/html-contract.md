@@ -20,6 +20,13 @@
 - Do not emit completion before the confirmed condition is met.
 - A blocking activity completes only after the platform receives a valid completion message.
 
+## Typography
+
+- Declare a verifiable `font-size` of at least `16px` on `html` or `body`.
+- Learner content and controls (`button`, `input`, `select`, `textarea`) remain at least `16px`, including responsive states.
+- Only text explicitly marked `.auxiliary` or `[data-text-role="auxiliary"]` may use `14px`; no visible text may be below `14px`.
+- Use px, resolvable rem, `inherit`, or `clamp()` whose minimum is a safe px/rem value. Values such as em, %, vw, vh, or `calc()` cannot be proven by the static checker and block upload.
+
 ## Message
 
 ```javascript
@@ -47,4 +54,6 @@ Every interaction requires `interactionId`, `type`, and `answer`. Include correc
 
 ## Validation
 
-Run the toolkit HTML validator. Treat its result as a static contract check, not a browser screenshot or real iframe test.
+Run the toolkit HTML validator, then generate deterministic JSON and Markdown under `.course-work/html-reports/`. Regenerate both after every HTML change; a missing or stale report blocks full Review.
+
+Treat the report as a static contract check, not a browser screenshot or real iframe test. It always records `browserCheckRequired: true`.

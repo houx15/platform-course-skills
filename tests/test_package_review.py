@@ -3,18 +3,55 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from course_toolkit.jsonio import dump_json, load_json
 from course_toolkit.course_design import render_review_report
+from course_toolkit.index_renderer import render_index
 from course_toolkit.package_review import review_package
-from tests.helpers import ROOT, write_test_pdf, write_valid_work_records
+from tests.helpers import (
+    ROOT,
+    write_html_reports_for_course,
+    write_test_mp4,
+    write_test_pdf,
+    write_valid_work_records,
+)
+from tests.test_html_validation import VALID_HTML
 
 
 class PackageReviewTests(unittest.TestCase):
+    def setUp(self):
+        self.probe_patch = patch(
+            "course_toolkit.video_interactions._probe_with_ffprobe",
+            return_value=None,
+        )
+        self.probe_patch.start()
+
+    def tearDown(self):
+        self.probe_patch.stop()
+
     def copy_valid(self, root: Path) -> Path:
         target = root / "course"
         shutil.copytree(ROOT / "tests" / "fixtures" / "valid-course", target)
         return target
+
+    def add_valid_html_block(self, course: Path) -> dict:
+        data = load_json(course / "course.json")
+        data["course"]["parts"][0]["pieces"][0]["blocks"].append(
+            {
+                "id": "comparison-task",
+                "type": "interactiveHtml",
+                "source": "interactions/html/comparison-task.html",
+                "blocking": True,
+                "completion": {"rule": "interaction-complete"},
+            }
+        )
+        (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+        (course / "index.md").write_text(render_index(data), encoding="utf-8")
+        html_path = course / "interactions" / "html" / "comparison-task.html"
+        html_path.parent.mkdir(parents=True, exist_ok=True)
+        html_path.write_text(VALID_HTML, encoding="utf-8")
+        return data
 
     def test_valid_fixture_is_uploadable(self):
         result = review_package(ROOT / "tests" / "fixtures" / "valid-course")
@@ -58,6 +95,56 @@ class PackageReviewTests(unittest.TestCase):
 
         self.assertEqual(result.status, "uploadable")
         self.assertEqual(result.issues, ())
+
+    def test_full_review_requires_html_report_but_course_only_does_not(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            data = self.add_valid_html_block(course)
+            work = root / ".course-work"
+            write_valid_work_records(work, data)
+
+            course_only = review_package(course)
+            full_review = review_package(course, work)
+
+        self.assertEqual(course_only.status, "uploadable")
+        self.assertNotIn("missing-html-report", {issue.code for issue in course_only.issues})
+        self.assertIn(
+            "html-report-unavailable",
+            {warning.code for warning in course_only.warnings},
+        )
+        self.assertEqual(full_review.status, "blocked")
+        self.assertIn("missing-html-report", {issue.code for issue in full_review.issues})
+
+    def test_fresh_html_report_makes_full_review_uploadable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            data = self.add_valid_html_block(course)
+            work = root / ".course-work"
+            write_valid_work_records(work, data)
+            write_html_reports_for_course(course, work, data)
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "uploadable")
+        self.assertEqual(result.issues, ())
+
+    def test_changed_html_blocks_full_review_with_stale_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            course = self.copy_valid(root)
+            data = self.add_valid_html_block(course)
+            work = root / ".course-work"
+            write_valid_work_records(work, data)
+            write_html_reports_for_course(course, work, data)
+            html_path = course / "interactions" / "html" / "comparison-task.html"
+            html_path.write_text(VALID_HTML.replace("完成任务", "完成"), encoding="utf-8")
+
+            result = review_package(course, work)
+
+        self.assertEqual(result.status, "blocked")
+        self.assertIn("stale-html-report", {issue.code for issue in result.issues})
 
     def test_missing_storyboard_record_blocks_upload(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -265,6 +352,127 @@ class PackageReviewTests(unittest.TestCase):
 
         self.assertEqual(result.status, "blocked")
         self.assertIn("invalid-pdf-header", {issue.code for issue in result.issues})
+
+    def test_nonstandard_video_profile_blocks_upload_without_interactions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            data["course"]["parts"][0]["pieces"][0]["blocks"].append(
+                {
+                    "id": "lesson-video",
+                    "type": "video",
+                    "source": "assets/videos/lesson.mp4",
+                    "blocking": False,
+                }
+            )
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+            (course / "index.md").write_text(render_index(data), encoding="utf-8")
+            write_test_mp4(
+                course / "assets" / "videos" / "lesson.mp4",
+                video_codec=b"hvc1",
+                faststart=False,
+            )
+
+            result = review_package(course)
+
+        self.assertEqual(result.status, "blocked")
+        codes = {issue.code for issue in result.issues}
+        self.assertIn("unsupported-video-codec", codes)
+        self.assertIn("missing-faststart", codes)
+
+    def test_interactive_video_source_mismatch_cannot_hide_bad_block_asset(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            block = {
+                "id": "interactive-video",
+                "type": "video",
+                "source": "assets/videos/displayed.mp4",
+                "blocking": True,
+                "interaction": {
+                    "data": "interactions/video/interactive-video.json",
+                    "document": "interactions/video/interactive-video.md",
+                },
+            }
+            data["course"]["parts"][0]["pieces"][0]["blocks"].append(block)
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+            (course / "index.md").write_text(render_index(data), encoding="utf-8")
+            write_test_mp4(
+                course / "assets" / "videos" / "displayed.mp4",
+                video_codec=b"hvc1",
+            )
+            write_test_mp4(course / "assets" / "videos" / "checked.mp4")
+            interaction_data = {
+                "schemaVersion": "1.0",
+                "video": {
+                    "title": "交互视频",
+                    "source": "assets/videos/checked.mp4",
+                    "durationSeconds": 32.533333,
+                    "events": [
+                        {
+                            "id": "check",
+                            "timeSeconds": 8,
+                            "blocking": True,
+                            "prompt": "判断",
+                            "interaction": {
+                                "type": "singleChoice",
+                                "options": [
+                                    {"id": "a", "label": "A"},
+                                    {"id": "b", "label": "B"},
+                                ],
+                                "assessment": {"mode": "survey"},
+                            },
+                        }
+                    ],
+                },
+            }
+            interaction_root = course / "interactions" / "video"
+            interaction_root.mkdir(parents=True, exist_ok=True)
+            (interaction_root / "interactive-video.json").write_text(
+                dump_json(interaction_data), encoding="utf-8"
+            )
+            from course_toolkit.video_interactions import render_video_interactions
+
+            (interaction_root / "interactive-video.md").write_text(
+                render_video_interactions(interaction_data), encoding="utf-8"
+            )
+
+            result = review_package(course)
+
+        codes = {issue.code for issue in result.issues}
+        self.assertIn("video-source-mismatch", codes)
+        self.assertIn("unsupported-video-codec", codes)
+
+    def test_review_json_contains_deterministic_media_evidence(self):
+        result = review_package(ROOT / "tests" / "fixtures" / "valid-course")
+        payload = result.as_dict()
+        self.assertEqual(payload["mediaEvidence"], {"videos": [], "html": []})
+
+    def test_long_video_warnings_do_not_block_upload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            course = self.copy_valid(Path(tmp))
+            data = load_json(course / "course.json")
+            data["course"]["parts"][0]["pieces"][0]["blocks"].append(
+                {
+                    "id": "long-video",
+                    "type": "video",
+                    "source": "assets/videos/long.mp4",
+                    "blocking": False,
+                }
+            )
+            (course / "course.json").write_text(dump_json(data), encoding="utf-8")
+            (course / "index.md").write_text(render_index(data), encoding="utf-8")
+            write_test_mp4(
+                course / "assets" / "videos" / "long.mp4",
+                duration_seconds=1200,
+            )
+
+            result = review_package(course)
+
+        self.assertEqual(result.status, "uploadable")
+        codes = {warning.code for warning in result.warnings}
+        self.assertIn("long-video", codes)
+        self.assertIn("sparse-video-interactions", codes)
 
     def test_generated_markdown_drift_needs_fix(self):
         with tempfile.TemporaryDirectory() as tmp:

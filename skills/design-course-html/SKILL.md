@@ -17,11 +17,13 @@ Design the learning interaction before writing code. Do not treat a polished scr
 4. Present the readable design and wait for 教师确认 before generating or materially revising HTML.
 5. Read [html-contract.md](references/html-contract.md), then generate a 单个 HTML 文件 with embedded CSS and JavaScript.
 6. Use a fixed `1:1` or 横向 4:3 canvas without horizontal scrolling or external runtime resources.
-7. Use a visible button labeled `完成` or `完成任务`. Enforce the confirmed completion condition before submission.
-8. Submit `INTERACTION_COMPLETE` version `1.0` with lesson ID, total duration, and structured interactions.
-9. Resolve the runtime relative to this skill: prefer sibling `../_course-toolkit/`, otherwise source root `../../`. Run `scripts/validate-html.py` on the generated file.
-10. Fix every blocking validation issue and rerun the validator. Return the confirmed design, HTML path, and validator result.
+7. Set the `html` or `body` base text to at least `16px`. Content and controls must remain at least `16px`. Only explicit `.auxiliary` or `[data-text-role="auxiliary"]` text may be as small as `14px`; never use visible text below `14px`. Avoid font-size expressions the static validator cannot resolve.
+8. Use a visible button labeled `完成` or `完成任务`. Enforce the confirmed completion condition before submission.
+9. Submit `INTERACTION_COMPLETE` version `1.0` with lesson ID, total duration, and structured interactions.
+10. Resolve the runtime relative to this skill: prefer sibling `../_course-toolkit/`, otherwise source root `../../`. Run `scripts/validate-html.py` on the generated file.
+11. Generate the persisted report with `scripts/generate-html-report.py HTML_FILE --block-id BLOCK_ID --source COURSE_RELATIVE_SOURCE --output-dir .course-work/html-reports/`. Both `<block-id>.json` and `<block-id>.md` must exist and match the current HTML SHA-256.
+12. Fix every blocking validation issue, regenerate the report, and rerun the validator. Return the confirmed design, HTML path, report paths, and validator result.
 
 ## Evidence boundary
 
-静态检查不能证明 the activity is visually reliable in the real platform iframe or that students learn from it. State that browser/platform verification and pedagogical review remain separate when they have not been performed.
+静态检查不能证明 the activity is visually reliable in the 真实 iframe or that students learn from it. `browserCheckRequired: true` remains in the HTML report. State that browser/platform verification and pedagogical review remain separate when they have not been performed.

@@ -36,6 +36,15 @@
     "objectiveAlignment",
     "schemaVersion: 1.1",
     "开始学习",
-    "不能声称学生已经掌握"
+    "不能声称学生已经掌握",
+    "MP4",
+    "H.264",
+    "AAC",
+    "faststart",
+    "新会话",
+    "ffmpeg -n",
+    "不得覆盖原视频",
+    "subagent",
+    "教师明确授权"
   ]
 }

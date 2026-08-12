@@ -37,6 +37,16 @@
     "courseConclusion",
     "migration-required",
     "目标与真实 Part",
-    "学习证据 Block"
+    "学习证据 Block",
+    "unsupported-video-codec",
+    "unsupported-audio-codec",
+    "missing-faststart",
+    "long-video",
+    "large-video",
+    "16px",
+    "14px",
+    "html-reports",
+    "stale-html-report",
+    "真实 iframe"
   ]
 }

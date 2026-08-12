@@ -1,6 +1,6 @@
 # 平台课程标准化工具包验证报告
 
-日期：2026-08-09
+日期：2026-08-12
 
 ## 设计覆盖
 
@@ -14,9 +14,10 @@
 | 学生内容与作者信息分流 | `.course-work/audience-classification.json`、`validate_learner_facing_course` | 完整分类、重复/遗漏 source ID、设计元数据泄漏测试 |
 | 生成前课程设计确认表 | `.course-work/course-storyboard.json/.md`、`scripts/render-course-storyboard.py` | Part/Piece 对账、模态对账、教师确认、生成视图漂移测试 |
 | 每个 Part 六维 Review | `.course-work/review-report.json/.md`、`scripts/render-review-report.py` | 缺维度、失败 Part、缺整体检查项和错误“可上传”声明测试 |
-| 视频交互 JSON 和 Markdown | `course_toolkit/video_interactions.py`、对应 CLI | `tests/test_video_interactions.py` |
-| 不依赖外部工具读取 MP4 时长 | `course_toolkit/mp4.py` | 临时构造最小 MP4，验证时长和越界事件 |
-| HTML 平台协议 | `course_toolkit/html_validation.py`、`scripts/validate-html.py` | `tests/test_html_validation.py` |
+| 视频交互 JSON、Markdown 与媒体规范 | `course_toolkit/video_interactions.py`、对应 CLI | H.264/AAC/faststart 阻断、10 分钟交互提醒、500 MiB 文件提醒、时长与事件测试 |
+| 不依赖外部工具检查 MP4 | `course_toolkit/mp4.py` | 临时构造最小 MP4，验证封装、轨道编码、faststart、时长和越界事件 |
+| HTML 平台协议与字号 | `course_toolkit/html_validation.py`、`scripts/validate-html.py` | 16px 正文/控件、14px 辅助文字、安全 clamp/rem 和不可验证单位测试 |
+| HTML 确定性检查报告 | `course_toolkit/html_reports.py`、`scripts/generate-html-report.py` | JSON/Markdown 生成、SHA-256 新鲜度、缺失/过期报告阻断完整 Review 测试 |
 | DOCX、HTML、Markdown、文本提取 | `course_toolkit/materials.py`、`scripts/extract-materials.py` | `tests/test_materials.py`，包含 DOCX 表格行列定位 |
 | 来源覆盖与 AI 新增确认 | `course_toolkit/coverage.py` | 提取清单逐项对账、真实 Block 去向、未确认决定和 unresolved 阻塞测试 |
 | 独立上传前 Review | `course_toolkit/package_review.py`、`scripts/validate-course.py` | 完整工作记录与缺失/漂移/不一致测试 |
@@ -45,7 +46,7 @@
 
 ### 媒体与资源决定
 
-- 使用一项已确认的城市热岛 HTML 带练；自包含资源、4:3 画布、标准完成按钮和 `INTERACTION_COMPLETE` 1.0 静态合同通过。
+- 使用一项已确认的城市热岛 HTML 带练；自包含资源、4:3 画布、标准完成按钮、16px 字号下限和 `INTERACTION_COMPLETE` 1.0 静态合同通过，并生成匹配当前文件 SHA-256 的 JSON/Markdown 报告。
 - 样例课程增加一个完整 PDF Piece，使用明确标注为结构测试材料的文件；它用于验证 `pdf` Block、内嵌/下载链接和 Review，不冒充材料提到的真实论文。
 - 没有生成图片、流程图、示意图或信息图；课程不引用任何未提供视觉资源。
 - 本轮 fixture 明确选择不嵌入长视频，因此上传课程没有 video Block，也不需要 MP4。两份结构化视频交互设计保留在 `.course-work/video-designs/`，事件仍为 `needs-timing`；未来提供 MP4 并嵌入课程时必须重新对齐时间和完整 Review。
@@ -57,11 +58,11 @@
 - `.course-work/review-report.md` 先输出 6 行 Part 逐项 Review，再输出 13 项整体 Review（包含 `courseIntroduction`、`courseConclusion` 和 `pdf`）。
 - 每个 Part 分别检查教学目标与结构、内容完整性、学生呈现、模态选择、练习与反馈、资源与格式。
 - 端到端确定性 Review 返回 `可上传`，无 schema、生成视图、资源路径、HTML、来源覆盖、受众分类、storyboard 或 review-report 错误。
-- 仓库完整自动测试共 113 项通过；标准 fixture、本地样例和 `for_test.docx` 端到端课程均返回 `可上传`。
+- 仓库完整自动测试共 154 项通过；标准 fixture、本地样例和 `for_test.docx` 端到端课程均返回 `可上传`。
 
 ## 发布仓库说明
 
-- 仓库不发布课程样例 MP4；工具不会生成、剪辑、转码或修改 MP4。
+- 仓库不发布课程样例 MP4；工具包本身不会生成、剪辑、转码或修改 MP4。构建 Skill 在发现不兼容视频时会给出隔离的新会话 prompt；任何 subagent 转换都必须先获得教师对输入和新输出路径的明确授权。
 - 仓库只发布明确标注的 PDF 结构测试材料，不下载或伪造老师材料提到的论文原文。
 - 教师材料、ZIP、端到端生成物和浏览器截图不属于安装包。
 - 安装器始终忽略 ZIP。
@@ -70,7 +71,7 @@
 
 - 端到端 fixture 的“教师确认”是测试输入，用于验证完整流程可以产出标准仓库，不代表真实课程教师已经确认内容。
 - 来源覆盖与 Part Review 能验证结构化证据、课程呈现和记录完整性，不能独立证明气候科学事实、引用准确性或真实学生学习效果。
-- HTML 已通过静态合同；旧版样例曾完成 headless Chromium 桌面/移动与完成消息测试，本次内容未在真实平台 iframe 重新验证。
+- HTML 已通过静态合同和报告新鲜度检查；旧版样例曾完成 headless Chromium 桌面/移动与完成消息测试，本次内容未在真实平台 iframe 重新验证。
 - PDF 头尾与本地渲染检查不能证明真实平台的内嵌阅读、逐页兼容性、出版版本权威性或学生实际阅读完成度。
 - DOCX 已渲染为 11 页并逐页检查表格与分区结构；当前 LibreOffice 环境缺少原文所用中文字体，渲染图中的部分中文字形不可见，因此文字内容以 OOXML 提取结果为准。
 - 项目要求在主线程顺序执行，本次没有使用子代理做 Skill 前向对话测试。实际教师使用后的对话表现仍需持续收集。

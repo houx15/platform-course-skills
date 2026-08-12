@@ -12,6 +12,11 @@
     "横向 4:3",
     "完成任务",
     "INTERACTION_COMPLETE",
-    "静态检查不能证明"
+    "静态检查不能证明",
+    "16px",
+    "14px",
+    ".course-work/html-reports/",
+    "generate-html-report.py",
+    "真实 iframe"
   ]
 }

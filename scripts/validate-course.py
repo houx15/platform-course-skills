@@ -42,6 +42,10 @@ def main() -> int:
         print(STATUS_LABELS[result.status])
         for issue in result.issues:
             print(f"- [{issue.code}] {issue.path}: {issue.message}")
+        if result.warnings:
+            print("提醒：")
+            for warning in result.warnings:
+                print(f"- [{warning.code}] {warning.path}: {warning.message}")
     return EXIT_CODES[result.status]
 
 

@@ -94,6 +94,10 @@ Claude Code：
 
 最终交付位于 `course/`；过程记录位于 `.course-work/`。只上传 `course/`，不需要 ZIP。课程可以使用原生 `pdf` Block，将老师确认的原始文件放在 `assets/pdfs/`，供平台内嵌阅读和下载；第一版不追踪学生是否读完。
 
+视频必须使用 MP4 封装、H.264 视频编码、AAC 音频编码（无音轨的视频可以不含 AAC），并开启 faststart。不符合或无法验证时，课程会显示“缺少必要材料，暂不可上传”。AI 会建议老师在新会话中用不会覆盖原文件的 `ffmpeg -n` 命令生成新副本；只有老师明确授权，当前会话才可以把转换交给 subagent。视频超过 10 分钟时会提醒检查是否需要增加有教学意义的交互点；文件超过 500 MiB 时会提醒确认平台上传限制，这两项提醒本身不阻止上传。
+
+HTML 的正文和控件字号不得低于 16px；只有明确标记的辅助文字可以使用 14px，任何可见文字都不得低于 14px。每个 HTML Block 都会在 `.course-work/html-reports/` 生成 JSON 与 Markdown 检查报告。完整 Review 会核对文件摘要与当前 HTML 是否一致；报告缺失或过期会阻止上传。静态报告通过后，仍需在真实平台 iframe 中检查显示、操作和完成消息。
+
 course.json 和 index.md 只包含学生最终会看到的内容；教学设计、教师说明、AI 规则、平台实现和 source coverage 都留在 `.course-work/`。
 
 Review 会先输出 Part 逐项 Review 表，分别检查每个 Part 的教学目标与结构、内容完整性、学生呈现、模态选择、练习与反馈、资源与格式；任一维度失败，该 Part 与整门课都不能判为可上传。随后输出整体 Review 表，检查所有 Part、来源分类与覆盖、资源、JSON、index、`courseIntroduction`、`courseConclusion`、图片、PDF、视频、HTML、评价和未解决事项。每条课程目标还必须关联真实 Part 和能够留下结果的学习证据 Block。缺失或损坏的完整 PDF、未确认的实质设计、开放的阻塞事项、缺失媒体和待定视频时间码都会阻止“可上传”结论。
@@ -103,9 +107,10 @@ Review 会先输出 Part 逐项 Review 表，分别检查每个 Part 的教学�
 ```bash
 python3 -m unittest discover -s tests -v
 python3 scripts/validate-course.py tests/fixtures/valid-course --json
+python3 scripts/generate-html-report.py course/interactions/html/example.html --block-id example --source interactions/html/example.html --output-dir .course-work/html-reports
 ```
 
-视频测试会在临时目录中动态构造只含必要元数据的极小 MP4，用于验证时长读取和越界检测。仓库不包含课程样例视频，也不会安装或生成 MP4。
+视频测试会在临时目录中动态构造只含必要元数据的极小 MP4，用于验证时长、H.264/AAC、faststart、长视频提醒和越界事件。仓库不包含课程样例视频，也不会安装或生成 MP4。
 
 PDF fixture 是明确标注的结构测试材料，不冒充任何真实论文。验证器检查安全路径、`.pdf` 扩展名、`%PDF-` 文件头和 `invalid-pdf-header` / `invalid-pdf-eof` 等错误；真实平台中的逐页渲染仍需在上传前测试。
 

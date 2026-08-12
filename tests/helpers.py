@@ -1,6 +1,7 @@
 import copy
 import struct
 from pathlib import Path
+from typing import Optional
 
 from course_toolkit.course_design import (
     OVERALL_CHECKS,
@@ -9,13 +10,41 @@ from course_toolkit.course_design import (
     render_storyboard,
 )
 from course_toolkit.jsonio import dump_json
+from course_toolkit.html_reports import build_html_report, render_html_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
 SAMPLE_ROOT = ROOT
 
 
-def write_test_mp4(path: Path, duration_seconds: float = 32.533333) -> Path:
+def _mp4_box(box_type: bytes, payload: bytes) -> bytes:
+    return struct.pack(">I4s", 8 + len(payload), box_type) + payload
+
+
+def _mp4_track(handler_type: bytes, codec: bytes) -> bytes:
+    handler = _mp4_box(
+        b"hdlr",
+        b"\x00\x00\x00\x00" + struct.pack(">I", 0) + handler_type + b"\x00" * 12,
+    )
+    sample_entry = _mp4_box(codec, b"")
+    sample_description = _mp4_box(
+        b"stsd",
+        b"\x00\x00\x00\x00" + struct.pack(">I", 1) + sample_entry,
+    )
+    sample_table = _mp4_box(b"stbl", sample_description)
+    media_information = _mp4_box(b"minf", sample_table)
+    media = _mp4_box(b"mdia", handler + media_information)
+    return _mp4_box(b"trak", media)
+
+
+def write_test_mp4(
+    path: Path,
+    duration_seconds: float = 32.533333,
+    *,
+    video_codec: bytes = b"avc1",
+    audio_codec: Optional[bytes] = b"mp4a",
+    faststart: bool = True,
+) -> Path:
     timescale = 30_000
     duration = round(duration_seconds * timescale)
     mvhd_payload = b"\x00\x00\x00\x00" + struct.pack(
@@ -25,13 +54,17 @@ def write_test_mp4(path: Path, duration_seconds: float = 32.533333) -> Path:
         timescale,
         duration,
     )
-    mvhd = struct.pack(">I4s", 8 + len(mvhd_payload), b"mvhd") + mvhd_payload
-    moov = struct.pack(">I4s", 8 + len(mvhd), b"moov") + mvhd
+    mvhd = _mp4_box(b"mvhd", mvhd_payload)
+    tracks = _mp4_track(b"vide", video_codec)
+    if audio_codec is not None:
+        tracks += _mp4_track(b"soun", audio_codec)
+    moov = _mp4_box(b"moov", mvhd + tracks)
     ftyp_payload = b"isom" + struct.pack(">I", 0x200) + b"isomiso2"
-    ftyp = struct.pack(">I4s", 8 + len(ftyp_payload), b"ftyp") + ftyp_payload
+    ftyp = _mp4_box(b"ftyp", ftyp_payload)
+    mdat = _mp4_box(b"mdat", b"\x00")
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(ftyp + moov)
+    path.write_bytes(ftyp + (moov + mdat if faststart else mdat + moov))
     return path
 
 
@@ -272,3 +305,29 @@ def write_valid_work_records(work_root: Path, course_data: dict) -> None:
         render_review_report(review),
         encoding="utf-8",
     )
+
+
+def write_html_reports_for_course(
+    course_root: Path,
+    work_root: Path,
+    course_data: dict,
+) -> None:
+    report_root = work_root / "html-reports"
+    for part in course_data["course"]["parts"]:
+        for piece in part["pieces"]:
+            for block in piece["blocks"]:
+                if block.get("type") != "interactiveHtml":
+                    continue
+                block_id = block["id"]
+                source = block["source"]
+                html_path = course_root / source
+                report = build_html_report(block_id, source, html_path)
+                report_root.mkdir(parents=True, exist_ok=True)
+                (report_root / f"{block_id}.json").write_text(
+                    dump_json(report),
+                    encoding="utf-8",
+                )
+                (report_root / f"{block_id}.md").write_text(
+                    render_html_report(report),
+                    encoding="utf-8",
+                )
