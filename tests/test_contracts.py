@@ -92,6 +92,17 @@ class ContractTests(unittest.TestCase):
         self.assertIn("PDF", report)
         self.assertIn("invalid-pdf-header", report)
 
+    def test_ci_uses_current_actions_and_runs_every_python_version(self):
+        workflow = (ROOT / ".github" / "workflows" / "validate.yml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("fail-fast: false", workflow)
+        self.assertIn("actions/checkout@v7", workflow)
+        self.assertIn("actions/setup-python@v7", workflow)
+        self.assertNotIn("actions/checkout@v4", workflow)
+        self.assertNotIn("actions/setup-python@v5", workflow)
+
 
 if __name__ == "__main__":
     unittest.main()
