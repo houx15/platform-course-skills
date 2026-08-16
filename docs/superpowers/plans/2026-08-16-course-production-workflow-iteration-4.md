@@ -37,12 +37,12 @@
 
 **Files:** `course_toolkit/annotation_revisions.py`, `schemas/annotation-revision-plan.schema.json`, CLI/tests.
 
-- [ ] Define a plan tied to current Blueprint, definition, and source-map hashes, with one entry per annotation.
-- [ ] Classify entries as `mechanical`, `semantic`, or `runtime-bug`; include target ID, summary, and zero or more scoped `replace` operations with before-value hashes.
-- [ ] Reject operations outside the annotation target, changes to stable IDs/source paths/correctness/workflow/layout under the mechanical policy, and all mutation operations for runtime bugs.
-- [ ] `prepare` marks valid entries proposed, creates context-hashed teacher decisions for semantic entries, and creates a G7 blocker for runtime bugs.
-- [ ] Repeated preparation is idempotent and never overwrites a confirmed decision with different context.
-- [ ] Commit: `feat: plan annotation driven revisions`.
+- [x] Define a plan tied to current Blueprint, definition, and source-map hashes, with one entry per annotation.
+- [x] Classify entries as `mechanical`, `semantic`, or `runtime-bug`; include target ID, summary, and zero or more scoped `replace` operations with before-value hashes.
+- [x] Reject operations outside the annotation target, changes to stable IDs/source paths/correctness/workflow/layout under the mechanical policy, and all mutation operations for runtime bugs.
+- [x] `prepare` marks valid entries proposed, creates context-hashed teacher decisions for semantic entries, and creates a G7 blocker for runtime bugs.
+- [x] Repeated preparation is idempotent and never overwrites a confirmed decision with different context.
+- [x] Commit: `feat: plan annotation driven revisions`.
 
 ## Task 4: Apply approved revisions to Blueprint only
 

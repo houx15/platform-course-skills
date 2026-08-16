@@ -12,6 +12,7 @@ from course_toolkit.annotations import (
     CourseAnnotation,
     reconcile_annotations,
 )
+from course_toolkit.annotation_revisions import prepare_revision_plan
 from course_toolkit.jsonio import load_json
 from course_toolkit.workflow import WorkflowError
 
@@ -57,6 +58,10 @@ def build_parser() -> argparse.ArgumentParser:
     add.add_argument("root", type=Path)
     add.add_argument("annotation", type=Path)
     add.add_argument("--json", action="store_true")
+    prepare = commands.add_parser("prepare")
+    prepare.add_argument("root", type=Path)
+    prepare.add_argument("plan", type=Path)
+    prepare.add_argument("--json", action="store_true")
     return parser
 
 
@@ -71,6 +76,20 @@ def main() -> int:
             store.add(annotation)
             store.save()
             reconciliation = reconcile_annotations(root, utc_now())
+        elif args.command == "prepare":
+            prepared = prepare_revision_plan(root, args.plan, utc_now())
+            result = payload(root)
+            result["preparation"] = {
+                "planId": prepared.plan_id,
+                "proposedAnnotationIds": list(prepared.proposed_annotation_ids),
+                "pendingDecisionIds": list(prepared.pending_decision_ids),
+                "runtimeBugAnnotationIds": list(prepared.runtime_bug_annotation_ids),
+            }
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(f"Prepared annotation revision plan: {prepared.plan_id}")
+            return 0
         elif args.command == "reconcile":
             reconciliation = reconcile_annotations(root, utc_now())
         result = payload(root, reconciliation)
