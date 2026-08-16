@@ -447,6 +447,7 @@ course-project/
     ├── source-coverage.json
     ├── course-brief.json
     ├── decisions.json
+    ├── issues.json
     ├── unresolved.json
     ├── course-blueprint.json
     ├── course-runtime-source-map.json
