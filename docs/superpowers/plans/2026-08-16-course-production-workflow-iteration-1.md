@@ -358,7 +358,7 @@ git commit -m "feat: add course production workflow gates"
 - Modify: `course_toolkit/workflow.py`
 - Modify: `tests/test_workflow.py`
 
-- [ ] **Step 1: Write failing hashing and invalidation tests**
+- [x] **Step 1: Write failing hashing and invalidation tests**
 
 Test deterministic file/directory tree hashing, safe relative source paths, and the invalidation matrix:
 
@@ -385,17 +385,17 @@ def test_renderer_version_change_invalidates_preview_not_compilation(self):
     self.assertEqual(session.phase, "preview")
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python -m unittest tests.test_workflow.ArtifactReconciliationTests -v`
 
 Expected: missing reconciliation APIs.
 
-- [ ] **Step 3: Implement deterministic hashing**
+- [x] **Step 3: Implement deterministic hashing**
 
 Provide SHA-256 for a file and a directory tree. Directory hashing must sort POSIX relative paths, include the path and file hash, ignore ZIPs, and reject symlink/path escape.
 
-- [ ] **Step 4: Implement the invalidation matrix**
+- [x] **Step 4: Implement the invalidation matrix**
 
 Use exact earliest gates:
 
@@ -417,13 +417,13 @@ ARTIFACT_GATE_RULES = (
 
 Explicit `sourcePaths` registered outside `materials/` use G1. Missing sources create `workflow-missing-source` blockers. A changed artifact creates or refreshes `workflow-artifact-changed` and invalidates its gate plus all downstream gates.
 
-- [ ] **Step 5: Run artifact tests**
+- [x] **Step 5: Run artifact tests**
 
 Run: `python -m unittest tests.test_workflow.ArtifactReconciliationTests -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add course_toolkit/workflow.py tests/test_workflow.py

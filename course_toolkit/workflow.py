@@ -1,8 +1,13 @@
+import hashlib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from course_toolkit.issues import CourseProductionIssue
+from course_toolkit.issues import (
+    CourseProductionIssue,
+    IssueStore,
+    make_registered_issue,
+)
 from course_toolkit.jsonio import load_json, write_json_atomic
 
 
@@ -59,6 +64,35 @@ GATES = (
 
 GATE_BY_ID = {gate.id: gate for gate in GATES}
 GATE_INDEX = {gate.id: index for index, gate in enumerate(GATES)}
+
+
+@dataclass(frozen=True)
+class ArtifactRule:
+    path: str
+    gate_id: str
+
+
+ARTIFACT_GATE_RULES = (
+    ArtifactRule("materials/", "G1"),
+    ArtifactRule(".course-work/course-brief.json", "G2"),
+    ArtifactRule(".course-work/course-blueprint.json", "G3"),
+    ArtifactRule(".course-work/media/", "G4"),
+    ArtifactRule("course/course.json", "G5"),
+    ArtifactRule("course/assets/", "G6"),
+    ArtifactRule(".course-work/preview-manifest.json", "G7"),
+    ArtifactRule(".course-work/annotations.json", "G7"),
+    ArtifactRule(".course-work/review-report.json", "G8"),
+    ArtifactRule(".course-work/asset-manifest.json", "G9"),
+    ArtifactRule(".course-work/publish-state.json", "G9"),
+)
+
+
+@dataclass(frozen=True)
+class ArtifactReconciliationResult:
+    changed_paths: Tuple[str, ...]
+    missing_source_paths: Tuple[str, ...]
+    earliest_invalidated_gate_id: Optional[str]
+    active_issues: Tuple[CourseProductionIssue, ...]
 
 
 class WorkflowError(ValueError):
@@ -299,3 +333,163 @@ def workflow_summary(session: CourseProductionSession) -> dict:
         "pendingAnnotations": list(session.pending_annotation_ids),
         "nextAction": next_action,
     }
+
+
+def _hash_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def hash_path(path: Path) -> str:
+    if path.is_symlink():
+        raise ValueError(f"Cannot hash symlink: {path}")
+    if not path.exists():
+        raise ValueError(f"Cannot hash missing path: {path}")
+    if path.is_file():
+        return _hash_file(path)
+    if not path.is_dir():
+        raise ValueError(f"Cannot hash unsupported path: {path}")
+
+    entries = []
+    for candidate in path.rglob("*"):
+        if candidate.is_symlink():
+            raise ValueError(f"Cannot hash tree containing symlink: {candidate}")
+        if not candidate.is_file() or candidate.suffix.lower() == ".zip":
+            continue
+        relative = candidate.relative_to(path).as_posix()
+        entries.append((relative, _hash_file(candidate)))
+    digest = hashlib.sha256()
+    for relative, file_hash in sorted(entries):
+        digest.update(relative.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(file_hash.encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _safe_course_path(root: Path, relative_path: str) -> Path:
+    relative = Path(relative_path)
+    if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+        raise WorkflowError(
+            f"Course source must be a safe relative path: {relative_path}"
+        )
+    candidate = root
+    for part in relative.parts:
+        candidate = candidate / part
+        if candidate.is_symlink():
+            raise WorkflowError(
+                f"Course source must not traverse a symlink: {relative_path}"
+            )
+    try:
+        candidate.resolve().relative_to(root.resolve())
+    except ValueError as exc:
+        raise WorkflowError(
+            f"Course source must be a safe relative path: {relative_path}"
+        ) from exc
+    return candidate
+
+
+def _resolve_recurring_issue(
+    store: IssueStore,
+    candidate: CourseProductionIssue,
+    now: str,
+) -> None:
+    existing = next(
+        (
+            issue
+            for issue in store.all()
+            if issue.fingerprint == candidate.fingerprint and issue.status == "active"
+        ),
+        None,
+    )
+    if existing is not None:
+        store.resolve(existing.id, now)
+
+
+def reconcile_artifacts(
+    root: Path,
+    session: CourseProductionSession,
+    now: str,
+) -> ArtifactReconciliationResult:
+    root = root.resolve()
+    issue_store = IssueStore.load(root / ".course-work" / "issues.json")
+    changed_paths: List[str] = []
+    missing_sources: List[str] = []
+    changed_gate_ids: List[str] = []
+
+    for source_path in session.source_paths:
+        source = _safe_course_path(root, source_path)
+        missing_issue = make_registered_issue(
+            code="workflow-missing-source",
+            source="workflow",
+            message=f"Required source is missing: {source_path}",
+            gate_id="G1",
+            seen_at=now,
+            target={"path": source_path},
+            remediation="Restore the source file or explicitly remove it from intake.",
+        )
+        if not source.exists():
+            missing_sources.append(source_path)
+            issue_store.upsert(missing_issue)
+        else:
+            _resolve_recurring_issue(issue_store, missing_issue, now)
+
+    rules = list(ARTIFACT_GATE_RULES)
+    for source_path in session.source_paths:
+        normalized = Path(source_path).as_posix()
+        if normalized != "materials" and not normalized.startswith("materials/"):
+            rules.append(ArtifactRule(normalized, "G1"))
+
+    seen_rule_paths = set()
+    for rule in rules:
+        if rule.path in seen_rule_paths:
+            continue
+        seen_rule_paths.add(rule.path)
+        artifact = _safe_course_path(root, rule.path.rstrip("/"))
+        previous_hash = session.artifact_hashes.get(rule.path)
+        current_hash = hash_path(artifact) if artifact.exists() else None
+        if previous_hash is None:
+            if current_hash is not None:
+                session.artifact_hashes[rule.path] = current_hash
+            continue
+        if current_hash == previous_hash:
+            continue
+
+        changed_paths.append(rule.path)
+        changed_gate_ids.append(rule.gate_id)
+        issue_store.upsert(
+            make_registered_issue(
+                code="workflow-artifact-changed",
+                source="workflow",
+                message=f"Tracked course artifact changed: {rule.path}",
+                gate_id=rule.gate_id,
+                seen_at=now,
+                target={"path": rule.path},
+                remediation=f"Re-run workflow checks from {rule.gate_id}.",
+            )
+        )
+        if current_hash is None:
+            session.artifact_hashes.pop(rule.path, None)
+        else:
+            session.artifact_hashes[rule.path] = current_hash
+
+    earliest_gate_id = None
+    if changed_gate_ids:
+        earliest_gate_id = min(changed_gate_ids, key=GATE_INDEX.__getitem__)
+        invalidate_from_gate(session, earliest_gate_id, now)
+
+    issue_store.save()
+    active_issues = tuple(
+        issue for issue in issue_store.all() if issue.status == "active"
+    )
+    session.active_issue_ids = [issue.id for issue in active_issues]
+    session.updated_at = now
+    return ArtifactReconciliationResult(
+        changed_paths=tuple(changed_paths),
+        missing_source_paths=tuple(missing_sources),
+        earliest_invalidated_gate_id=earliest_gate_id,
+        active_issues=active_issues,
+    )
