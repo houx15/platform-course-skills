@@ -32,6 +32,19 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
     "workflow-missing-source": IssuePolicy(
         "workflow-missing-source", "blocker", "G1"
     ),
+    "blueprint-invalid": IssuePolicy("blueprint-invalid", "blocker", "G3"),
+    "blueprint-unconfirmed": IssuePolicy(
+        "blueprint-unconfirmed", "decision-required", "G3"
+    ),
+    "legacy-migration-confirmation-required": IssuePolicy(
+        "legacy-migration-confirmation-required", "decision-required", "G3"
+    ),
+    "legacy-missing-objective-alignment": IssuePolicy(
+        "legacy-missing-objective-alignment", "blocker", "G3"
+    ),
+    "course-contract-invalid": IssuePolicy(
+        "course-contract-invalid", "blocker", "G5"
+    ),
 }
 
 

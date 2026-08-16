@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "1.1",
+  "course": {
+    "id": "legacy-sample",
+    "title": "Legacy Sample Course",
+    "language": "en",
+    "introduction": {
+      "overview": "Practice checking a claim against its source.",
+      "objectives": [
+        {"id": "check-source", "text": "Check a claim against source evidence."}
+      ],
+      "keyPoints": ["Find the source", "Check the method"]
+    },
+    "parts": [
+      {
+        "id": "part-source-check",
+        "title": "Check the Source",
+        "pieces": [
+          {
+            "id": "piece-source-check",
+            "title": "Inspect and Answer",
+            "blocks": [
+              {"id": "legacy-text", "type": "text", "content": "Read the evidence."},
+              {
+                "id": "legacy-images",
+                "type": "images",
+                "items": [
+                  {"source": "assets/images/a.png", "alt": "Chart A"},
+                  {"source": "assets/images/b.png", "alt": "Chart B"}
+                ]
+              },
+              {
+                "id": "legacy-pdf",
+                "type": "pdf",
+                "title": "Source paper",
+                "source": "assets/pdfs/source.pdf"
+              },
+              {
+                "id": "legacy-video",
+                "type": "video",
+                "blocking": true,
+                "source": "assets/videos/case.mp4",
+                "interaction": {
+                  "data": "interactions/video/case.json",
+                  "document": "interactions/video/case.md"
+                },
+                "completion": {"rule": "video-ended"}
+              },
+              {
+                "id": "legacy-html",
+                "type": "interactiveHtml",
+                "blocking": true,
+                "source": "interactions/html/check.html",
+                "completion": {"rule": "interaction-complete"}
+              },
+              {
+                "id": "legacy-reflection",
+                "type": "fillBlank",
+                "blocking": true,
+                "prompt": "What would you verify?",
+                "assessment": {"mode": "reflection", "rubric": "Name a source check."}
+              },
+              {
+                "id": "legacy-question",
+                "type": "singleChoice",
+                "blocking": true,
+                "prompt": "Which check comes first?",
+                "options": [
+                  {"id": "confidence", "label": "Confidence"},
+                  {"id": "source", "label": "Source"}
+                ],
+                "assessment": {
+                  "mode": "graded",
+                  "correctOptionId": "source",
+                  "correctFeedback": "Correct.",
+                  "incorrectFeedback": "Try the source first."
+                },
+                "completion": {"rule": "submit-correct", "maxAttempts": 3}
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "conclusion": {
+      "summary": "You practiced a source check.",
+      "takeaways": ["Find the source", "Check the method"],
+      "transferApplications": ["Checking a news claim"]
+    }
+  }
+}

@@ -230,7 +230,7 @@ git commit -m "feat: define course blueprint contract"
 
 **Files:** legacy importer, CLI, fixtures, tests, issue policies.
 
-- [ ] **Step 1: Write failing legacy-import tests**
+- [x] **Step 1: Write failing legacy-import tests**
 
 Cover:
 
@@ -245,11 +245,11 @@ Cover:
 - Imported Blueprint is `teacherConfirmed: false` even if the legacy storyboard was confirmed, because new 2.0 layout/workflow/time assumptions need a new decision.
 - Identical inputs produce byte-identical Blueprint JSON.
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python -m unittest tests.test_legacy_course_import -v`
 
-- [ ] **Step 3: Implement deterministic block and course conversion**
+- [x] **Step 3: Implement deterministic block and course conversion**
 
 Default migration policies are explicit and non-semantic:
 
@@ -263,7 +263,7 @@ Default migration policies are explicit and non-semantic:
 
 Do not generate a missing evidence block, answer, rubric, source file, narration audio, or media duration.
 
-- [ ] **Step 4: Implement import CLI**
+- [x] **Step 4: Implement import CLI**
 
 ```text
 python scripts/import-legacy-course.py LEGACY_COURSE STORYBOARD OUTPUT --json
@@ -271,15 +271,15 @@ python scripts/import-legacy-course.py LEGACY_COURSE STORYBOARD OUTPUT --json
 
 Refuse overwrite unless `--replace-unconfirmed` is supplied and the existing output is itself unconfirmed. Never overwrite a confirmed Blueprint.
 
-- [ ] **Step 5: Register compiler/migration issue policies**
+- [x] **Step 5: Register compiler/migration issue policies**
 
 Add fixed codes for invalid Blueprint, migration confirmation required, missing objective alignment, and shared-contract failure. Unknown codes remain forbidden.
 
-- [ ] **Step 6: Run tests**
+- [x] **Step 6: Run tests**
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add course_toolkit/legacy_course_import.py scripts/import-legacy-course.py course_toolkit/issue_codes.py tests/test_issue_store.py tests/test_legacy_course_import.py tests/fixtures/course-blueprint/legacy-course.json tests/fixtures/course-blueprint/legacy-storyboard.json

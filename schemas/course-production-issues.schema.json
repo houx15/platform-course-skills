@@ -44,7 +44,12 @@
             "workflow-active-blocker",
             "workflow-pending-decision",
             "workflow-artifact-changed",
-            "workflow-missing-source"
+            "workflow-missing-source",
+            "blueprint-invalid",
+            "blueprint-unconfirmed",
+            "legacy-migration-confirmation-required",
+            "legacy-missing-objective-alignment",
+            "course-contract-invalid"
           ]
         },
         "severity": {

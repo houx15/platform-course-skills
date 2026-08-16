@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "1.0",
+  "teacherConfirmed": true,
+  "courseFrame": {
+    "teacherConfirmed": true,
+    "introduction": {},
+    "conclusion": {},
+    "sourceIds": ["source-course"],
+    "objectiveAlignment": [
+      {
+        "objectiveId": "check-source",
+        "partIds": ["part-source-check"],
+        "evidenceBlockIds": ["legacy-question", "legacy-reflection"]
+      }
+    ],
+    "pendingConfirmations": []
+  },
+  "summary": {"partCount": 1, "pieceCount": 1},
+  "parts": [
+    {
+      "id": "part-source-check",
+      "title": "Check the Source",
+      "stageGoal": "Apply the source check.",
+      "pieces": [
+        {
+          "id": "piece-source-check",
+          "title": "Inspect and Answer",
+          "studentSees": "Evidence and checks",
+          "teachingFocus": "Source checking",
+          "modalities": ["text", "images", "pdf", "video", "interactiveHtml", "fillBlank", "singleChoice"],
+          "studentAction": "Inspect and answer",
+          "completion": "Complete the blocking activities",
+          "sourceIds": ["source-piece"],
+          "assetNeeds": [],
+          "pendingConfirmations": []
+        }
+      ]
+    }
+  ]
+}

@@ -20,6 +20,12 @@ class IssuePolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Unknown issue code"):
             get_issue_policy("invented-by-a-skill")
 
+    def test_unconfirmed_blueprint_is_a_g3_teacher_decision(self):
+        policy = get_issue_policy("blueprint-unconfirmed")
+
+        self.assertEqual(policy.severity, "decision-required")
+        self.assertEqual(policy.default_gate_id, "G3")
+
 
 class IssueStoreTests(unittest.TestCase):
     def setUp(self):
