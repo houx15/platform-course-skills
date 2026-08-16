@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-asset-manifest.schema.json",
+  "title": "Course publication asset manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "courseLocalId", "courseId", "courseDefinitionHash", "validationReportHash", "assetSetHash", "entries", "localOnlyPaths"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "courseLocalId": {"$ref": "#/$defs/id"},
+    "courseId": {"$ref": "#/$defs/id"},
+    "courseDefinitionHash": {"$ref": "#/$defs/hash"},
+    "validationReportHash": {"$ref": "#/$defs/hash"},
+    "assetSetHash": {"$ref": "#/$defs/hash"},
+    "entries": {"type": "array", "items": {"$ref": "#/$defs/entry"}},
+    "localOnlyPaths": {"type": "array", "items": {"type": "string", "minLength": 1}, "uniqueItems": true}
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "remote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectKey", "uploadedSha256", "etag", "verifiedAt"],
+      "properties": {
+        "objectKey": {"type": "string", "minLength": 1},
+        "uploadedSha256": {"$ref": "#/$defs/hash"},
+        "etag": {"type": ["string", "null"]},
+        "verifiedAt": {"type": "string", "minLength": 1}
+      }
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sizeBytes", "extension", "mimeType", "objectKey", "sources", "roles", "runtimePaths", "state", "remote"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/hash"},
+        "sizeBytes": {"type": "integer", "minimum": 0},
+        "extension": {"type": "string"},
+        "mimeType": {"type": "string", "minLength": 1},
+        "objectKey": {"type": "string", "minLength": 1},
+        "sources": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "roles": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "runtimePaths": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}, "uniqueItems": true},
+        "state": {"enum": ["upload-required", "reusable"]},
+        "remote": {"anyOf": [{"$ref": "#/$defs/remote"}, {"type": "null"}]}
+      }
+    }
+  }
+}

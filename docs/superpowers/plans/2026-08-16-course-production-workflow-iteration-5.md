@@ -14,12 +14,12 @@
 
 **Files:** `course_toolkit/publication.py`, asset manifest schema, CLI/tests.
 
-- [ ] Build the local manifest only from a current successful G6 report and its exact referenced assets.
-- [ ] Group identical bytes once within the course namespace while retaining every relative path, consumer, role, size, extension/MIME, and SHA-256.
-- [ ] Derive deterministic course-scoped object keys from hash plus safe extension; never include credentials, signed URLs, or random IDs.
-- [ ] Preserve verified remote records only when uploaded hash/object key still match; changed files become upload-required and unchanged files remain reusable.
-- [ ] Exclude unreferenced files from upload and report them as local-only observations without deleting them.
-- [ ] Commit: `feat: build content addressed course asset manifests`.
+- [x] Build the local manifest only from a current successful G6 report and its exact referenced assets.
+- [x] Group identical bytes once within the course namespace while retaining every relative path, consumer, role, size, extension/MIME, and SHA-256.
+- [x] Derive deterministic course-scoped object keys from hash plus safe extension; never include credentials, signed URLs, or random IDs.
+- [x] Preserve verified remote records only when uploaded hash/object key still match; changed files become upload-required and unchanged files remain reusable.
+- [x] Exclude unreferenced files from upload and report them as local-only observations without deleting them.
+- [x] Commit: `feat: build content addressed course asset manifests`.
 
 ## Task 2: Define remote identity and discovery state
 

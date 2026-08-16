@@ -264,7 +264,12 @@ def build_full_package(root: Path):
     ):
         path = root / source
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(b"asset")
+        payload = (
+            b"shared fallback audio"
+            if source in {"assets/audio/open.mp3", "assets/audio/close.mp3"}
+            else source.encode("utf-8")
+        )
+        path.write_bytes(payload)
     write_test_pdf(root / "assets/pdfs/source.pdf")
     write_test_mp4(root / "assets/videos/case.mp4")
     captions = root / "assets/captions/case.en.vtt"
