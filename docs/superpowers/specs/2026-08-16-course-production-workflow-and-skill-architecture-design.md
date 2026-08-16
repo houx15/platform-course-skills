@@ -1,6 +1,6 @@
 # Course Production Workflow and Skill Architecture
 
-**Status:** Approved overall design; ready for implementation planning after user review
+**Status:** Approved overall design. Iteration 1 workflow foundations are implemented on `dev`; CourseDefinition 2.0 compilation, renderer preview, real annotations, OSS, and student-platform APIs remain later iterations.
 
 **Date:** 2026-08-16
 

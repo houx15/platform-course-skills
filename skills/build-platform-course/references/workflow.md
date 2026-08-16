@@ -1,79 +1,194 @@
-# Course-building state machine
+# Course production workflow
 
-Persist the current state in `.course-work/session.json`.
+This reference governs the persistent process behind `build-platform-course`. The director Skill is the only teacher-facing entry. Internal specialists and deterministic tools are implementation details and must not be presented as choices the teacher has to operate.
 
-## States
+## Non-negotiable rules
 
-### 1. `materials-intake`
+- Persist state in `.course-work/session.json`; do not reconstruct progress from conversation memory.
+- Restore and reconcile before any analysis or generation.
+- Follow the earliest incomplete or invalidated gate. G0–G10 cannot be skipped.
+- A file's existence is not evidence that a gate passed for the current hashes.
+- Blockers cannot be accepted or dismissed. Decisions wait for the teacher. Warnings follow the registered code policy.
+- All semantic changes require teacher confirmation. Never silently change learning purpose, source disposition, correct answers, rubrics, blocking rules, media behavior, or a substantive course structure.
+- Raw sources remain unchanged. Ignore ZIP files. Keep writes inside `course/`, `.course-work/`, and named generated views.
+- By policy, local completion never implies upload, POST, or publication.
 
-- Collect explicit input paths and preserve originals.
-- Invoke material extraction.
-- Persist `.course-work/materials-extracted.json`.
-- Surface unreadable inputs and conflicts.
-- Exit only after the material summary is confirmed.
+## Mandatory start and resume sequence
 
-### 2. `audience-classification`
+From the repository root, substitute the explicit course root for `ROOT`:
 
-- Classify every source item as `student-core`, `student-evidence`, `teacher-design`, `ai-system`, `reference`, or `proposed-exclusion`.
-- Present grouped non-student items and proposed exclusions.
-- Persist `.course-work/audience-classification.json`.
-- Exit only after teacher confirmation.
+```bash
+python scripts/course-workflow.py status ROOT --json
+```
 
-### 3. `media-intent`
+If the session does not exist, initialize it with a stable local identity and every explicit input path:
 
-- Present detected video and HTML candidates with evidence.
-- Ask explicitly about both categories when absent.
-- Present every detected 完整 PDF candidate separately from PDFs used only as authoring input.
-- Confirm the exact file and whether students locate, compare, verify, or simply consult it.
-- Record decisions.
-- Exit only when video, HTML, and detected full-document intent are explicit.
+```bash
+python scripts/course-workflow.py init ROOT \
+  --course-local-id COURSE_ID \
+  --source materials/index.md \
+  --json
+```
 
-### 4. `media-design`
+If the session exists, reconcile it before doing other work:
 
-- Invoke the relevant specialist for every accepted candidate.
-- Preserve provisional video semantic anchors.
-- Exit only after readable designs are confirmed. Provisional timing remains blocking in `unresolved.json`.
+```bash
+python scripts/course-workflow.py reconcile ROOT --json
+```
 
-### 5. `course-storyboard`
+Reconciliation hashes tracked artifacts, rejects unsafe relative paths and symlinks, ignores ZIP content in directory hashes, resolves returned sources, and invalidates only dependent gates. Present the restored phase, readable open issues, pending teacher decisions, and the next action. Do not show raw JSON or internal Skill names unless technical diagnostics were requested.
 
-- Draft the student-facing 课程开场 and conclusion from confirmed teacher intent and source evidence.
-- Add `courseFrame` with exact introduction/conclusion content, source IDs, pending confirmations, and one `objectiveAlignment` entry per objective.
-- Map every objective to real Part IDs and at least one real evidence-producing Block; static text, images, and PDF alone are not evidence.
-- Design Parts as learning stages and Pieces as complete student-facing teaching units.
-- Decide presentation modality from learning function; never default to text.
-- Record missing required PDFs in `assetNeeds` and as open unresolved items with `blocking: true`; never put a nonexistent placeholder path into the course.
-- Persist `.course-work/course-storyboard.json`.
-- Render `.course-work/course-storyboard.md` with the 课程首尾设计表 first, then counts and one row per Piece.
-- Exit only after the teacher confirms both tables and all required assets or open items are explicit.
+When a gate's checks genuinely pass, record it explicitly:
 
-### 6. `part-detail`
+```bash
+python scripts/course-workflow.py complete-gate ROOT G0 --json
+```
 
-- Work Part by Part using the confirmed storyboard.
-- Supply complete student content, meaningful exercises, answers/rubrics, feedback, and blocking behavior.
-- Record substantive AI suggestions and teacher confirmation.
-- Never copy authoring rationale into learner output.
+Use `set-status ROOT waiting-for-teacher --json` while a required decision is pending. Never use a status change to simulate gate completion.
 
-### 7. `generation`
+## Phases
 
-- Create a clean `course/`.
-- Write canonical `course.json` schema 1.1 and video JSON.
-- Render the fixed `开始学习` course-start action before Parts and conclusion report content after Parts.
-- Generate Markdown views.
-- Copy only referenced delivery assets. Preserve every PDF's original bytes under `assets/pdfs/`.
-- Never generate or include ZIP.
+The stable phases are:
 
-### 8. `review`
+1. `intake`
+2. `material-review`
+3. `course-brief`
+4. `course-design`
+5. `media-design`
+6. `compile`
+7. `validate`
+8. `preview`
+9. `revise`
+10. `final-review`
+11. `publish`
+12. `complete`
 
-- Invoke independent Part-level review.
-- Persist `review-report.json` and generated `review-report.md`.
-- Treat any failed Part dimension, open blocking item, unconfirmed substantive decision, or contract error as blocking.
-- Auto-fix only mechanical problems.
-- Return semantic issues to the storyboard, obtain confirmation, rebuild, and repeat the full review.
+Pauses and failures are statuses, not new phases. A revision returns to the earliest responsible gate and then moves forward again.
 
-## Resume rules
+## G0–G10 quality gates
 
-- Never repeat a confirmed question.
-- Hash or compare source files and reopen only affected decisions.
-- Do not mark an unresolved item resolved because output files exist.
-- Preserve every approved exclusion and substantive AI addition.
-- A changed storyboard invalidates the previous review report.
+### G0 — Workspace safety and identity
+
+Inputs: explicit course root, stable `courseLocalId`, and explicit source paths.
+
+Checks: all source paths are safe and relative; `.course-work` is not a symlink; ZIP is ignored; writes are bounded; no credential is stored in course files.
+
+Exit: the safe workspace and local identity are persisted.
+
+### G1 — Material inventory
+
+Inputs: original materials and extraction records.
+
+Checks: inventory every supported source; report missing, unreadable, duplicate, corrupt, or unsupported inputs; classify student-facing versus authoring-only material; invoke `analyze-course-materials` internally. Ask explicitly about video and independent HTML 即使材料没有提到 either one. Present every 完整 PDF candidate and confirm its exact file and learning purpose. A required missing document remains `blocking: true`; 不得用摘要替代全文.
+
+Exit: the teacher confirms the material summary, exclusions, video/HTML intent, and complete-document PDF use.
+
+### G2 — Course brief
+
+Inputs: confirmed material analysis and teacher decisions.
+
+Checks: record audience, prior knowledge, course purpose, objectives, estimated time, assessment intent, tone, and constraints. Do not manufacture meaning-changing choices.
+
+Exit: the teacher approves the brief and all required decisions are confirmed.
+
+### G3 — Course design
+
+Inputs: approved brief and source coverage.
+
+Checks: design the 课程开场, Parts, Pieces/Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Present the 课程首尾设计表, then one Part/Piece row per learning unit. Static text, images, or PDF alone do not prove objective attainment.
+
+Exit: the teacher confirms the complete design, including required assets and meaningful assessment behavior.
+
+### G4 — Media design
+
+Inputs: accepted video, HTML, PDF, image, and other asset needs.
+
+Checks: invoke `design-video-interactions` and `design-course-html` internally where required; preserve originals; confirm interaction semantics; record provisional timing or absent files as blockers.
+
+Exit: every complex-media design and source file is confirmed and technically checkable.
+
+### G5 — Compile
+
+Target architecture: compile approved `.course-work/course-blueprint.json` deterministically into CourseDefinition 2.0 and a source map. CourseDefinition 2.0 is generated output and is never directly hand edited.
+
+Current implementation boundary: the repository still generates legacy `schemaVersion: 1.1` from `course-storyboard.json`. Keep using the existing `course-contract.md` until the Iteration 2 compiler exists. Never claim that legacy output is CourseDefinition 2.0 or that G5's final architecture has been implemented.
+
+Exit today: the legacy course package is generated without unconfirmed content. Exit after Iteration 2: the compiler and source map succeed reproducibly.
+
+### G6 — Static and asset validation
+
+Inputs: generated course definition and all referenced local assets.
+
+Checks: contract, references, IDs, learning alignment, HTML bridge/report rules, video container/codecs/faststart/timing, PDF signature/completeness, and asset path safety. `review-platform-course` performs the existing independent validation. Static checks cannot claim real browser rendering.
+
+Exit: no blocker or unresolved teacher decision remains. Any warning follows its registered policy.
+
+### G7 — Preview review
+
+Inputs: the exact definition hash, asset hashes, renderer version, and preview manifest.
+
+Checks: use the same renderer implementation as the student platform; inspect layouts, media, navigation, workflow, iframe behavior, and completion events in a real browser. Collect structure-linked annotations outside the runtime definition.
+
+The real student renderer and annotation UI are not implemented in this repository yet. Do not complete G7 from `index.md`, static validation, or an invented preview. When the integration exists, the teacher must mark the current preview review complete and required annotations must be resolved.
+
+### G8 — Independent final review
+
+Inputs: original sources, decisions, Blueprint/storyboard, generated definition, assets, validation reports, and current preview evidence.
+
+Checks: re-read evidence independently; do not accept the director's or compiler's earlier conclusion as proof. Any open required annotation, stale preview, unresolved semantic issue, or failed Part dimension blocks.
+
+Exit: the independent report is publishable for exactly the reviewed hashes.
+
+### G9 — Publication preflight
+
+Inputs: approved definition hash, asset manifest, remote identity/publish state, and G8 report.
+
+Checks: prepare a dry run showing create versus update, changed versus reused assets, remote revision expectations, and intended visibility. Require explicit publication approval for that exact plan. Do not infer approval from local course completion or a previous publication.
+
+Exit: the exact dry run is approved and still current. Real OSS and course API calls remain outside the current implementation.
+
+### G10 — Remote verification
+
+Inputs: results from the real publication adapter.
+
+Checks: upload only changed hashes; create or update the stable remote course identity; handle ambiguous retries without duplicate creates; read the remote course back; verify revision, definition hash, asset references, and publication status.
+
+G10 requires the real publication adapter. The local CLI intentionally refuses manual G10 completion. Exit only after the post-write read verifies the expected remote result.
+
+## Issues and decisions
+
+All tools use `.course-work/issues.json` and one versioned issue-code registry:
+
+- `blocker`: stops its gate and cannot be accepted or dismissed;
+- `decision-required`: waits for a recorded teacher answer;
+- `warning`: follows its fixed acknowledgement policy and never changes severity ad hoc;
+- `info`: records a non-blocking fact.
+
+`.course-work/decisions.json` stores each question with a context hash. A confirmed answer cannot be overwritten. If relevant context changes, invalidate the old decision and ask only the changed question. Never ask the teacher to restate confirmed material.
+
+## Targeted invalidation and revision
+
+- Changed raw material or an explicit external source invalidates G1 and downstream work.
+- Changed course brief invalidates G2 and downstream work.
+- Changed Blueprint/storyboard invalidates G3 and downstream work.
+- Changed media design invalidates G4 and downstream work.
+- Changed generated definition invalidates G5 and downstream work.
+- Changed delivery assets invalidate G6 and downstream work.
+- Changed renderer version or preview manifest invalidates G7 and downstream work.
+- Open or changed annotations invalidate G8 and G9; in short, annotations invalidate G8 and G9 until verified in a new preview.
+- Changed final review invalidates G8 and G9.
+- Changed asset manifest, remote identity, or publish state invalidates G9.
+
+For preview comments, classify each annotation as mechanical, semantic, or runtime bug. Mechanical changes may be applied with an audit record. Semantic changes require teacher confirmation. Runtime bugs remain blockers and must not be hidden by changing course content. After any applied comment, regenerate from authoring truth, validate, rebuild preview evidence, and rerun the independent review.
+
+## Teacher-facing reporting
+
+Tell the teacher:
+
+- what phase was restored;
+- what changed since the last confirmed gate;
+- which decisions only they can make;
+- which blockers or warnings exist in plain language;
+- what will happen next.
+
+Keep credentials, object-store keys, signed URLs, request payloads, raw stack traces, internal Skill routing, and generated JSON out of ordinary conversation. A request to build, check, revise, or preview authorizes local work only. Publication requires its separate dry run and explicit approval.

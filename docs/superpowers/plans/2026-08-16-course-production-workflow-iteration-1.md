@@ -489,7 +489,7 @@ git commit -m "feat: add course workflow CLI"
 - Modify: `tests/test_skill_packages.py`
 - Modify: `docs/superpowers/specs/2026-08-16-course-production-workflow-and-skill-architecture-design.md`
 
-- [ ] **Step 1: Write failing Skill contract tests**
+- [x] **Step 1: Write failing Skill contract tests**
 
 Require the visible Skill/reference to state:
 
@@ -503,17 +503,17 @@ Require the visible Skill/reference to state:
 - publication requires dry run and explicit approval;
 - no push, upload, or external mutation is inferred from local completion.
 
-- [ ] **Step 2: Run the test to verify failure**
+- [x] **Step 2: Run the test to verify failure**
 
 Run: `python -m unittest tests.test_skill_packages -v`
 
 Expected: new required phrases missing.
 
-- [ ] **Step 3: Rewrite the workflow reference**
+- [x] **Step 3: Rewrite the workflow reference**
 
 Document the 12 phases, G0–G10 inputs/exit conditions, resume/reconciliation commands, targeted invalidation, issue severities, and revision loop. Preserve the existing teacher-confirmation and original-material safety rules.
 
-- [ ] **Step 4: Update the director Skill**
+- [x] **Step 4: Update the director Skill**
 
 Make this the mandatory start:
 
@@ -526,13 +526,13 @@ Make this the mandatory start:
 
 Keep legacy schema 1.1 generation explicitly marked as the current implementation boundary until Iteration 2 replaces it; do not falsely claim the new compiler exists.
 
-- [ ] **Step 5: Run Skill tests**
+- [x] **Step 5: Run Skill tests**
 
 Run: `python -m unittest tests.test_skill_packages -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Run all Iteration 1 tests**
+- [x] **Step 6: Run all Iteration 1 tests**
 
 Run:
 
@@ -547,7 +547,7 @@ python -m unittest \
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/build-platform-course/SKILL.md skills/build-platform-course/references/workflow.md tests/test_skill_packages.py docs/superpowers/specs/2026-08-16-course-production-workflow-and-skill-architecture-design.md

@@ -39,6 +39,46 @@ class SkillPackageTests(unittest.TestCase):
     def test_build_platform_course(self):
         self.assert_skill("build-platform-course")
 
+    def test_build_platform_course_routes_all_work_through_persistent_gates(self):
+        skill_path = ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        workflow_path = (
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "workflow.md"
+        )
+        skill = skill_path.read_text(encoding="utf-8")
+        workflow = workflow_path.read_text(encoding="utf-8")
+        combined = f"{skill}\n{workflow}"
+
+        required = (
+            "only teacher-facing entry",
+            "status ROOT --json",
+            "reconcile ROOT --json",
+            "before any analysis or generation",
+            "G0–G10",
+            "cannot be skipped",
+            "earliest incomplete or invalidated gate",
+            "semantic changes require teacher confirmation",
+            "CourseDefinition 2.0",
+            "current implementation boundary",
+            "annotations invalidate G8 and G9",
+            "dry run",
+            "explicit publication approval",
+            "local completion never implies upload, POST, or publication",
+            "G10 requires the real publication adapter",
+        )
+        for phrase in required:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+        for gate_index in range(11):
+            with self.subTest(gate=f"G{gate_index}"):
+                self.assertIn(f"G{gate_index}", workflow)
+
+        self.assertNotIn("### 1. `materials-intake`", workflow)
+
     def test_pdf_rules_are_consistent_across_skill_references(self):
         required = {
             ROOT
