@@ -299,6 +299,12 @@ def set_phase_status(
         raise WorkflowError(f"Unknown workflow status: {status}")
     if status == "complete":
         raise WorkflowError("complete status may only be set by G10")
+    if status == "ready-to-publish" and "G8" not in session.completed_gate_ids:
+        raise WorkflowError("ready-to-publish status requires G8")
+    if status == "publishing" and "G9" not in session.completed_gate_ids:
+        raise WorkflowError("publishing status requires G9")
+    if session.status == "complete":
+        raise WorkflowError("A complete session is terminal until artifact reconciliation")
     if status == "failed" and failure is None:
         raise WorkflowError("failed status requires a failure record")
     if status != "failed" and failure is not None:

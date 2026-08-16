@@ -126,6 +126,14 @@ class WorkflowGateTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowError, "only be set by G10"):
             set_phase_status(session, "complete", NOW)
 
+    def test_publish_statuses_require_their_gates(self):
+        session = new_session("course-a", [], NOW)
+
+        with self.assertRaisesRegex(WorkflowError, "requires G8"):
+            set_phase_status(session, "ready-to-publish", NOW)
+        with self.assertRaisesRegex(WorkflowError, "requires G9"):
+            set_phase_status(session, "publishing", NOW)
+
     def test_load_rejects_noncontiguous_completed_gates(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

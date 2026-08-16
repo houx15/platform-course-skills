@@ -437,7 +437,7 @@ git commit -m "feat: invalidate stale course work"
 - Create: `scripts/course-workflow.py`
 - Create: `tests/test_workflow_cli.py`
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Use subprocess to cover:
 
@@ -451,13 +451,13 @@ course-workflow.py set-status ROOT waiting-for-teacher --json
 
 Assert stable exit codes: `0` success, `2` workflow/gate blocked, `3` tool/storage failure.
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `python -m unittest tests.test_workflow_cli -v`
 
 Expected: script missing.
 
-- [ ] **Step 3: Implement the CLI**
+- [x] **Step 3: Implement the CLI**
 
 The CLI must:
 
@@ -467,13 +467,13 @@ The CLI must:
 - write human-readable summaries without exposing internal stack traces;
 - never offer a command that skips prerequisites or force-accepts a blocker.
 
-- [ ] **Step 4: Run CLI tests**
+- [x] **Step 4: Run CLI tests**
 
 Run: `python -m unittest tests.test_workflow_cli -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add scripts/course-workflow.py tests/test_workflow_cli.py
