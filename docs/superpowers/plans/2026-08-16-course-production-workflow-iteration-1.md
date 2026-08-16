@@ -560,27 +560,27 @@ git commit -m "docs: route course building through workflow gates"
 
 - Modify: `docs/validation-report.md`
 
-- [ ] **Step 1: Run the entire existing repository test suite**
+- [x] **Step 1: Run the entire existing repository test suite**
 
 Run: `python -m unittest discover -s tests -q`
 
 Expected: all tests pass with no failures or errors.
 
-- [ ] **Step 2: Run the existing valid fixture validator**
+- [x] **Step 2: Run the existing valid fixture validator**
 
 Run: `python scripts/validate-course.py tests/fixtures/valid-course --json`
 
 Expected: current legacy fixture remains `uploadable`; Iteration 1 must not regress existing course validation.
 
-- [ ] **Step 3: Exercise workflow resume manually through the CLI**
+- [x] **Step 3: Exercise workflow resume manually through the CLI**
 
 Use a temporary course root, initialize with one source, complete G0, alter the source, reconcile, and confirm the output returns to the earliest affected phase with an artifact/source issue.
 
-- [ ] **Step 4: Update the validation report**
+- [x] **Step 4: Update the validation report**
 
 Record the commands, counts, branch, commit range, implemented Iteration 1 boundaries, and the explicit remaining Iteration 2–5 work. Do not claim CourseDefinition 2.0, preview, OSS, or API integration exists.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/validation-report.md

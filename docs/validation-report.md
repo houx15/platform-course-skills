@@ -2,6 +2,45 @@
 
 日期：2026-08-12
 
+## 2026-08-16：课程生产 Workflow 迭代一
+
+### 本轮范围
+
+- 分支：`dev`
+- 实施提交范围：`66e707c` 至 `c2082b2`
+- 已实现：原子 JSON 写入、版本化问题代码表、问题存储、教师决定存储、G0–G10 会话状态机、路径/哈希核对、定向失效、统一 CLI，以及 `build-platform-course` 单一教师入口的恢复与门禁规则。
+- 所有工作均为本地操作；本轮没有 push、OSS 上传、课程 POST 或其他外部修改。
+
+### 自动验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `python -m unittest discover -s tests -q` | 199 项通过，0 failure，0 error |
+| `python scripts/validate-course.py tests/fixtures/valid-course --json` | `uploadable`；0 issue，0 warning |
+| 新增 Workflow/issue/decision/CLI/Skill 聚焦测试 | 52 项通过 |
+| 三份新增 JSON Schema 语法检查 | `python -m json.tool` 通过 |
+
+### 手工恢复与失效演练
+
+在临时课程根中执行：
+
+1. `init` 注册稳定的 `courseLocalId` 和 `materials/source.md`；
+2. `complete-gate ... G0` 后进入 `material-review`；
+3. 用不同内容替换已登记材料；
+4. `reconcile` 检测到 `materials/` 哈希变化，保持 G0，返回 G1 对应的 `material-review`；
+5. 生成 `workflow-artifact-changed` warning，`gateId` 为 G1，下一动作为 `complete G1`。
+
+这证明恢复过程不会把材料变化误判成已完成，也不会无条件重启到 G0。
+
+### 明确边界
+
+- 当前生成链仍是 legacy `schemaVersion: 1.1`。`.course-work/course-blueprint.json`、CourseDefinition 2.0 编译器和 runtime source map 属于迭代二，尚未实现。
+- G0–G10 内核目前验证顺序、活动 blocker 和待确认决定。各 gate 的完整确定性证据适配器会随编译、增强校验、预览、批注和发布迭代接入；现阶段不得仅因 CLI 可以顺序记录 gate 就声称对应外部能力已完成。
+- 尚未实现学生端 renderer 预览、真实浏览器验证、批注 UI 或 TTS。静态 `index.md` 不能证明 G7 通过；本地 CLI 也不能手工完成 G10。
+- 尚未实现 CourseDefinition 2.0 的增强格式/完整性检查、HTML runtime bridge 全量检查、预览批注应用协议、asset manifest、publish state、OSS 去重上传或课程 create/update 接口。
+- G9 的 dry run、稳定远端身份、防重复创建、幂等重试和远端回读将在 mockable publication 迭代实现；真实 OSS 与学生端 API 仍需后续适配器和凭证。
+- 本轮问题代码表只包含 Workflow 基础代码。编译、contract、asset、preview、review 与 publication 的专用代码会在对应迭代加入同一注册表。
+
 ## 设计覆盖
 
 | 设计要求 | 实现 | 自动验证 |
