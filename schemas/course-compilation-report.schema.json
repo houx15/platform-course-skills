@@ -11,6 +11,8 @@
     "blueprintHash",
     "courseDefinitionHash",
     "sourceMapHash",
+    "compilerHash",
+    "contractSnapshotHash",
     "assetPaths",
     "contractSnapshot",
     "issues"
@@ -22,6 +24,8 @@
     "blueprintHash": {"$ref": "#/$defs/hash"},
     "courseDefinitionHash": {"$ref": "#/$defs/hash"},
     "sourceMapHash": {"$ref": "#/$defs/hash"},
+    "compilerHash": {"$ref": "#/$defs/sha256"},
+    "contractSnapshotHash": {"$ref": "#/$defs/sha256"},
     "assetPaths": {
       "type": "array",
       "items": {"type": "string", "minLength": 1},
@@ -40,6 +44,10 @@
     "issues": {"type": "array", "maxItems": 0}
   },
   "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
     "hash": {
       "type": "string",
       "pattern": "^[a-f0-9]{40}$|^[a-f0-9]{64}$"

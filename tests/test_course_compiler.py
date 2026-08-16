@@ -112,6 +112,8 @@ class CourseCompilerTests(unittest.TestCase):
             result.report["contractSnapshot"]["upstreamCommit"],
             "df36a8ecd1b30f28c27789fcf02e898b5bee6e21",
         )
+        self.assertEqual(len(result.report["compilerHash"]), 64)
+        self.assertEqual(len(result.report["contractSnapshotHash"]), 64)
 
     def test_unconfirmed_blueprint_cannot_compile(self):
         data = approved_blueprint()

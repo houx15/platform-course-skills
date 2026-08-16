@@ -8,6 +8,12 @@ from course_toolkit.issues import (
     IssueStore,
     make_registered_issue,
 )
+from course_toolkit.course_compiler import (
+    COMPILER_VERSION,
+    CONTRACT_SNAPSHOT,
+    canonical_json_hash,
+    validate_with_shared_contract,
+)
 from course_toolkit.jsonio import load_json, write_json_atomic
 
 
@@ -78,6 +84,8 @@ ARTIFACT_GATE_RULES = (
     ArtifactRule(".course-work/course-blueprint.json", "G3"),
     ArtifactRule(".course-work/media/", "G4"),
     ArtifactRule("course/course.json", "G5"),
+    ArtifactRule(".course-work/course-runtime-source-map.json", "G5"),
+    ArtifactRule(".course-work/compilation-report.json", "G5"),
     ArtifactRule("course/assets/", "G6"),
     ArtifactRule(".course-work/preview-manifest.json", "G7"),
     ArtifactRule(".course-work/annotations.json", "G7"),
@@ -85,6 +93,20 @@ ARTIFACT_GATE_RULES = (
     ArtifactRule(".course-work/asset-manifest.json", "G9"),
     ArtifactRule(".course-work/publish-state.json", "G9"),
 )
+
+G5_EVIDENCE_KEYS = (
+    ".course-work/course-blueprint.json",
+    "course/course.json",
+    ".course-work/course-runtime-source-map.json",
+    ".course-work/compilation-report.json",
+    "@toolkit/course-compiler",
+    "@toolkit/course-contract-snapshot",
+)
+
+TOOLKIT_G5_ARTIFACTS = {
+    "@toolkit/course-compiler": Path(__file__).resolve().parent / "course_compiler.py",
+    "@toolkit/course-contract-snapshot": CONTRACT_SNAPSHOT,
+}
 
 
 @dataclass(frozen=True)
@@ -222,6 +244,7 @@ def complete_gate(
     *,
     active_issues: Sequence[CourseProductionIssue] = (),
     pending_decision_ids: Sequence[str] = (),
+    gate_evidence: Optional[Dict[str, str]] = None,
 ) -> CourseProductionSession:
     gate = _gate(gate_id)
     if gate_id in session.completed_gate_ids and gate_id not in session.invalidated_gate_ids:
@@ -246,6 +269,14 @@ def complete_gate(
         raise WorkflowError(
             f"{gate_id} has a pending teacher decision: {effective_pending[0]}"
         )
+    if gate_id == "G5":
+        evidence = gate_evidence or {}
+        missing = [key for key in G5_EVIDENCE_KEYS if key not in evidence]
+        if missing:
+            raise WorkflowError(
+                f"G5 requires current compilation evidence: {missing[0]}"
+            )
+        session.artifact_hashes.update(evidence)
     if gate_id not in session.completed_gate_ids:
         session.completed_gate_ids.append(gate_id)
         session.completed_gate_ids.sort(key=GATE_INDEX.__getitem__)
@@ -376,6 +407,84 @@ def hash_path(path: Path) -> str:
     return digest.hexdigest()
 
 
+def verify_g5_compilation(root: Path) -> Dict[str, str]:
+    root = root.resolve()
+    relative_paths = {
+        ".course-work/course-blueprint.json": root
+        / ".course-work"
+        / "course-blueprint.json",
+        "course/course.json": root / "course" / "course.json",
+        ".course-work/course-runtime-source-map.json": root
+        / ".course-work"
+        / "course-runtime-source-map.json",
+        ".course-work/compilation-report.json": root
+        / ".course-work"
+        / "compilation-report.json",
+    }
+    for label, path in relative_paths.items():
+        if path.is_symlink() or not path.is_file():
+            raise WorkflowError(f"G5 compilation evidence is missing: {label}")
+
+    blueprint = load_json(relative_paths[".course-work/course-blueprint.json"])
+    document = load_json(relative_paths["course/course.json"])
+    source_map = load_json(
+        relative_paths[".course-work/course-runtime-source-map.json"]
+    )
+    report = load_json(relative_paths[".course-work/compilation-report.json"])
+    snapshot = load_json(CONTRACT_SNAPSHOT)
+
+    if report.get("status") != "compiled" or report.get("issues") != []:
+        raise WorkflowError("G5 compilation report is not successful")
+    if report.get("compilerVersion") != COMPILER_VERSION:
+        raise WorkflowError("G5 compilation report uses a stale compiler version")
+    if source_map.get("compilerVersion") != COMPILER_VERSION:
+        raise WorkflowError("G5 source map uses a stale compiler version")
+
+    expected_blueprint_hash = canonical_json_hash(blueprint)
+    if report.get("blueprintHash") != expected_blueprint_hash:
+        raise WorkflowError("G5 Blueprint hash does not match the compilation report")
+    if source_map.get("blueprintHash") != expected_blueprint_hash:
+        raise WorkflowError("G5 Blueprint hash does not match the source map")
+
+    expected_document_hash = canonical_json_hash(document)
+    if report.get("courseDefinitionHash") != expected_document_hash:
+        raise WorkflowError("G5 course definition hash does not match the compilation report")
+    if source_map.get("courseDefinitionHash") != expected_document_hash:
+        raise WorkflowError("G5 course definition hash does not match the source map")
+
+    if report.get("sourceMapHash") != canonical_json_hash(source_map):
+        raise WorkflowError("G5 source map hash does not match the compilation report")
+
+    compiler_hash = hash_path(TOOLKIT_G5_ARTIFACTS["@toolkit/course-compiler"])
+    snapshot_hash = hash_path(
+        TOOLKIT_G5_ARTIFACTS["@toolkit/course-contract-snapshot"]
+    )
+    if report.get("compilerHash") != compiler_hash:
+        raise WorkflowError("G5 compilation report was produced by different compiler code")
+    if report.get("contractSnapshotHash") != snapshot_hash:
+        raise WorkflowError("G5 compilation report uses a different contract snapshot")
+    expected_snapshot = {
+        "packageName": snapshot.get("packageName"),
+        "packageVersion": snapshot.get("packageVersion"),
+        "upstreamCommit": snapshot.get("upstreamCommit"),
+    }
+    if report.get("contractSnapshot") != expected_snapshot:
+        raise WorkflowError("G5 shared contract identity does not match the snapshot")
+
+    contract_result = validate_with_shared_contract(document)
+    if not contract_result.ok:
+        first = contract_result.issues[0] if contract_result.issues else None
+        detail = first.message if first else "unknown contract failure"
+        raise WorkflowError(f"G5 shared course contract rejected the definition: {detail}")
+    if report.get("assetPaths") != sorted(contract_result.asset_paths):
+        raise WorkflowError("G5 asset paths do not match the shared course contract")
+
+    evidence = {label: hash_path(path) for label, path in relative_paths.items()}
+    evidence["@toolkit/course-compiler"] = compiler_hash
+    evidence["@toolkit/course-contract-snapshot"] = snapshot_hash
+    return evidence
+
+
 def _safe_course_path(root: Path, relative_path: str) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -481,6 +590,28 @@ def reconcile_artifacts(
             session.artifact_hashes.pop(rule.path, None)
         else:
             session.artifact_hashes[rule.path] = current_hash
+
+    for artifact_id, artifact in TOOLKIT_G5_ARTIFACTS.items():
+        previous_hash = session.artifact_hashes.get(artifact_id)
+        if previous_hash is None:
+            continue
+        current_hash = hash_path(artifact)
+        if current_hash == previous_hash:
+            continue
+        changed_paths.append(artifact_id)
+        changed_gate_ids.append("G5")
+        issue_store.upsert(
+            make_registered_issue(
+                code="workflow-artifact-changed",
+                source="workflow",
+                message=f"Tracked course artifact changed: {artifact_id}",
+                gate_id="G5",
+                seen_at=now,
+                target={"path": artifact_id},
+                remediation="Recompile the CourseDefinition and re-run G5 checks.",
+            )
+        )
+        session.artifact_hashes[artifact_id] = current_hash
 
     earliest_gate_id = None
     if changed_gate_ids:

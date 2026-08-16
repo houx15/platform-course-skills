@@ -8,6 +8,14 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY_ROOT / "scripts" / "course-workflow.py"
+COMPILER = REPOSITORY_ROOT / "scripts" / "compile-course.py"
+APPROVED = (
+    REPOSITORY_ROOT
+    / "tests"
+    / "fixtures"
+    / "course-blueprint"
+    / "approved-blueprint.json"
+)
 
 
 class WorkflowCliTests(unittest.TestCase):
@@ -130,7 +138,18 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g10_cannot_be_manually_completed_without_publication_adapter(self):
         self.init()
+        blueprint = self.root / ".course-work" / "course-blueprint.json"
+        blueprint.write_bytes(APPROVED.read_bytes())
         for index in range(10):
+            if index == 5:
+                compilation = subprocess.run(
+                    [sys.executable, str(COMPILER), str(self.root), "--json"],
+                    cwd=REPOSITORY_ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(compilation.returncode, 0, compilation.stderr)
             completed = self.run_cli(
                 "complete-gate", self.root, f"G{index}", "--json"
             )
@@ -142,6 +161,21 @@ class WorkflowCliTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2)
         self.assertIn("publication adapter", payload["error"]["message"])
+
+    def test_g5_cannot_complete_without_current_compilation_outputs(self):
+        self.init()
+        for index in range(5):
+            completed = self.run_cli(
+                "complete-gate", self.root, f"G{index}", "--json"
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+        completed, payload = self.json_result(
+            "complete-gate", self.root, "G5", "--json"
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("compilation evidence is missing", payload["error"]["message"])
 
     def test_malformed_session_is_tool_error_without_traceback(self):
         work = self.root / ".course-work"

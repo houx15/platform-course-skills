@@ -374,7 +374,7 @@ git commit -m "feat: compile course blueprints to definition 2"
 
 **Files:** compile CLI, Workflow/CLI modules/tests.
 
-- [ ] **Step 1: Write failing CLI and Workflow tests**
+- [x] **Step 1: Write failing CLI and Workflow tests**
 
 Cover:
 
@@ -386,11 +386,11 @@ Cover:
 - changing the Blueprint invalidates G3+; changing compiler or contract snapshot invalidates G5+;
 - successful G5 completion stores current compiler/contract evidence in session artifact hashes.
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python -m unittest tests.test_course_compiler_cli tests.test_workflow tests.test_workflow_cli -v`
 
-- [ ] **Step 3: Implement the compile CLI**
+- [x] **Step 3: Implement the compile CLI**
 
 ```text
 python scripts/compile-course.py ROOT --json
@@ -398,15 +398,15 @@ python scripts/compile-course.py ROOT --json
 
 Read only `.course-work/course-blueprint.json`. Validate in memory first. Write all three outputs only after the shared validator passes. Use staged temporary files and recover the previous complete set if any final replacement fails.
 
-- [ ] **Step 4: Add deterministic G5 evidence checks**
+- [x] **Step 4: Add deterministic G5 evidence checks**
 
 Extend Workflow gate completion with a gate-evidence callback/registry. G5 evidence must verify hashes and successful shared-contract snapshot. Keep G0–G4 behavior unchanged; do not pretend G6/G7/G9 evidence exists yet.
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add scripts/compile-course.py tests/test_course_compiler_cli.py course_toolkit/workflow.py scripts/course-workflow.py tests/test_workflow.py tests/test_workflow_cli.py

@@ -6,6 +6,7 @@ from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.issues import make_registered_issue
 from course_toolkit.workflow import (
     ArtifactReconciliationResult,
+    G5_EVIDENCE_KEYS,
     WorkflowError,
     complete_gate,
     hash_path,
@@ -15,6 +16,7 @@ from course_toolkit.workflow import (
     save_session,
     set_phase_status,
     workflow_summary,
+    verify_g5_compilation,
 )
 
 
@@ -24,7 +26,12 @@ NOW = "2026-08-16T00:00:00Z"
 def fully_gated_through(gate_id):
     session = new_session("course-a", [], NOW)
     for index in range(int(gate_id[1:]) + 1):
-        complete_gate(session, f"G{index}", NOW)
+        evidence = (
+            {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
+            if index == 5
+            else None
+        )
+        complete_gate(session, f"G{index}", NOW, gate_evidence=evidence)
     return session
 
 
@@ -145,6 +152,12 @@ class WorkflowGateTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "contiguous"):
                 load_session(root)
 
+    def test_g5_requires_verified_compilation_evidence(self):
+        session = fully_gated_through("G4")
+
+        with self.assertRaisesRegex(WorkflowError, "compilation evidence"):
+            complete_gate(session, "G5", NOW)
+
 
 class ArtifactReconciliationTests(unittest.TestCase):
     def setUp(self):
@@ -184,6 +197,8 @@ class ArtifactReconciliationTests(unittest.TestCase):
         manifest = self.root / ".course-work" / "preview-manifest.json"
         write_json_atomic(manifest, {"rendererVersion": "1"})
         session = fully_gated_through("G8")
+        for key in G5_EVIDENCE_KEYS:
+            session.artifact_hashes.pop(key, None)
         session.artifact_hashes[
             ".course-work/preview-manifest.json"
         ] = hash_path(manifest)
@@ -246,6 +261,87 @@ class ArtifactReconciliationTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "symlink"):
             hash_path(materials)
+
+
+class CompilationEvidenceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        blueprint_source = (
+            Path(__file__).resolve().parent
+            / "fixtures"
+            / "course-blueprint"
+            / "approved-blueprint.json"
+        )
+        blueprint = load_json(blueprint_source)
+        write_json_atomic(
+            self.root / ".course-work" / "course-blueprint.json",
+            blueprint,
+        )
+        from course_toolkit.course_compiler import (
+            compile_blueprint,
+            write_compilation_outputs_atomic,
+        )
+
+        write_compilation_outputs_atomic(
+            self.root,
+            compile_blueprint(blueprint),
+        )
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def test_current_compilation_evidence_allows_g5_and_stores_hashes(self):
+        evidence = verify_g5_compilation(self.root)
+        session = fully_gated_through("G4")
+
+        complete_gate(session, "G5", NOW, gate_evidence=evidence)
+
+        self.assertIn("course/course.json", session.artifact_hashes)
+        self.assertIn("@toolkit/course-compiler", session.artifact_hashes)
+        self.assertIn("@toolkit/course-contract-snapshot", session.artifact_hashes)
+
+    def test_mismatched_definition_hash_blocks_g5(self):
+        course_path = self.root / "course" / "course.json"
+        course = load_json(course_path)
+        course["course"]["title"] = "Changed after compilation"
+        write_json_atomic(course_path, course)
+
+        with self.assertRaisesRegex(WorkflowError, "course definition hash"):
+            verify_g5_compilation(self.root)
+
+    def test_blueprint_change_invalidates_completed_g3_and_downstream(self):
+        session = fully_gated_through("G5")
+        session.artifact_hashes.update(verify_g5_compilation(self.root))
+        blueprint_path = self.root / ".course-work" / "course-blueprint.json"
+        blueprint = load_json(blueprint_path)
+        blueprint["course"]["title"] = "Changed blueprint"
+        write_json_atomic(blueprint_path, blueprint)
+
+        reconcile_artifacts(self.root, session, NOW)
+
+        self.assertEqual(session.completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertEqual(session.phase, "course-design")
+
+    def test_compiler_evidence_change_invalidates_g5_and_downstream(self):
+        session = fully_gated_through("G7")
+        session.artifact_hashes.update(verify_g5_compilation(self.root))
+        session.artifact_hashes["@toolkit/course-compiler"] = "0" * 64
+
+        result = reconcile_artifacts(self.root, session, NOW)
+
+        self.assertEqual(session.completed_gate_ids, ["G0", "G1", "G2", "G3", "G4"])
+        self.assertEqual(result.earliest_invalidated_gate_id, "G5")
+
+    def test_contract_snapshot_evidence_change_invalidates_g5_and_downstream(self):
+        session = fully_gated_through("G7")
+        session.artifact_hashes.update(verify_g5_compilation(self.root))
+        session.artifact_hashes["@toolkit/course-contract-snapshot"] = "0" * 64
+
+        result = reconcile_artifacts(self.root, session, NOW)
+
+        self.assertEqual(session.completed_gate_ids, ["G0", "G1", "G2", "G3", "G4"])
+        self.assertEqual(result.earliest_invalidated_gate_id, "G5")
 
 
 if __name__ == "__main__":

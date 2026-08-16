@@ -20,6 +20,7 @@ from course_toolkit.workflow import (
     reconcile_artifacts,
     save_session,
     set_phase_status,
+    verify_g5_compilation,
     workflow_summary,
 )
 
@@ -192,12 +193,16 @@ def execute(args: argparse.Namespace) -> tuple:
             )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
+        gate_evidence = (
+            verify_g5_compilation(root) if args.gate_id == "G5" else None
+        )
         complete_gate(
             session,
             args.gate_id,
             now,
             active_issues=reconciliation.active_issues,
             pending_decision_ids=session.pending_decision_ids,
+            gate_evidence=gate_evidence,
         )
         save_session(root, session)
     elif args.command == "set-status":

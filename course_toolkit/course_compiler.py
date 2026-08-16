@@ -1,5 +1,7 @@
 import hashlib
 import json
+import os
+import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
@@ -12,6 +14,7 @@ from course_toolkit.blueprint import (
     project_course_definition,
     validate_blueprint_authoring,
 )
+from course_toolkit.jsonio import dump_json
 
 
 COMPILER_VERSION = "1.0"
@@ -64,6 +67,14 @@ def canonical_json_hash(data: object) -> str:
         separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _authoring_issue(issue: BlueprintIssue) -> CompilationIssue:
@@ -208,6 +219,8 @@ def compile_blueprint(
         "blueprintHash": source_map["blueprintHash"],
         "courseDefinitionHash": source_map["courseDefinitionHash"],
         "sourceMapHash": canonical_json_hash(source_map),
+        "compilerHash": file_sha256(Path(__file__)),
+        "contractSnapshotHash": file_sha256(CONTRACT_SNAPSHOT),
         "assetPaths": sorted(contract_result.asset_paths),
         "contractSnapshot": {
             "packageName": snapshot["packageName"],
@@ -217,3 +230,71 @@ def compile_blueprint(
         "issues": [],
     }
     return CompilationResult(document=document, source_map=source_map, report=report)
+
+
+def write_compilation_outputs_atomic(
+    root: Path,
+    result: CompilationResult,
+    *,
+    replace: Callable[[Path, Path], None] = os.replace,
+) -> None:
+    root = root.resolve()
+    outputs = (
+        (root / "course" / "course.json", result.document),
+        (
+            root / ".course-work" / "course-runtime-source-map.json",
+            result.source_map,
+        ),
+        (root / ".course-work" / "compilation-report.json", result.report),
+    )
+    staged: List[Path] = []
+    backups = {}
+    originally_present = {
+        destination: destination.exists() for destination, _ in outputs
+    }
+    try:
+        for destination, payload in outputs:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if destination.parent.is_symlink() or destination.is_symlink():
+                raise ValueError(f"Compilation output must not be a symlink: {destination}")
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=f".{destination.name}.",
+                suffix=".tmp",
+                dir=destination.parent,
+            )
+            temporary = Path(temporary_name)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                stream.write(dump_json(payload))
+                stream.flush()
+                os.fsync(stream.fileno())
+            staged.append(temporary)
+
+        for destination, _ in outputs:
+            if destination.exists():
+                descriptor, backup_name = tempfile.mkstemp(
+                    prefix=f".{destination.name}.",
+                    suffix=".bak",
+                    dir=destination.parent,
+                )
+                os.close(descriptor)
+                backup = Path(backup_name)
+                shutil.copy2(destination, backup)
+                backups[destination] = backup
+
+        for (destination, _), temporary in zip(outputs, staged):
+            replace(temporary, destination)
+    except Exception:
+        for destination, _ in outputs:
+            backup = backups.get(destination)
+            if backup is not None and backup.exists():
+                os.replace(backup, destination)
+            elif not originally_present.get(destination, False) and destination.exists():
+                destination.unlink()
+        raise
+    finally:
+        for temporary in staged:
+            if temporary.exists():
+                temporary.unlink()
+        for backup in backups.values():
+            if backup.exists():
+                backup.unlink()
