@@ -59,9 +59,9 @@
 
 **Files:** Workflow/CLI, director/reference Skill, validation report, this plan, tests.
 
-- [ ] Define G9 evidence hashes for approved preflight, manifest, publish state, current G8 review, and publisher code; changes invalidate G9/downstream.
-- [ ] Prevent manual G9 when real current G8 evidence or adapter discovery is absent; retain the existing real-adapter-only G10 rule.
-- [ ] Keep fake-adapter execution available only as tests/library injection, never as a teacher-facing "published" command.
-- [ ] Update the director to present a dry run and request explicit approval only after G8, while clearly stating the live adapter is pending.
-- [ ] Run all Python tests, shared contract tests, typecheck, schema checks, contract sync, and Skill scenarios.
-- [ ] Commit: `docs: define safe publication adapter boundary`.
+- [x] Define G9 evidence hashes for approved preflight, manifest, publish state, current G8 review, and publisher code; changes invalidate G9/downstream.
+- [x] Prevent manual G9 when real current G8 evidence or adapter discovery is absent; retain the existing real-adapter-only G10 rule.
+- [x] Keep fake-adapter execution available only as tests/library injection, never as a teacher-facing "published" command.
+- [x] Update the director to present a dry run and request explicit approval only after G8, while clearly stating the live adapter is pending.
+- [x] Run all Python tests, shared contract tests, typecheck, schema checks, contract sync, and Skill scenarios.
+- [x] Commit: `docs: define safe publication adapter boundary`.

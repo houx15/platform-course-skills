@@ -188,19 +188,44 @@ Exit: the independent report is publishable for exactly the reviewed hashes.
 
 ### G9 — Publication preflight
 
-Inputs: approved definition hash, asset manifest, remote identity/publish state, and G8 report.
+Inputs: approved definition hash, current G6 validation, renderer-backed G8 review evidence, content-addressed asset manifest, stable remote identity/publish state, and an adapter-produced remote discovery snapshot.
 
-Checks: prepare a dry run showing create versus update, changed versus reused assets, remote revision expectations, and intended visibility. Require explicit publication approval for that exact plan. Do not infer approval from local course completion or a previous publication.
+Initialize publish state once; this command refuses to replace a different existing identity:
 
-Exit: the exact dry run is approved and still current. OSS and the real course POST remain outside the current implementation.
+```bash
+python scripts/prepare-publication.py init-state ROOT --slug SLUG --json
+```
+
+Build the manifest only from current successful G6 evidence:
+
+```bash
+python scripts/prepare-publication.py manifest ROOT --json
+```
+
+After the future trusted renderer/reviewer and course-API discovery adapters supply their evidence, prepare the exact dry run:
+
+```bash
+python scripts/prepare-publication.py preflight ROOT \
+  --discovery DISCOVERY_JSON \
+  --review-evidence REVIEW_EVIDENCE_JSON \
+  --intended-status preview \
+  --visibility private \
+  --json
+```
+
+The deterministic `.course-work/publication-preflight.json` shows create versus update, the stable remote identity and expected revision, changed versus reused hashes, intended status/visibility, and explicit limitations that no credential was read and no remote write occurred. Existing slugs are never silently adopted. Create is allowed only after explicit `not-found`; update is allowed only when local and discovered `courseLocalId`, remoteCourseId, and revision agree.
+
+Present this readable summary and obtain the exact teacher decision with a real rationale through `course-workflow.py confirm-decision`. Check it with `python scripts/prepare-publication.py status ROOT --json`. A changed definition, validation/review evidence, preview/review report, manifest, discovery snapshot, identity, revision, status, or visibility makes approval non-current.
+
+The local CLI cannot complete G9 even when the dry run is approved. G9 completion belongs to the future live adapter handoff, which must bind the preflight, manifest, publish state, G8 evidence, discovery snapshot, and publisher code hashes. OSS and the real course POST remain outside the current implementation.
 
 ### G10 — Remote verification
 
 Inputs: results from the real publication adapter.
 
-Checks: upload only changed hashes; create or update the stable remote course identity; handle ambiguous retries without duplicate creates; read the remote course back; verify revision, definition hash, asset references, and publication status.
+Checks: upload each unique changed hash once and persist every verified upload for resume; reuse verified unchanged hashes; create only in create mode; update only the same remoteCourseId under the expected revision; after an ambiguous response, discover and read before any retry, with no second blind create; read the remote course back; verify identity, revision, definition hash, asset references, status, and visibility before updating verified local state.
 
-G10 requires the real publication adapter. The local CLI intentionally refuses manual G10 completion. Exit only after the post-write read verifies the expected remote result.
+The mockable orchestration core and fake adapters exercise these rules, but there is no teacher-facing publication command. Fake adapters never complete G10. G10 requires an operation explicitly recorded as using the live publication adapter. The local CLI intentionally refuses manual G10 completion. Exit only after the post-write read verifies the expected remote result.
 
 ## Issues and decisions
 
@@ -224,7 +249,8 @@ All tools use `.course-work/issues.json` and one versioned issue-code registry:
 - Changed renderer version or preview manifest invalidates G7 and downstream work.
 - Open or changed annotations invalidate G8 and G9; in short, annotations invalidate G8 and G9 until verified in a new preview.
 - Changed final review invalidates G8 and G9.
-- Changed asset manifest, remote identity, or publish state invalidates G9.
+- Changed asset manifest, remote identity, publish state, renderer-backed review evidence, discovery snapshot, publication preflight, or publisher code invalidates G9.
+- Changed verified publication operation or its read-back state invalidates G10.
 
 For preview comments, classify each annotation as mechanical, semantic, or runtime bug. Mechanical changes may be applied with an audit record. Semantic changes require teacher confirmation. Runtime bugs remain blockers and must not be hidden by changing course content. After any applied comment, regenerate from authoring truth, validate, rebuild preview evidence, and rerun the independent review.
 

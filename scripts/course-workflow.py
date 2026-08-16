@@ -22,6 +22,7 @@ from course_toolkit.workflow import (
     set_phase_status,
     verify_g5_compilation,
     verify_g6_validation,
+    verify_g9_publication_preflight,
     workflow_summary,
 )
 
@@ -206,6 +207,12 @@ def execute(args: argparse.Namespace) -> tuple:
         if args.gate_id == "G10":
             raise WorkflowError(
                 "G10 requires remote verification by the publication adapter"
+            )
+        if args.gate_id == "G9":
+            verify_g9_publication_preflight(root)
+            raise WorkflowError(
+                "G9 requires handoff to the live publication adapter; "
+                "the local dry-run CLI cannot complete it"
             )
         if args.gate_id == "G7":
             raise WorkflowError(

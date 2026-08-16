@@ -1,6 +1,6 @@
 # Course Production Workflow and Skill Architecture
 
-**Status:** Approved overall design. Iteration 1 workflow foundations are implemented on `dev`; CourseDefinition 2.0 compilation, renderer preview, real annotations, OSS, and student-platform APIs remain later iterations.
+**Status:** Approved overall design. Iterations 1–5 are implemented on `dev`: persistent Workflow, CourseBlueprint/CourseDefinition 2.0 compilation, static and asset validation, structure-linked annotation revision, publication dry runs, and a mockable idempotent publisher. The shared renderer preview, real annotation UI, OSS adapter, and student-platform API adapter remain Iteration 6.
 
 **Date:** 2026-08-16
 
@@ -429,6 +429,8 @@ Specialist Skills must:
 | Preview comments | `.course-work/annotations.json` | Never enters CourseDefinition |
 | Asset upload knowledge | `.course-work/asset-manifest.json` | Local/remote hash and upload state |
 | Remote course identity | `.course-work/publish-state.json` | Prevents create/update ambiguity |
+| Exact publication approval | `.course-work/publication-preflight.json` | Hash-binds mode, identity, revision, assets, status, visibility, and review evidence |
+| Recoverable publication attempt | `.course-work/publication-operation.json` | Persists verified uploads, ambiguous-write recovery, and remote read-back; live mode is required for G10 |
 
 The previous authoring contract's schemaVersion 1.1 may be imported as source material, but it is not the final runtime truth. The new compiler emits only the shared student CourseDefinition 2.0 contract.
 
@@ -457,7 +459,11 @@ course-project/
     ├── preview-manifest.json
     ├── review-report.json
     ├── asset-manifest.json
-    └── publish-state.json
+    ├── publish-state.json
+    ├── publication-review-evidence.json
+    ├── remote-discovery.json
+    ├── publication-preflight.json
+    └── publication-operation.json
 ```
 
 Only `course/` is the uploadable course package. `.course-work/` is the resumable authoring record and must not be submitted as student content.
@@ -685,22 +691,25 @@ Static heuristics may warn about excessive Blocks, text length, unsupported aspe
 
 ```ts
 interface AssetManifestEntry {
-  relativePath: string
   sha256: string
-  size: number
+  sizeBytes: number
+  extension: string
   mimeType: string
-  consumers: Array<{ sliceId?: string; blockId?: string; field: string }>
-  validationStatus: "pending" | "valid" | "invalid"
+  objectKey: string
+  sources: string[]
+  roles: string[]
+  runtimePaths: string[]
+  state: "upload-required" | "reusable"
   remote?: {
     objectKey: string
     uploadedSha256: string
-    etag?: string
-    uploadedAt: string
+    etag: string | null
+    verifiedAt: string
   }
 }
 ```
 
-The manifest is rebuilt deterministically from the approved definition and local assets. Upload decisions compare the current local hash with the recorded verified remote hash.
+The manifest is rebuilt deterministically from current successful G6 evidence. One entry represents one unique hash inside the course namespace while `sources`, `roles`, and `runtimePaths` retain every consumer. Upload decisions compare the current local hash/object key with recorded verified remote state and adapter discovery.
 
 Rules:
 
@@ -709,7 +718,8 @@ Rules:
 - referenced asset without a valid local file: blocker;
 - unreferenced file: warning or cleanup suggestion, never silently uploaded;
 - remote upload success is recorded only after the response is verified;
-- a failed partial batch can resume from the manifest.
+- a failed partial batch resumes from `.course-work/publication-operation.json`, which records every verified upload before attempting the next one;
+- the manifest is updated to reusable remote state only after the remote course read-back succeeds.
 
 The first version guarantees deduplication within the same remote course namespace. Cross-course global deduplication is outside scope unless the platform later introduces a shared asset store.
 
@@ -733,13 +743,14 @@ interface PublishState {
 
 Before create/update:
 
-1. if `remoteCourseId` exists, load and verify that course;
-2. otherwise query by stable slug;
-3. if the slug exists, reconcile and update it rather than create another course;
-4. if local and remote identity disagree, stop with a blocker;
-5. only create when both local state and remote lookup prove no course exists;
-6. use a definition hash or API-supported idempotency key for retried operations;
-7. never mark success from an unverified timeout or ambiguous response.
+1. initialize `courseLocalId` and slug once; a different existing local identity is never overwritten;
+2. query the stable slug through the discovery adapter;
+3. if local state has no `remoteCourseId` but discovery finds a course, stop for explicit identity reconciliation; never silently adopt it;
+4. update only when discovered `courseLocalId`, `remoteCourseId`, and remote revision match verified local state;
+5. create only when local state has no remote ID and discovery explicitly proves `not-found`;
+6. use the exact preflight hash, publisher code hash, adapter mode, definition hash, and per-asset hash to derive stable idempotency keys;
+7. after an ambiguous response, discover and read before retrying; never issue a second blind create;
+8. never mark success until remote identity, revision, definition hash, asset references, status, and visibility pass read-back verification.
 
 Updating content must not create a new course. Publishing a new definition revision must not re-upload unchanged assets.
 
@@ -910,6 +921,18 @@ Deliver against mock APIs:
 - remote verification contract.
 
 Success: repeated publication updates one mock remote course and uploads only changed assets.
+
+**Implemented on `dev`.** The local core now includes:
+
+- a G6-bound content-addressed manifest with course-scoped object keys and per-hash reuse state;
+- strict `publish-state` and remote discovery contracts that permit create only after explicit `not-found` and update only when local and remote identity/revision agree;
+- a deterministic preflight bound to current G6, renderer-backed G8 evidence, discovery, identity, manifest, intended status, and visibility;
+- one exact teacher approval whose context changes invalidate approval immediately;
+- object-store and course-API protocols with stable idempotency keys, partial-upload resume, optimistic update revisions, ambiguous response discovery/read-back, and no blind second create;
+- post-write verification before `publish-state` changes;
+- an explicit `test` versus `live` adapter boundary: fake adapter operations cannot satisfy G10, and no teacher-facing execute command exists.
+
+The implementation does not read credentials or perform a real OSS/API request. The local Workflow CLI intentionally refuses manual G9 and G10 completion.
 
 ### Iteration 6 — Student renderer and API integration
 

@@ -1,6 +1,43 @@
 # 平台课程标准化工具包验证报告
 
-日期：2026-08-12
+日期：2026-08-16
+
+## 2026-08-16：发布预检与 mockable 幂等发布内核迭代
+
+### 本轮范围
+
+- 新增 G6 绑定的 content-addressed asset manifest。每门课程命名空间内按 SHA-256 合并相同字节，保留全部来源、runtime consumer、角色、MIME、大小和确定性 object key；未引用文件仅作为 local-only 观察项，ZIP 不进入上传计划。
+- 新增严格的 `publish-state` 与 remote discovery 合同。只有本地没有远端 ID 且 discovery 明确为 `not-found` 时才能 create；只有本地与远端 `courseLocalId`、remoteCourseId 和 revision 全部一致时才能 update。发现同 slug 课程时不会静默认领。
+- 新增 renderer-backed G8 review evidence 与确定性 `.course-work/publication-preflight.json`。它绑定当前 definition、G6、preview/review、manifest、discovery、远端 revision、status、visibility 和上传/复用决策。老师通过同一个 context-hashed decision 批准精确 dry run；任一依赖变化都会使 `status` 立即变为 stale/unapproved。
+- 新增 object-store/course-API Protocol 与可恢复 operation state。每个已验证上传立即记录；失败重试跳过已完成 hash；create/update 使用稳定 idempotency key；模糊响应先 discovery/read-back，再决定是否重试；update 失败不会降级成 create。
+- 远端写入只有在回读验证 identity、revision、definition hash、asset references、status 和 visibility 后，才更新 manifest 与 publish state。假适配器 operation 标记为 `test`，不能满足 G10；`live` 模式还要求已完成的 G9 与当前 publisher code hash。
+- G9/G10 已加入证据门与定向失效。当前本地 CLI 即使 dry run 已批准也拒绝手工完成 G9，G10 继续只接受未来真实适配器的已验证 operation。本轮没有读取凭证、上传 OSS、调用真实课程接口或 push。
+
+### 自动验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `python -m unittest discover -s tests -q` | 366 项通过，0 failure，0 error |
+| `pnpm --filter @mind-imprint/course-contract test` | 13 个 test file、56 项测试通过 |
+| `pnpm --filter @mind-imprint/course-contract typecheck` | 通过 |
+| `python -m compileall -q course_toolkit scripts tests` | 通过 |
+| 全部 `schemas/*.json` | `python -m json.tool` 语法通过；6 类实际 publication artifact 通过 Draft 2020-12 Schema 验证 |
+| contract sync | `mismatches: []`；当前学生端 HEAD `5624178c91c83d61709af306818c6b88756a2c65` |
+
+### 关键恢复与防重复演练
+
+1. 首次 create 上传唯一 hash 一次，API create 一次，回读通过后写入稳定 remoteCourseId；同一 operation 再执行不会重复上传或 create。
+2. 下一份批准 preflight 解析为 update，复用已验证素材，调用 update 同一个 remoteCourseId，不会创建第二门课。
+3. 多素材上传在第二个对象中断后，operation state 保留第一个已验证 hash；恢复时第一个 hash 不再上传。
+4. create 已在远端生效但响应超时时，publisher 通过 discovery 和 read 找到结果并完成验证，create 调用次数保持一次。
+5. 回读 definition hash 不一致时，publish state 仍无 remoteCourseId，operation 不进入 verified。
+6. 即使所有本地 dry-run 证据当前且已批准，`course-workflow.py complete-gate ... G9` 仍返回 live-adapter blocker；fake operation 被 G10 verifier 拒绝。
+
+### 当前明确边界
+
+- 本轮完成的是不依赖真实学生 renderer、OSS 和课程 POST 的全部发布侧准备：格式、manifest、身份、dry run、审批、协议、恢复状态、fake adapter 测试、G9/G10 证据边界。
+- G7/G8 的真实 preview/review evidence 仍须由学生端共享 renderer 与浏览器/批注集成生成；本地测试 fixture 只能验证协议，不能冒充真实预览。
+- 真实 OSS 与学生端课程接口收到后，只需实现现有 Protocol 并提供可信 discovery/read-back；不得新增绕过 preflight、G9 或 live G10 的教师入口。
 
 ## 2026-08-16：结构化批注与 Blueprint 修订迭代
 

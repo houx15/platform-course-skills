@@ -232,6 +232,44 @@ class PublicationPreflightTests(unittest.TestCase):
 
 
 class PublicationPreflightCliTests(unittest.TestCase):
+    def test_init_state_is_idempotent_and_refuses_identity_replacement(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            save_session(root, new_session("course-local-a", [], NOW))
+            command = [
+                sys.executable,
+                str(ROOT / "scripts/prepare-publication.py"),
+                "init-state",
+                str(root),
+                "--json",
+            ]
+            first = subprocess.run(
+                [*command, "--slug", "evidence-course"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            repeated = subprocess.run(
+                [*command, "--slug", "evidence-course"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            conflict = subprocess.run(
+                [*command, "--slug", "different-course"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(first.returncode, 0, first.stderr)
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertEqual(conflict.returncode, 2)
+        self.assertIn("refusing to replace", conflict.stdout)
+
     def test_cli_prepares_and_reports_local_status_without_network(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

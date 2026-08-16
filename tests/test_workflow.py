@@ -8,6 +8,8 @@ from course_toolkit.workflow import (
     ArtifactReconciliationResult,
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
+    G9_EVIDENCE_KEYS,
+    G10_EVIDENCE_KEYS,
     WorkflowError,
     complete_gate,
     hash_path,
@@ -38,6 +40,10 @@ def fully_gated_through(gate_id):
             evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
         elif index == 6:
             evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+        elif index == 9:
+            evidence = {key: "c" * 64 for key in G9_EVIDENCE_KEYS}
+        elif index == 10:
+            evidence = {key: "d" * 64 for key in G10_EVIDENCE_KEYS}
         else:
             evidence = None
         complete_gate(session, f"G{index}", NOW, gate_evidence=evidence)
@@ -182,6 +188,18 @@ class WorkflowGateTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowError, "validation evidence"):
             complete_gate(session, "G6", NOW)
 
+    def test_g9_requires_verified_publication_preflight_evidence(self):
+        session = fully_gated_through("G8")
+
+        with self.assertRaisesRegex(WorkflowError, "publication preflight evidence"):
+            complete_gate(session, "G9", NOW)
+
+    def test_g10_requires_verified_remote_publication_evidence(self):
+        session = fully_gated_through("G9")
+
+        with self.assertRaisesRegex(WorkflowError, "remote verification evidence"):
+            complete_gate(session, "G10", NOW)
+
 
 class ArtifactReconciliationTests(unittest.TestCase):
     def setUp(self):
@@ -249,6 +267,17 @@ class ArtifactReconciliationTests(unittest.TestCase):
         self.assertIsNone(result.earliest_invalidated_gate_id)
         self.assertIn("materials/", session.artifact_hashes)
         self.assertEqual(session.completed_gate_ids, ["G0", "G1", "G2"])
+
+    def test_publisher_code_change_invalidates_g9_only(self):
+        session = fully_gated_through("G9")
+        for key in (*G5_EVIDENCE_KEYS, *G6_EVIDENCE_KEYS):
+            session.artifact_hashes.pop(key, None)
+        session.artifact_hashes["@toolkit/course-publisher"] = "0" * 64
+
+        result = reconcile_artifacts(self.root, session, NOW)
+
+        self.assertEqual(session.completed_gate_ids[-1], "G8")
+        self.assertEqual(result.earliest_invalidated_gate_id, "G9")
 
     def test_missing_explicit_source_creates_blocker(self):
         session = new_session("course-a", ["sources/missing.md"], NOW)

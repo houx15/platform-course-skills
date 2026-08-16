@@ -4,11 +4,12 @@
   "title": "Recoverable course publication operation",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "operationId", "preflightHash", "mode", "phase", "writeAttempted", "verifiedAssets", "writeResult", "verifiedRemote"],
+  "required": ["schemaVersion", "operationId", "preflightHash", "adapterMode", "mode", "phase", "writeAttempted", "verifiedAssets", "writeResult", "verifiedRemote"],
   "properties": {
     "schemaVersion": {"const": "1.0"},
     "operationId": {"$ref": "#/$defs/hash"},
     "preflightHash": {"$ref": "#/$defs/hash"},
+    "adapterMode": {"enum": ["test", "live"]},
     "mode": {"enum": ["create", "update"]},
     "phase": {"enum": ["planned", "uploading", "submitting", "ambiguous", "verifying", "remote-verified", "verified"]},
     "writeAttempted": {"type": "boolean"},

@@ -117,6 +117,12 @@ class SkillPackageTests(unittest.TestCase):
             "browser preview",
             "OSS",
             "real course POST",
+            "prepare-publication.py init-state",
+            "publication-preflight.json",
+            "same remoteCourseId",
+            "no second blind create",
+            "local CLI cannot complete G9",
+            "fake adapters never complete G10",
         )
         for phrase in required:
             with self.subTest(phrase=phrase):

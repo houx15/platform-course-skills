@@ -248,6 +248,7 @@ class PublicationOperation:
     schema_version: str
     operation_id: str
     preflight_hash: str
+    adapter_mode: str
     mode: str
     phase: str
     write_attempted: bool
@@ -260,6 +261,8 @@ class PublicationOperation:
             raise ValueError("Unsupported publication operation schemaVersion")
         if self.mode not in {"create", "update"}:
             raise ValueError("Publication operation mode is invalid")
+        if self.adapter_mode not in {"test", "live"}:
+            raise ValueError("Publication adapter mode is invalid")
         if self.phase not in ACTIVE_PHASES.union({"verified"}):
             raise ValueError("Publication operation phase is invalid")
         _required_hash(self.operation_id, "operationId")
@@ -287,6 +290,7 @@ class PublicationOperation:
             "schemaVersion": self.schema_version,
             "operationId": self.operation_id,
             "preflightHash": self.preflight_hash,
+            "adapterMode": self.adapter_mode,
             "mode": self.mode,
             "phase": self.phase,
             "writeAttempted": self.write_attempted,
@@ -303,6 +307,7 @@ class PublicationOperation:
             schema_version=data["schemaVersion"],
             operation_id=data["operationId"],
             preflight_hash=data["preflightHash"],
+            adapter_mode=data["adapterMode"],
             mode=data["mode"],
             phase=data["phase"],
             write_attempted=data["writeAttempted"],
@@ -342,9 +347,18 @@ def _write_operation(root: Path, operation: PublicationOperation) -> None:
     write_json_atomic(root / PUBLICATION_OPERATION_RELATIVE_PATH, operation.as_dict())
 
 
-def _operation_id(preflight_hash: str) -> str:
+def publisher_code_hash() -> str:
+    return hash_path(Path(__file__).resolve())
+
+
+def _operation_id(preflight_hash: str, adapter_mode: str) -> str:
     return canonical_json_hash(
-        {"publisherVersion": PUBLISHER_VERSION, "preflightHash": preflight_hash}
+        {
+            "publisherVersion": PUBLISHER_VERSION,
+            "publisherCodeHash": publisher_code_hash(),
+            "preflightHash": preflight_hash,
+            "adapterMode": adapter_mode,
+        }
     )
 
 
@@ -535,6 +549,7 @@ def publish_course(
     object_store: ObjectStoreAdapter,
     course_api: CourseApiAdapter,
     now: str,
+    adapter_mode: str = "test",
 ) -> PublicationResult:
     root = root.resolve()
     preflight_path = root / PUBLICATION_PREFLIGHT_RELATIVE_PATH
@@ -542,7 +557,17 @@ def publish_course(
         raise PublicationBlocked("Publication preflight is missing")
     preflight = load_json(preflight_path)
     preflight_hash = canonical_json_hash(preflight)
-    operation_id = _operation_id(preflight_hash)
+    if adapter_mode not in {"test", "live"}:
+        raise ValueError("adapter_mode must be test or live")
+    if adapter_mode == "live":
+        from course_toolkit.workflow import load_session
+
+        session = load_session(root)
+        if "G9" not in session.completed_gate_ids:
+            raise PublicationBlocked("Live publication requires completed G9 preflight")
+        if session.artifact_hashes.get("@toolkit/course-publisher") != publisher_code_hash():
+            raise PublicationBlocked("Live publication publisher code differs from G9 evidence")
+    operation_id = _operation_id(preflight_hash, adapter_mode)
     operation_path = root / PUBLICATION_OPERATION_RELATIVE_PATH
     operation = None
     if operation_path.is_file() and not operation_path.is_symlink():
@@ -567,6 +592,7 @@ def publish_course(
             schema_version=PUBLICATION_OPERATION_SCHEMA_VERSION,
             operation_id=operation_id,
             preflight_hash=preflight_hash,
+            adapter_mode=adapter_mode,
             mode=preflight["mode"],
             phase="planned",
             write_attempted=False,

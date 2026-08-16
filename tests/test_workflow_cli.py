@@ -10,6 +10,7 @@ from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.workflow import (
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
+    G9_EVIDENCE_KEYS,
     complete_gate,
     load_session,
     save_session,
@@ -155,6 +156,8 @@ class WorkflowCliTests(unittest.TestCase):
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            elif index == 9:
+                evidence = {key: "c" * 64 for key in G9_EVIDENCE_KEYS}
             else:
                 evidence = None
             complete_gate(
@@ -171,6 +174,32 @@ class WorkflowCliTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2)
         self.assertIn("publication adapter", payload["error"]["message"])
+
+    def test_g9_cannot_be_manually_completed_without_current_evidence(self):
+        self.init()
+        session = load_session(self.root)
+        for index in range(9):
+            if index == 5:
+                evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
+            elif index == 6:
+                evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            else:
+                evidence = None
+            complete_gate(
+                session,
+                f"G{index}",
+                "2026-08-16T00:00:00Z",
+                gate_evidence=evidence,
+            )
+        save_session(self.root, session)
+
+        completed, payload = self.json_result(
+            "complete-gate", self.root, "G9", "--json"
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertNotIn("G9", payload["completedGates"])
+        self.assertIn("evidence is missing", payload["error"]["message"])
 
     def test_g7_cannot_be_manually_completed_without_renderer_preview(self):
         self.init()

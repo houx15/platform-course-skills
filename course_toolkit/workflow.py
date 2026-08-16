@@ -93,6 +93,10 @@ ARTIFACT_GATE_RULES = (
     ArtifactRule(".course-work/review-report.json", "G8"),
     ArtifactRule(".course-work/asset-manifest.json", "G9"),
     ArtifactRule(".course-work/publish-state.json", "G9"),
+    ArtifactRule(".course-work/publication-review-evidence.json", "G9"),
+    ArtifactRule(".course-work/remote-discovery.json", "G9"),
+    ArtifactRule(".course-work/publication-preflight.json", "G9"),
+    ArtifactRule(".course-work/publication-operation.json", "G10"),
 )
 
 G5_EVIDENCE_KEYS = (
@@ -111,9 +115,29 @@ G6_EVIDENCE_KEYS = (
 )
 G6_ASSET_EVIDENCE_PREFIX = "@course/asset:"
 
+G9_EVIDENCE_KEYS = (
+    ".course-work/publication-preflight.json",
+    ".course-work/asset-manifest.json",
+    ".course-work/publish-state.json",
+    ".course-work/publication-review-evidence.json",
+    ".course-work/remote-discovery.json",
+    "@toolkit/course-publisher",
+)
+
+G10_EVIDENCE_KEYS = (
+    ".course-work/publication-operation.json",
+    ".course-work/asset-manifest.json",
+    ".course-work/publish-state.json",
+    "@toolkit/course-publisher",
+)
+
 TOOLKIT_G5_ARTIFACTS = {
     "@toolkit/course-compiler": Path(__file__).resolve().parent / "course_compiler.py",
     "@toolkit/course-contract-snapshot": CONTRACT_SNAPSHOT,
+}
+
+TOOLKIT_G9_ARTIFACTS = {
+    "@toolkit/course-publisher": Path(__file__).resolve().parent / "publisher.py",
 }
 
 
@@ -291,6 +315,22 @@ def complete_gate(
         if missing:
             raise WorkflowError(
                 f"G6 requires current package validation evidence: {missing[0]}"
+            )
+        session.artifact_hashes.update(evidence)
+    if gate_id == "G9":
+        evidence = gate_evidence or {}
+        missing = [key for key in G9_EVIDENCE_KEYS if key not in evidence]
+        if missing:
+            raise WorkflowError(
+                f"G9 requires current publication preflight evidence: {missing[0]}"
+            )
+        session.artifact_hashes.update(evidence)
+    if gate_id == "G10":
+        evidence = gate_evidence or {}
+        missing = [key for key in G10_EVIDENCE_KEYS if key not in evidence]
+        if missing:
+            raise WorkflowError(
+                f"G10 requires current remote verification evidence: {missing[0]}"
             )
         session.artifact_hashes.update(evidence)
     if gate_id not in session.completed_gate_ids:
@@ -571,6 +611,125 @@ def verify_g6_validation(root: Path) -> Dict[str, str]:
     return evidence
 
 
+def verify_g9_publication_preflight(root: Path) -> Dict[str, str]:
+    from course_toolkit.publication import (
+        ASSET_MANIFEST_RELATIVE_PATH,
+        PUBLICATION_PREFLIGHT_RELATIVE_PATH,
+        PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH,
+        REMOTE_DISCOVERY_RELATIVE_PATH,
+        PUBLISH_STATE_RELATIVE_PATH,
+        PublicationReviewEvidence,
+        publication_preflight_status,
+    )
+    from course_toolkit.publisher import publisher_code_hash
+
+    root = root.resolve()
+    session = load_session(root)
+    if "G8" not in session.completed_gate_ids:
+        raise WorkflowError("G9 publication preflight requires completed G8")
+    verify_g6_validation(root)
+    status = publication_preflight_status(root)
+    if not status["approved"]:
+        reason = ", ".join(status.get("staleReasons", [])) or status["decisionStatus"]
+        raise WorkflowError(
+            f"G9 publication preflight is not approved and current: {reason}"
+        )
+    evidence_document = PublicationReviewEvidence.from_dict(
+        load_json(root / PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH)
+    )
+    if not evidence_document.renderer_backed or evidence_document.status != "approved":
+        raise WorkflowError("G9 requires renderer-backed G8 review evidence")
+    issue_store = IssueStore.load(root / ".course-work/issues.json")
+    blocker = next(
+        (
+            issue
+            for issue in issue_store.all()
+            if issue.status == "active"
+            and issue.severity == "blocker"
+            and GATE_INDEX[issue.gate_id] <= GATE_INDEX["G9"]
+        ),
+        None,
+    )
+    if blocker is not None:
+        raise WorkflowError(f"G9 has an active blocker: {blocker.code}")
+    paths = {
+        ".course-work/publication-preflight.json": root
+        / PUBLICATION_PREFLIGHT_RELATIVE_PATH,
+        ".course-work/asset-manifest.json": root / ASSET_MANIFEST_RELATIVE_PATH,
+        ".course-work/publish-state.json": root / PUBLISH_STATE_RELATIVE_PATH,
+        ".course-work/publication-review-evidence.json": root
+        / PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH,
+        ".course-work/remote-discovery.json": root / REMOTE_DISCOVERY_RELATIVE_PATH,
+    }
+    evidence = {label: hash_path(path) for label, path in paths.items()}
+    evidence["@toolkit/course-publisher"] = publisher_code_hash()
+    return evidence
+
+
+def verify_g10_remote_publication(root: Path) -> Dict[str, str]:
+    from course_toolkit.publication import (
+        ASSET_MANIFEST_RELATIVE_PATH,
+        PUBLICATION_PREFLIGHT_RELATIVE_PATH,
+        PUBLISH_STATE_RELATIVE_PATH,
+        load_publish_state,
+    )
+    from course_toolkit.publisher import (
+        PUBLICATION_OPERATION_RELATIVE_PATH,
+        load_publication_operation,
+        publisher_code_hash,
+    )
+
+    root = root.resolve()
+    operation = load_publication_operation(root)
+    if operation.adapter_mode != "live":
+        raise WorkflowError("G10 requires a live publication adapter operation")
+    if operation.phase != "verified" or operation.verified_remote is None:
+        raise WorkflowError("G10 requires verified remote read-back evidence")
+    state = load_publish_state(root)
+    remote = operation.verified_remote
+    preflight = load_json(root / PUBLICATION_PREFLIGHT_RELATIVE_PATH)
+    if canonical_json_hash(preflight) != operation.preflight_hash:
+        raise WorkflowError("G10 operation differs from the approved publication preflight")
+    if (
+        state.remote_course_id != remote.remote_course_id
+        or state.last_known_remote_revision != remote.revision
+        or state.last_uploaded_definition_hash != remote.definition_hash
+        or state.last_publish_operation_id != operation.operation_id
+        or state.remote_status != remote.status
+    ):
+        raise WorkflowError("G10 publish state differs from verified remote read-back")
+    if (
+        remote.status == "published"
+        and state.last_published_definition_hash != remote.definition_hash
+    ):
+        raise WorkflowError("G10 published definition hash is missing from publish state")
+    manifest = load_json(root / ASSET_MANIFEST_RELATIVE_PATH)
+    if manifest.get("courseDefinitionHash") != remote.definition_hash:
+        raise WorkflowError("G10 asset manifest differs from verified remote definition")
+    remote_pairs = {
+        (asset["sha256"], asset["objectKey"]) for asset in remote.assets
+    }
+    for entry in manifest.get("entries", []):
+        remote_record = entry.get("remote")
+        if (
+            entry.get("state") != "reusable"
+            or not isinstance(remote_record, dict)
+            or remote_record.get("uploadedSha256") != entry.get("sha256")
+            or remote_record.get("objectKey") != entry.get("objectKey")
+            or (entry.get("sha256"), entry.get("objectKey")) not in remote_pairs
+        ):
+            raise WorkflowError("G10 asset manifest lacks verified remote asset state")
+    paths = {
+        ".course-work/publication-operation.json": root
+        / PUBLICATION_OPERATION_RELATIVE_PATH,
+        ".course-work/asset-manifest.json": root / ASSET_MANIFEST_RELATIVE_PATH,
+        ".course-work/publish-state.json": root / PUBLISH_STATE_RELATIVE_PATH,
+    }
+    evidence = {label: hash_path(path) for label, path in paths.items()}
+    evidence["@toolkit/course-publisher"] = publisher_code_hash()
+    return evidence
+
+
 def _safe_course_path(root: Path, relative_path: str) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -695,6 +854,28 @@ def reconcile_artifacts(
                 seen_at=now,
                 target={"path": artifact_id},
                 remediation="Recompile the CourseDefinition and re-run G5 checks.",
+            )
+        )
+        session.artifact_hashes[artifact_id] = current_hash
+
+    for artifact_id, artifact in TOOLKIT_G9_ARTIFACTS.items():
+        previous_hash = session.artifact_hashes.get(artifact_id)
+        if previous_hash is None:
+            continue
+        current_hash = hash_path(artifact)
+        if current_hash == previous_hash:
+            continue
+        changed_paths.append(artifact_id)
+        changed_gate_ids.append("G9")
+        issue_store.upsert(
+            make_registered_issue(
+                code="workflow-artifact-changed",
+                source="workflow",
+                message=f"Tracked course artifact changed: {artifact_id}",
+                gate_id="G9",
+                seen_at=now,
+                target={"path": artifact_id},
+                remediation="Prepare and approve a new publication dry run.",
             )
         )
         session.artifact_hashes[artifact_id] = current_hash

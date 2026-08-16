@@ -1,3 +1,6 @@
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from collections import Counter
@@ -22,7 +25,15 @@ from course_toolkit.publisher import (
     load_publication_operation,
     publish_course,
 )
-from course_toolkit.workflow import hash_path
+from course_toolkit.workflow import (
+    complete_gate,
+    hash_path,
+    load_session,
+    save_session,
+    verify_g9_publication_preflight,
+    verify_g10_remote_publication,
+)
+from tests.helpers import ROOT
 from tests.test_publication_manifest import NOW, prepare_g6
 from tests.test_publication_preflight import (
     complete_through_g8,
@@ -120,6 +131,13 @@ def approve(root: Path, rationale="Approved exact publication dry run.") -> None
         NOW,
     )
     decisions.save()
+    session = load_session(root)
+    session.pending_decision_ids = [
+        decision_id
+        for decision_id in session.pending_decision_ids
+        if decision_id != PUBLICATION_DECISION_ID
+    ]
+    save_session(root, session)
 
 
 class PublisherOrchestratorTests(unittest.TestCase):
@@ -176,6 +194,42 @@ class PublisherOrchestratorTests(unittest.TestCase):
         self.assertEqual(state.last_uploaded_definition_hash, first.definition_hash)
         operation = load_publication_operation(self.root)
         self.assertEqual(operation.phase, "verified")
+
+    def test_g9_evidence_is_hash_bound_but_fake_operation_cannot_complete_g10(self):
+        evidence = verify_g9_publication_preflight(self.root)
+        session = load_session(self.root)
+        complete_gate(session, "G9", NOW, gate_evidence=evidence)
+        save_session(self.root, session)
+        publish_course(
+            self.root,
+            object_store=FakeObjectStore(),
+            course_api=FakeCourseApi(),
+            now=NOW,
+        )
+
+        with self.assertRaisesRegex(ValueError, "live publication adapter"):
+            verify_g10_remote_publication(self.root)
+
+    def test_local_workflow_cli_refuses_g9_even_with_approved_current_dry_run(self):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts/course-workflow.py"),
+                "complete-gate",
+                str(self.root),
+                "G9",
+                "--json",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        payload = json.loads(completed.stdout)
+        self.assertIn("live publication adapter", payload["error"]["message"])
+        self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G8")
 
     def test_next_preflight_updates_same_course_and_reuses_uploaded_assets(self):
         objects = FakeObjectStore()
