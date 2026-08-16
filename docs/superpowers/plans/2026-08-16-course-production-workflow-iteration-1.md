@@ -42,7 +42,7 @@
 - Modify: `course_toolkit/jsonio.py`
 - Test: `tests/test_workflow.py`
 
-- [ ] **Step 1: Write the failing atomic-write tests**
+- [x] **Step 1: Write the failing atomic-write tests**
 
 Add tests proving `write_json_atomic(path, data)` creates parent directories, writes UTF-8 formatted JSON, and leaves no temporary file after success:
 
@@ -55,13 +55,13 @@ def test_write_json_atomic_creates_parent_and_round_trips(self):
         self.assertEqual(list(path.parent.glob("*.tmp")), [])
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run: `python -m unittest tests.test_workflow.AtomicJsonTests -v`
 
 Expected: import failure because `write_json_atomic` does not exist.
 
-- [ ] **Step 3: Implement the atomic writer**
+- [x] **Step 3: Implement the atomic writer**
 
 Add this public API:
 
@@ -77,13 +77,13 @@ def write_json_atomic(path: Path, data: Any) -> None:
             temporary.unlink()
 ```
 
-- [ ] **Step 4: Run the focused test**
+- [x] **Step 4: Run the focused test**
 
 Run: `python -m unittest tests.test_workflow.AtomicJsonTests -v`
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add course_toolkit/jsonio.py tests/test_workflow.py
