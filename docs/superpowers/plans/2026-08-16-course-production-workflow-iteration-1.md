@@ -268,7 +268,7 @@ git commit -m "feat: track teacher decisions"
 - Create: `schemas/course-production-session.schema.json`
 - Modify: `tests/test_workflow.py`
 
-- [ ] **Step 1: Write failing gate-order and resume tests**
+- [x] **Step 1: Write failing gate-order and resume tests**
 
 Cover:
 
@@ -298,13 +298,13 @@ def test_complete_gate_refuses_active_blocker_or_pending_decision(self):
         complete_gate(session, "G0", NOW, pending_decision_ids=["decision-1"])
 ```
 
-- [ ] **Step 2: Run focused tests to verify failure**
+- [x] **Step 2: Run focused tests to verify failure**
 
 Run: `python -m unittest tests.test_workflow.WorkflowGateTests -v`
 
 Expected: missing `course_toolkit.workflow`.
 
-- [ ] **Step 3: Implement phases and gates**
+- [x] **Step 3: Implement phases and gates**
 
 Define exact constants:
 
@@ -334,17 +334,17 @@ Provide `new_session`, `load_session`, `save_session`, `complete_gate`, `invalid
 
 Gate completion must require its prerequisite, reject unresolved blockers at or before the gate, and reject pending decisions at or before the gate.
 
-- [ ] **Step 4: Add the closed session JSON Schema**
+- [x] **Step 4: Add the closed session JSON Schema**
 
 Match the persisted API, including workflow version, stable local course ID, source paths, phase/status, completed/invalidated gates, active issue IDs, pending decision/annotation IDs, artifact hashes, last successful action, and optional failure record.
 
-- [ ] **Step 5: Run gate tests**
+- [x] **Step 5: Run gate tests**
 
 Run: `python -m unittest tests.test_workflow.WorkflowGateTests -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add course_toolkit/workflow.py schemas/course-production-session.schema.json tests/test_workflow.py

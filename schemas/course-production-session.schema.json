@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-production-session.schema.json",
+  "title": "Course production workflow session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "workflowVersion",
+    "courseLocalId",
+    "sourcePaths",
+    "phase",
+    "status",
+    "completedGateIds",
+    "invalidatedGateIds",
+    "activeIssueIds",
+    "pendingDecisionIds",
+    "pendingAnnotationIds",
+    "artifactHashes",
+    "lastSuccessfulAction",
+    "failure",
+    "createdAt",
+    "updatedAt"
+  ],
+  "properties": {
+    "workflowVersion": { "const": "1.0" },
+    "courseLocalId": { "type": "string", "minLength": 1 },
+    "sourcePaths": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "phase": {
+      "enum": [
+        "intake",
+        "material-review",
+        "course-brief",
+        "course-design",
+        "media-design",
+        "compile",
+        "validate",
+        "preview",
+        "revise",
+        "final-review",
+        "publish",
+        "complete"
+      ]
+    },
+    "status": {
+      "enum": [
+        "in-progress",
+        "waiting-for-teacher",
+        "blocked",
+        "ready-to-publish",
+        "publishing",
+        "complete",
+        "failed"
+      ]
+    },
+    "completedGateIds": { "$ref": "#/$defs/gateIds" },
+    "invalidatedGateIds": { "$ref": "#/$defs/gateIds" },
+    "activeIssueIds": { "$ref": "#/$defs/stringIds" },
+    "pendingDecisionIds": { "$ref": "#/$defs/stringIds" },
+    "pendingAnnotationIds": { "$ref": "#/$defs/stringIds" },
+    "artifactHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[a-f0-9]{64}$"
+      }
+    },
+    "lastSuccessfulAction": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "gateId", "at"],
+          "properties": {
+            "action": { "type": "string", "minLength": 1 },
+            "gateId": { "$ref": "#/$defs/gateId" },
+            "at": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "failure": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["code", "message"],
+          "properties": {
+            "code": { "type": "string", "minLength": 1 },
+            "message": { "type": "string", "minLength": 1 }
+          }
+        }
+      ]
+    },
+    "createdAt": { "type": "string", "minLength": 1 },
+    "updatedAt": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "gateId": { "enum": ["G0", "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8", "G9", "G10"] },
+    "gateIds": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/gateId" },
+      "uniqueItems": true
+    },
+    "stringIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    }
+  }
+}
