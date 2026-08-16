@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-remote-discovery.schema.json",
+  "title": "Course adapter remote discovery snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "lookupSlug", "status", "observedAt", "courseLocalId", "remoteCourseId", "remoteStatus", "remoteRevision", "definitionHash", "knownAssets", "message"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "lookupSlug": {"$ref": "#/$defs/id"},
+    "status": {"enum": ["found", "not-found", "ambiguous", "unavailable"]},
+    "observedAt": {"type": "string", "minLength": 1},
+    "courseLocalId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+    "remoteCourseId": {"type": ["string", "null"]},
+    "remoteStatus": {"enum": [null, "preview", "published"]},
+    "remoteRevision": {"type": ["string", "null"]},
+    "definitionHash": {"$ref": "#/$defs/nullableHash"},
+    "knownAssets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sha256", "objectKey"],
+        "properties": {
+          "sha256": {"$ref": "#/$defs/hash"},
+          "objectKey": {"type": "string", "minLength": 1}
+        }
+      }
+    },
+    "message": {"type": ["string", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "found"}}},
+      "then": {
+        "properties": {
+          "courseLocalId": {"$ref": "#/$defs/id"},
+          "remoteCourseId": {"type": "string", "minLength": 1},
+          "remoteStatus": {"enum": ["preview", "published"]},
+          "remoteRevision": {"type": "string", "minLength": 1},
+          "definitionHash": {"$ref": "#/$defs/hash"},
+          "message": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "courseLocalId": {"type": "null"},
+          "remoteCourseId": {"type": "null"},
+          "remoteStatus": {"type": "null"},
+          "remoteRevision": {"type": "null"},
+          "definitionHash": {"type": "null"},
+          "knownAssets": {"maxItems": 0}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["ambiguous", "unavailable"]}}},
+      "then": {"properties": {"message": {"type": "string", "minLength": 1}}},
+      "else": {"properties": {"message": {"type": "null"}}}
+    }
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullableHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-publish-state.schema.json",
+  "title": "Course verified remote publish state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "courseLocalId", "slug", "remoteCourseId", "remoteStatus", "lastKnownRemoteRevision", "lastUploadedDefinitionHash", "lastPublishedDefinitionHash", "lastPublishOperationId", "verifiedAt"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "courseLocalId": {"$ref": "#/$defs/id"},
+    "slug": {"$ref": "#/$defs/id"},
+    "remoteCourseId": {"type": ["string", "null"]},
+    "remoteStatus": {"enum": [null, "preview", "published"]},
+    "lastKnownRemoteRevision": {"type": ["string", "null"]},
+    "lastUploadedDefinitionHash": {"$ref": "#/$defs/nullableHash"},
+    "lastPublishedDefinitionHash": {"$ref": "#/$defs/nullableHash"},
+    "lastPublishOperationId": {"$ref": "#/$defs/nullableHash"},
+    "verifiedAt": {"type": ["string", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"remoteCourseId": {"type": "null"}}},
+      "then": {
+        "properties": {
+          "remoteStatus": {"type": "null"},
+          "lastKnownRemoteRevision": {"type": "null"},
+          "lastUploadedDefinitionHash": {"type": "null"},
+          "lastPublishedDefinitionHash": {"type": "null"},
+          "lastPublishOperationId": {"type": "null"},
+          "verifiedAt": {"type": "null"}
+        }
+      },
+      "else": {
+        "properties": {
+          "remoteCourseId": {"type": "string", "minLength": 1},
+          "remoteStatus": {"enum": ["preview", "published"]},
+          "lastKnownRemoteRevision": {"type": "string", "minLength": 1},
+          "verifiedAt": {"type": "string", "minLength": 1}
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullableHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]}
+  }
+}

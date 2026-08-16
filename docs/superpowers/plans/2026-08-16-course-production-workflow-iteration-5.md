@@ -25,12 +25,12 @@
 
 **Files:** publication module, publish-state/discovery schemas, tests.
 
-- [ ] Define strict local publish state with courseLocalId, slug, optional remoteCourseId/status/revision, published hashes, last operation ID, and verified time.
-- [ ] Define one adapter discovery snapshot: `found`, `not-found`, `ambiguous`, or `unavailable`, plus remote identity/revision/definition and verified asset records when present.
-- [ ] Resolve create only when local state has no remote ID and discovery proves not-found; resolve update only when stable local and discovered identity agree.
-- [ ] Treat existing slug without reconciled local identity, mismatched IDs, stale revisions, ambiguous timeout/retry state, and unavailable discovery as blockers.
-- [ ] Keep definition revision distinct from CourseDefinition schemaVersion.
-- [ ] Commit: `feat: protect stable remote course identity`.
+- [x] Define strict local publish state with courseLocalId, slug, optional remoteCourseId/status/revision, published hashes, last operation ID, and verified time.
+- [x] Define one adapter discovery snapshot: `found`, `not-found`, `ambiguous`, or `unavailable`, plus remote identity/revision/definition and verified asset records when present.
+- [x] Resolve create only when local state has no remote ID and discovery proves not-found; resolve update only when stable local and discovered identity agree.
+- [x] Treat existing slug without reconciled local identity, mismatched IDs, stale revisions, ambiguous timeout/retry state, and unavailable discovery as blockers.
+- [x] Keep definition revision distinct from CourseDefinition schemaVersion.
+- [x] Commit: `feat: protect stable remote course identity`.
 
 ## Task 3: Generate and approve exact publication dry runs
 
