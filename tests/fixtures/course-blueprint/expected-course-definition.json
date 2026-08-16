@@ -1,0 +1,198 @@
+{
+  "schemaVersion": "2.0",
+  "course": {
+    "id": "blueprint-sample",
+    "title": "Blueprint Sample Course",
+    "language": "en",
+    "estimatedMinutes": 2,
+    "objectives": [
+      {
+        "id": "apply-check",
+        "text": "Apply one evidence check before accepting a claim.",
+        "evidenceBlockIds": [
+          "evidence-question"
+        ]
+      }
+    ],
+    "opening": {
+      "learningPreview": [
+        "Read a claim",
+        "Apply an evidence check"
+      ],
+      "personalization": {
+        "enabled": false,
+        "allowedSignals": []
+      },
+      "fallback": {
+        "text": "This short course introduces one evidence check."
+      }
+    },
+    "parts": [
+      {
+        "id": "part-evidence-check",
+        "title": "Check the Evidence",
+        "objectiveIds": [
+          "apply-check"
+        ],
+        "slices": [
+          {
+            "id": "slice-read-and-answer",
+            "title": "Read and Answer",
+            "objectiveIds": [
+              "apply-check"
+            ],
+            "estimatedSeconds": 90,
+            "blocks": [
+              {
+                "id": "claim-text",
+                "type": "text",
+                "content": "A confident conclusion still needs traceable evidence."
+              },
+              {
+                "id": "evidence-question",
+                "type": "singleChoice",
+                "prompt": "What should you check first?",
+                "options": [
+                  {
+                    "id": "speaker-confidence",
+                    "label": "Speaker confidence"
+                  },
+                  {
+                    "id": "source-and-method",
+                    "label": "Source and method"
+                  }
+                ],
+                "assessment": {
+                  "mode": "graded",
+                  "correctOptionId": "source-and-method",
+                  "correctFeedback": "Correct.",
+                  "incorrectFeedback": "Confidence does not establish evidence quality."
+                },
+                "completion": {
+                  "rule": "submit-correct-or-exhausted",
+                  "maxAttempts": 2
+                }
+              }
+            ],
+            "layout": {
+              "preset": "split-horizontal",
+              "ratio": "1:1",
+              "slots": [
+                {
+                  "id": "left",
+                  "blockIds": [
+                    "claim-text"
+                  ]
+                },
+                {
+                  "id": "right",
+                  "blockIds": [
+                    "evidence-question"
+                  ]
+                }
+              ]
+            },
+            "narrations": [
+              {
+                "id": "introduce-check",
+                "text": "Read the claim, then choose the first check.",
+                "audio": "assets/audio/introduce-check.mp3",
+                "durationSeconds": 4
+              }
+            ],
+            "workflow": {
+              "version": "1.0",
+              "initialStepId": "introduce",
+              "initialState": {
+                "visibleBlockIds": [
+                  "claim-text",
+                  "evidence-question"
+                ],
+                "enabledBlockIds": []
+              },
+              "steps": [
+                {
+                  "id": "introduce",
+                  "enterActions": [
+                    {
+                      "type": "playNarration",
+                      "narrationId": "introduce-check"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "introduce-check"
+                      },
+                      "to": "answer"
+                    }
+                  ]
+                },
+                {
+                  "id": "answer",
+                  "enterActions": [
+                    {
+                      "type": "enable",
+                      "targetId": "evidence-question"
+                    },
+                    {
+                      "type": "focus",
+                      "target": {
+                        "blockId": "evidence-question"
+                      }
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "block.completed",
+                        "sourceId": "evidence-question"
+                      },
+                      "to": "finish"
+                    }
+                  ]
+                },
+                {
+                  "id": "finish",
+                  "enterActions": [
+                    {
+                      "type": "clearFocus"
+                    },
+                    {
+                      "type": "completeSlice"
+                    }
+                  ],
+                  "transitions": []
+                }
+              ]
+            },
+            "navigation": {
+              "previous": "allowed",
+              "manualNext": "after-completion",
+              "autoNext": false,
+              "revisit": "restore-completed-state"
+            }
+          }
+        ]
+      }
+    ],
+    "closing": {
+      "preparedSummary": "The course introduced a source-and-method check.",
+      "takeaways": [
+        "Confidence is not evidence",
+        "Check source and method"
+      ],
+      "transferApplications": [
+        "Reading a news claim"
+      ],
+      "personalization": {
+        "enabled": false,
+        "allowedSignals": []
+      },
+      "fallback": {
+        "text": "Use the same source-and-method check on the next claim you encounter."
+      }
+    }
+  }
+}

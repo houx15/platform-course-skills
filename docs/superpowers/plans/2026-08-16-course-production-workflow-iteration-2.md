@@ -290,7 +290,7 @@ git commit -m "feat: import legacy courses into blueprints"
 
 **Files:** compiler, schemas, tests, expected fixtures.
 
-- [ ] **Step 1: Write failing compiler tests**
+- [x] **Step 1: Write failing compiler tests**
 
 Cover:
 
@@ -317,11 +317,11 @@ def test_source_map_resolves_every_stable_target(self):
 
 Also test canonical SHA-256 values, deterministic mapping order, correct JSON pointers, source/decision propagation, missing approval refusal, and failure when the real shared contract rejects the projected runtime document.
 
-- [ ] **Step 2: Run tests and verify failure**
+- [x] **Step 2: Run tests and verify failure**
 
 Run: `python -m unittest tests.test_course_compiler -v`
 
-- [ ] **Step 3: Implement canonical hashes and compiler result**
+- [x] **Step 3: Implement canonical hashes and compiler result**
 
 Provide:
 
@@ -351,19 +351,19 @@ The source map contains no timestamp:
 }
 ```
 
-- [ ] **Step 4: Invoke only the shared contract as the runtime gate**
+- [x] **Step 4: Invoke only the shared contract as the runtime gate**
 
 The compiler adapter runs `node --import tsx scripts/validate-course-definition.ts`. This avoids the `tsx` CLI's optional IPC server while executing the same TypeScript source. Preserve shared issue order/layer/path/message. A failed validator produces no new course definition or source map.
 
-- [ ] **Step 5: Add source-map and compilation-report schemas**
+- [x] **Step 5: Add source-map and compilation-report schemas**
 
 Compilation report fields: schema version, status, compiler version, Blueprint/definition/source-map hashes, sorted asset paths from `collectAssetPaths`, shared-contract snapshot commit, and ordered issues. No current time or random ID.
 
-- [ ] **Step 6: Freeze expected output fixtures and run reproducibility tests**
+- [x] **Step 6: Freeze expected output fixtures and run reproducibility tests**
 
 Expected: approved fixture compiles byte-for-byte to the frozen CourseDefinition 2.0 and source map twice.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add course_toolkit/course_compiler.py schemas/course-runtime-source-map.schema.json schemas/course-compilation-report.schema.json tests/test_course_compiler.py tests/fixtures/course-blueprint/expected-course-definition.json tests/fixtures/course-blueprint/expected-source-map.json

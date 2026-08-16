@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-runtime-source-map.schema.json",
+  "title": "Course Runtime Source Map",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "compilerVersion",
+    "blueprintHash",
+    "courseDefinitionHash",
+    "mappings"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "compilerVersion": {"type": "string", "minLength": 1},
+    "blueprintHash": {"$ref": "#/$defs/hash"},
+    "courseDefinitionHash": {"$ref": "#/$defs/hash"},
+    "mappings": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/mapping"}
+    }
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    },
+    "stringList": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "mapping": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "targetId",
+        "blueprintPointer",
+        "runtimePointer",
+        "sourceIds",
+        "decisionIds"
+      ],
+      "properties": {
+        "targetId": {"type": "string", "minLength": 1},
+        "blueprintPointer": {"type": "string", "pattern": "^/course(?:/.*)?$"},
+        "runtimePointer": {"type": "string", "pattern": "^/course(?:/.*)?$"},
+        "sourceIds": {"$ref": "#/$defs/stringList"},
+        "decisionIds": {"$ref": "#/$defs/stringList"}
+      }
+    }
+  }
+}

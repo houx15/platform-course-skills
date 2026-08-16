@@ -1,0 +1,102 @@
+{
+  "schemaVersion": "1.0",
+  "compilerVersion": "1.0",
+  "blueprintHash": "85ba7a87dc5f071059b3e47e2a51b512e98e0b24ecdcdf6493e34a8721b271f3",
+  "courseDefinitionHash": "eed56b0e66cd3c0dcb3a737a8ab6e1c5c9b89fb0975eed7f5f0382c7190a73d2",
+  "mappings": [
+    {
+      "targetId": "course",
+      "blueprintPointer": "/course",
+      "runtimePointer": "/course",
+      "sourceIds": [
+        "source-1"
+      ],
+      "decisionIds": [
+        "decision-course-design"
+      ]
+    },
+    {
+      "targetId": "opening",
+      "blueprintPointer": "/course/opening",
+      "runtimePointer": "/course/opening",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "closing",
+      "blueprintPointer": "/course/closing",
+      "runtimePointer": "/course/closing",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "objective:apply-check",
+      "blueprintPointer": "/course/objectives/0",
+      "runtimePointer": "/course/objectives/0",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "part:part-evidence-check",
+      "blueprintPointer": "/course/parts/0",
+      "runtimePointer": "/course/parts/0",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "slice:slice-read-and-answer",
+      "blueprintPointer": "/course/parts/0/slices/0",
+      "runtimePointer": "/course/parts/0/slices/0",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "block:claim-text",
+      "blueprintPointer": "/course/parts/0/slices/0/blocks/0",
+      "runtimePointer": "/course/parts/0/slices/0/blocks/0",
+      "sourceIds": [
+        "source-1"
+      ],
+      "decisionIds": []
+    },
+    {
+      "targetId": "block:evidence-question",
+      "blueprintPointer": "/course/parts/0/slices/0/blocks/1",
+      "runtimePointer": "/course/parts/0/slices/0/blocks/1",
+      "sourceIds": [
+        "source-1"
+      ],
+      "decisionIds": [
+        "decision-course-design"
+      ]
+    },
+    {
+      "targetId": "slice:slice-read-and-answer/narration:introduce-check",
+      "blueprintPointer": "/course/parts/0/slices/0/narrations/0",
+      "runtimePointer": "/course/parts/0/slices/0/narrations/0",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "slice:slice-read-and-answer/workflow-step:introduce",
+      "blueprintPointer": "/course/parts/0/slices/0/workflow/steps/0",
+      "runtimePointer": "/course/parts/0/slices/0/workflow/steps/0",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "slice:slice-read-and-answer/workflow-step:answer",
+      "blueprintPointer": "/course/parts/0/slices/0/workflow/steps/1",
+      "runtimePointer": "/course/parts/0/slices/0/workflow/steps/1",
+      "sourceIds": [],
+      "decisionIds": []
+    },
+    {
+      "targetId": "slice:slice-read-and-answer/workflow-step:finish",
+      "blueprintPointer": "/course/parts/0/slices/0/workflow/steps/2",
+      "runtimePointer": "/course/parts/0/slices/0/workflow/steps/2",
+      "sourceIds": [],
+      "decisionIds": []
+    }
+  ]
+}

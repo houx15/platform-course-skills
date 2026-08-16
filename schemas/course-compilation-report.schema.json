@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-compilation-report.schema.json",
+  "title": "Course Compilation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "status",
+    "compilerVersion",
+    "blueprintHash",
+    "courseDefinitionHash",
+    "sourceMapHash",
+    "assetPaths",
+    "contractSnapshot",
+    "issues"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "status": {"const": "compiled"},
+    "compilerVersion": {"type": "string", "minLength": 1},
+    "blueprintHash": {"$ref": "#/$defs/hash"},
+    "courseDefinitionHash": {"$ref": "#/$defs/hash"},
+    "sourceMapHash": {"$ref": "#/$defs/hash"},
+    "assetPaths": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "contractSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["packageName", "packageVersion", "upstreamCommit"],
+      "properties": {
+        "packageName": {"const": "@mind-imprint/course-contract"},
+        "packageVersion": {"type": "string", "minLength": 1},
+        "upstreamCommit": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "issues": {"type": "array", "maxItems": 0}
+  },
+  "$defs": {
+    "hash": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$|^[a-f0-9]{64}$"
+    }
+  }
+}
