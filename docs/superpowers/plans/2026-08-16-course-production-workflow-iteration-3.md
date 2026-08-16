@@ -14,11 +14,11 @@
 
 **Files:** `scripts/validate-video-interaction.ts`, `tests/test_shared_video_interaction_contract.py`, root package wiring if needed.
 
-- [ ] Write failing bridge tests for valid input, structural failure, owning-block mismatch, duplicate/out-of-order/out-of-duration cues, and tool failure.
-- [ ] Implement `node --import tsx scripts/validate-video-interaction.ts DOCUMENT OWNER --json` using `VideoInteractionDocument.safeParse` and `validateVideoInteraction`.
-- [ ] Preserve shared issue order, path, message, and layer. Exit `0` valid, `2` contract-invalid, `3` tool failure.
-- [ ] Run focused tests and shared package tests.
-- [ ] Commit: `feat: expose shared video interaction validation`.
+- [x] Write failing bridge tests for valid input, structural failure, owning-block mismatch, duplicate/out-of-order/out-of-duration cues, and tool failure.
+- [x] Implement `node --import tsx scripts/validate-video-interaction.ts DOCUMENT OWNER --json` using `VideoInteractionDocument.safeParse` and `validateVideoInteraction`.
+- [x] Preserve shared issue order, path, message, and layer. Exit `0` valid, `2` contract-invalid, `3` tool failure.
+- [x] Run focused tests and shared package tests.
+- [x] Commit: `feat: expose shared video interaction validation`.
 
 ## Task 2: Add CourseDefinition 2.0 asset indexing and safe path checks
 
