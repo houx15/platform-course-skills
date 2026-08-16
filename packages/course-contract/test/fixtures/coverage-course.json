@@ -1,0 +1,619 @@
+{
+  "schemaVersion": "2.0",
+  "course": {
+    "id": "evidence-comparability",
+    "title": "Can These Two Claims Be Compared?",
+    "language": "en",
+    "estimatedMinutes": 6,
+    "objectives": [
+      {
+        "id": "check-comparability",
+        "text": "Check whether two claims share comparable objects, boundaries, and methods before comparing their conclusions.",
+        "evidenceBlockIds": [
+          "comparison-question",
+          "evidence-reflection"
+        ]
+      }
+    ],
+    "opening": {
+      "learningPreview": [
+        "Observe how two claims define their evidence",
+        "Decide whether the claims can be compared directly"
+      ],
+      "personalization": {
+        "enabled": true,
+        "allowedSignals": [
+          "recent-course-topics",
+          "prior-objective-performance"
+        ]
+      },
+      "fallback": {
+        "text": "Welcome. In about six minutes, you will learn a practical check to use before comparing two conclusions."
+      }
+    },
+    "parts": [
+      {
+        "id": "part-check-comparability",
+        "title": "Check the Basis of Comparison",
+        "objectiveIds": [
+          "check-comparability"
+        ],
+        "slices": [
+          {
+            "id": "slice-observe-and-answer",
+            "title": "Observe and Decide",
+            "objectiveIds": [
+              "check-comparability"
+            ],
+            "estimatedSeconds": 180,
+            "blocks": [
+              {
+                "id": "case-video",
+                "type": "video",
+                "source": "assets/videos/case.mp4",
+                "poster": "assets/images/case-poster.jpg",
+                "captions": "assets/captions/case.en.vtt",
+                "durationSeconds": 90,
+                "interaction": {
+                  "source": "interactions/video/case-video.json"
+                },
+                "completion": {
+                  "rule": "video-ended-and-interactions-completed"
+                }
+              },
+              {
+                "id": "comparison-question",
+                "type": "singleChoice",
+                "prompt": "Can the two conclusions be compared directly?",
+                "options": [
+                  {
+                    "id": "yes",
+                    "label": "Yes"
+                  },
+                  {
+                    "id": "not-yet",
+                    "label": "Not yet"
+                  }
+                ],
+                "assessment": {
+                  "mode": "graded",
+                  "correctOptionId": "not-yet",
+                  "correctFeedback": "Correct. Their boundaries and methods must be checked first.",
+                  "incorrectFeedback": "Opposite conclusions do not establish comparability."
+                },
+                "completion": {
+                  "rule": "submit-correct-or-exhausted",
+                  "maxAttempts": 2
+                }
+              }
+            ],
+            "layout": {
+              "preset": "split-horizontal",
+              "ratio": "2:1",
+              "slots": [
+                {
+                  "id": "left",
+                  "blockIds": [
+                    "case-video"
+                  ]
+                },
+                {
+                  "id": "right",
+                  "blockIds": [
+                    "comparison-question"
+                  ]
+                }
+              ]
+            },
+            "narrations": [
+              {
+                "id": "introduce-video",
+                "text": "Watch the video and notice whether the two speakers define the same object and time range.",
+                "audio": "assets/audio/introduce-video.mp3",
+                "durationSeconds": 7.2
+              },
+              {
+                "id": "introduce-question",
+                "text": "Now decide whether the two conclusions can be compared directly.",
+                "audio": "assets/audio/introduce-question.mp3",
+                "durationSeconds": 4.1
+              },
+              {
+                "id": "remediation",
+                "text": "Look again at the object, time range, and method. Opposite conclusions may still describe different questions.",
+                "audio": "assets/audio/remediation.mp3",
+                "durationSeconds": 6.5
+              },
+              {
+                "id": "slice-summary",
+                "text": "Before comparing conclusions, first verify that the evidence is actually comparable.",
+                "audio": "assets/audio/slice-summary.mp3",
+                "durationSeconds": 4.8
+              }
+            ],
+            "workflow": {
+              "version": "1.0",
+              "initialStepId": "introduce",
+              "initialState": {
+                "visibleBlockIds": [
+                  "case-video"
+                ],
+                "enabledBlockIds": []
+              },
+              "steps": [
+                {
+                  "id": "introduce",
+                  "enterActions": [
+                    {
+                      "type": "focus",
+                      "target": {
+                        "blockId": "case-video"
+                      }
+                    },
+                    {
+                      "type": "playNarration",
+                      "narrationId": "introduce-video"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "introduce-video"
+                      },
+                      "to": "watch-video"
+                    }
+                  ]
+                },
+                {
+                  "id": "watch-video",
+                  "enterActions": [
+                    {
+                      "type": "enable",
+                      "targetId": "case-video"
+                    },
+                    {
+                      "type": "playBlock",
+                      "targetId": "case-video"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "block.completed",
+                        "sourceId": "case-video"
+                      },
+                      "to": "introduce-question"
+                    }
+                  ]
+                },
+                {
+                  "id": "introduce-question",
+                  "enterActions": [
+                    {
+                      "type": "show",
+                      "targetId": "comparison-question"
+                    },
+                    {
+                      "type": "enable",
+                      "targetId": "comparison-question"
+                    },
+                    {
+                      "type": "focus",
+                      "target": {
+                        "blockId": "comparison-question"
+                      }
+                    },
+                    {
+                      "type": "playNarration",
+                      "narrationId": "introduce-question"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "introduce-question"
+                      },
+                      "to": "wait-for-answer"
+                    }
+                  ]
+                },
+                {
+                  "id": "wait-for-answer",
+                  "enterActions": [
+                    {
+                      "type": "enable",
+                      "targetId": "comparison-question"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "answer.correct",
+                        "sourceId": "comparison-question"
+                      },
+                      "to": "summarize"
+                    },
+                    {
+                      "on": {
+                        "type": "answer.incorrect",
+                        "sourceId": "comparison-question"
+                      },
+                      "to": "remediate"
+                    },
+                    {
+                      "on": {
+                        "type": "answer.attemptsExhausted",
+                        "sourceId": "comparison-question"
+                      },
+                      "to": "summarize"
+                    }
+                  ]
+                },
+                {
+                  "id": "remediate",
+                  "enterActions": [
+                    {
+                      "type": "disable",
+                      "targetId": "comparison-question"
+                    },
+                    {
+                      "type": "focus",
+                      "target": {
+                        "blockId": "case-video"
+                      }
+                    },
+                    {
+                      "type": "playNarration",
+                      "narrationId": "remediation"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "remediation"
+                      },
+                      "to": "wait-for-answer"
+                    }
+                  ]
+                },
+                {
+                  "id": "summarize",
+                  "enterActions": [
+                    {
+                      "type": "clearFocus"
+                    },
+                    {
+                      "type": "playNarration",
+                      "narrationId": "slice-summary"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "slice-summary"
+                      },
+                      "to": "next"
+                    }
+                  ]
+                },
+                {
+                  "id": "next",
+                  "enterActions": [
+                    {
+                      "type": "completeSlice"
+                    },
+                    {
+                      "type": "navigate",
+                      "target": "nextSlice"
+                    }
+                  ],
+                  "transitions": []
+                }
+              ]
+            },
+            "navigation": {
+              "previous": "allowed",
+              "manualNext": "after-completion",
+              "autoNext": true,
+              "revisit": "restore-completed-state"
+            }
+          },
+          {
+            "id": "slice-read-explanation",
+            "title": "Read the Explanation",
+            "objectiveIds": [
+              "check-comparability"
+            ],
+            "estimatedSeconds": 60,
+            "blocks": [
+              {
+                "id": "intro-text",
+                "type": "text",
+                "content": "Two conclusions can point in opposite directions without answering the same question."
+              }
+            ],
+            "layout": {
+              "preset": "full",
+              "slots": [
+                {
+                  "id": "main",
+                  "blockIds": [
+                    "intro-text"
+                  ]
+                }
+              ]
+            },
+            "narrations": [
+              {
+                "id": "read-explanation",
+                "text": "Read the short explanation, then continue.",
+                "audio": "assets/audio/read-explanation.mp3",
+                "durationSeconds": 5.0
+              }
+            ],
+            "workflow": {
+              "version": "1.0",
+              "initialStepId": "present",
+              "steps": [
+                {
+                  "id": "present",
+                  "enterActions": [
+                    {
+                      "type": "playNarration",
+                      "narrationId": "read-explanation"
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "narration.ended",
+                        "sourceId": "read-explanation"
+                      },
+                      "to": "finish"
+                    }
+                  ]
+                },
+                {
+                  "id": "finish",
+                  "enterActions": [
+                    {
+                      "type": "completeSlice"
+                    },
+                    {
+                      "type": "navigate",
+                      "target": "nextSlice"
+                    }
+                  ],
+                  "transitions": []
+                }
+              ]
+            },
+            "navigation": {
+              "previous": "allowed",
+              "manualNext": "after-completion",
+              "autoNext": true,
+              "revisit": "restore-completed-state"
+            }
+          },
+          {
+            "id": "slice-compare-images",
+            "title": "Compare the Charts",
+            "objectiveIds": [
+              "check-comparability"
+            ],
+            "estimatedSeconds": 90,
+            "blocks": [
+              {
+                "id": "evidence-images",
+                "type": "images",
+                "presentation": "side-by-side",
+                "items": [
+                  {
+                    "id": "original-chart",
+                    "source": "assets/images/original-chart.png",
+                    "alt": "The complete chart from the original paper",
+                    "caption": "Original chart"
+                  },
+                  {
+                    "id": "cropped-chart",
+                    "source": "assets/images/cropped-chart.png",
+                    "alt": "A version of the chart with its later segment removed",
+                    "caption": "Cropped version"
+                  }
+                ]
+              },
+              {
+                "id": "evidence-reflection",
+                "type": "fillBlank",
+                "prompt": "What would you verify before comparing the two claims?",
+                "assessment": {
+                  "mode": "reflection",
+                  "rubric": "The response should name at least one concrete check involving source, population, scale, or measurement."
+                },
+                "completion": {
+                  "rule": "submit-any"
+                }
+              }
+            ],
+            "layout": {
+              "preset": "split-vertical",
+              "ratio": "1:1",
+              "slots": [
+                {
+                  "id": "top",
+                  "blockIds": [
+                    "evidence-images"
+                  ]
+                },
+                {
+                  "id": "bottom",
+                  "blockIds": [
+                    "evidence-reflection"
+                  ]
+                }
+              ]
+            },
+            "narrations": [],
+            "workflow": {
+              "version": "1.0",
+              "initialStepId": "wait-for-reflection",
+              "steps": [
+                {
+                  "id": "wait-for-reflection",
+                  "enterActions": [
+                    {
+                      "type": "focus",
+                      "target": {
+                        "blockId": "evidence-images",
+                        "itemId": "cropped-chart"
+                      }
+                    }
+                  ],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "answer.submitted",
+                        "sourceId": "evidence-reflection"
+                      },
+                      "to": "finish"
+                    }
+                  ]
+                },
+                {
+                  "id": "finish",
+                  "enterActions": [
+                    {
+                      "type": "completeSlice"
+                    },
+                    {
+                      "type": "navigate",
+                      "target": "nextSlice"
+                    }
+                  ],
+                  "transitions": []
+                }
+              ]
+            },
+            "navigation": {
+              "previous": "allowed",
+              "manualNext": "after-completion",
+              "autoNext": true,
+              "revisit": "restore-completed-state"
+            }
+          },
+          {
+            "id": "slice-source-and-sim",
+            "title": "Inspect the Source and Simulate",
+            "objectiveIds": [
+              "check-comparability"
+            ],
+            "estimatedSeconds": 120,
+            "blocks": [
+              {
+                "id": "source-paper",
+                "type": "pdf",
+                "title": "Original Research Paper",
+                "source": "assets/pdfs/source-paper.pdf",
+                "initialPage": 1
+              },
+              {
+                "id": "comparison-sim",
+                "type": "interactiveHtml",
+                "source": "interactions/html/comparison-simulation.html",
+                "protocolVersion": "1.0",
+                "aspectRatio": "4:3",
+                "completion": {
+                  "rule": "interaction-complete"
+                }
+              }
+            ],
+            "layout": {
+              "preset": "grid",
+              "slots": [
+                {
+                  "id": "cell-1",
+                  "blockIds": [
+                    "source-paper"
+                  ]
+                },
+                {
+                  "id": "cell-2",
+                  "blockIds": [
+                    "comparison-sim"
+                  ]
+                }
+              ]
+            },
+            "narrations": [],
+            "workflow": {
+              "version": "1.0",
+              "initialStepId": "wait-for-interaction",
+              "steps": [
+                {
+                  "id": "wait-for-interaction",
+                  "enterActions": [],
+                  "transitions": [
+                    {
+                      "on": {
+                        "type": "interaction.completed",
+                        "sourceId": "comparison-sim"
+                      },
+                      "to": "finish"
+                    }
+                  ]
+                },
+                {
+                  "id": "finish",
+                  "enterActions": [
+                    {
+                      "type": "completeSlice"
+                    },
+                    {
+                      "type": "navigate",
+                      "target": "nextSlice"
+                    }
+                  ],
+                  "transitions": []
+                }
+              ]
+            },
+            "navigation": {
+              "previous": "allowed",
+              "manualNext": "after-completion",
+              "autoNext": true,
+              "revisit": "restore-completed-state"
+            }
+          }
+        ]
+      }
+    ],
+    "closing": {
+      "preparedSummary": "The course introduced a comparability check that separates conclusion direction from the boundaries and methods behind the evidence.",
+      "takeaways": [
+        "Opposite conclusions may answer different questions",
+        "Comparison requires compatible objects, boundaries, and methods"
+      ],
+      "transferApplications": [
+        "Comparing news reports",
+        "Reviewing research claims",
+        "Checking AI-generated answers"
+      ],
+      "personalization": {
+        "enabled": true,
+        "allowedSignals": [
+          "answers",
+          "attempts",
+          "time-on-slice",
+          "interaction-results"
+        ]
+      },
+      "fallback": {
+        "text": "You completed the course. Before comparing two conclusions, first check whether their evidence is genuinely comparable."
+      }
+    }
+  }
+}

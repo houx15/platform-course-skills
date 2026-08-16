@@ -63,7 +63,7 @@
 
 **Files:** shared contract/toolchain files listed above.
 
-- [ ] **Step 1: Write failing shared-contract bridge tests**
+- [x] **Step 1: Write failing shared-contract bridge tests**
 
 Cover:
 
@@ -86,11 +86,11 @@ def test_snapshot_manifest_matches_vendored_contract(self):
     self.assertEqual(check_snapshot(ROOT), [])
 ```
 
-- [ ] **Step 2: Run the tests and verify they fail because no Node workspace or bridge exists**
+- [x] **Step 2: Run the tests and verify they fail because no Node workspace or bridge exists**
 
 Run: `python -m unittest tests.test_shared_course_contract -v`
 
-- [ ] **Step 3: Copy the exact upstream package and add workspace tooling**
+- [x] **Step 3: Copy the exact upstream package and add workspace tooling**
 
 Create a private root package with:
 
@@ -112,16 +112,16 @@ Create a private root package with:
 
 The copied course-contract retains Zod as its only runtime dependency. Do not edit its schemas to accommodate generator output.
 
-- [ ] **Step 4: Add and verify the snapshot manifest**
+- [x] **Step 4: Add and verify the snapshot manifest**
 
-Record upstream repository commit, package version, and each `src/**/*.ts` SHA-256. `check-course-contract-sync.py` must check the vendored copy always and compare to `--upstream PATH` when supplied. It must never modify either tree.
+Record upstream repository commit, package version, and each `src/**/*.ts` SHA-256. `check-course-contract-sync.py` must check the vendored copy always and compare contract source bytes to `--upstream PATH` when supplied. Report a newer repository HEAD as context, not drift, when every contract source hash still matches; unrelated student-platform commits must not invalidate the snapshot. It must never modify either tree.
 
-- [ ] **Step 5: Implement the TypeScript validator bridge**
+- [x] **Step 5: Implement the TypeScript validator bridge**
 
 Commands:
 
 ```text
-pnpm exec tsx scripts/validate-course-definition.ts INPUT --json
+node --import tsx scripts/validate-course-definition.ts INPUT --json
 pnpm --filter @mind-imprint/course-contract test
 pnpm --filter @mind-imprint/course-contract typecheck
 ```
@@ -134,11 +134,11 @@ Output on success:
 
 Output on contract failure contains `ok:false` and the shared ordered `{path,message,layer}` issues. Exit codes: `0` valid, `2` contract-invalid, `3` I/O/tool failure. Never print a stack trace in ordinary output.
 
-- [ ] **Step 6: Install from the lockfile and run bridge, upstream package test, and typecheck**
+- [x] **Step 6: Install from the lockfile and run bridge, upstream package test, and typecheck**
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json packages/course-contract course-contract.snapshot.json scripts/check-course-contract-sync.py scripts/validate-course-definition.ts tests/test_shared_course_contract.py
@@ -353,7 +353,7 @@ The source map contains no timestamp:
 
 - [ ] **Step 4: Invoke only the shared contract as the runtime gate**
 
-The compiler adapter runs `pnpm exec tsx scripts/validate-course-definition.ts`. Preserve shared issue order/layer/path/message. A failed validator produces no new course definition or source map.
+The compiler adapter runs `node --import tsx scripts/validate-course-definition.ts`. This avoids the `tsx` CLI's optional IPC server while executing the same TypeScript source. Preserve shared issue order/layer/path/message. A failed validator produces no new course definition or source map.
 
 - [ ] **Step 5: Add source-map and compilation-report schemas**
 

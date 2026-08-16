@@ -1,0 +1,19 @@
+{
+  "name": "course-production-toolkit",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@10.29.3",
+  "scripts": {
+    "test:contract": "pnpm --filter @mind-imprint/course-contract test",
+    "typecheck:contract": "pnpm --filter @mind-imprint/course-contract typecheck",
+    "validate:course2": "node --import tsx scripts/validate-course-definition.ts"
+  },
+  "dependencies": {
+    "@mind-imprint/course-contract": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}
