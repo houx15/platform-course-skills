@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-publication-operation.schema.json",
+  "title": "Recoverable course publication operation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "operationId", "preflightHash", "mode", "phase", "writeAttempted", "verifiedAssets", "writeResult", "verifiedRemote"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "operationId": {"$ref": "#/$defs/hash"},
+    "preflightHash": {"$ref": "#/$defs/hash"},
+    "mode": {"enum": ["create", "update"]},
+    "phase": {"enum": ["planned", "uploading", "submitting", "ambiguous", "verifying", "remote-verified", "verified"]},
+    "writeAttempted": {"type": "boolean"},
+    "verifiedAssets": {"type": "array", "items": {"$ref": "#/$defs/upload"}},
+    "writeResult": {
+      "anyOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["remoteCourseId", "revision"],
+          "properties": {
+            "remoteCourseId": {"type": "string", "minLength": 1},
+            "revision": {"type": "string", "minLength": 1}
+          }
+        }
+      ]
+    },
+    "verifiedRemote": {"anyOf": [{"type": "null"}, {"$ref": "#/$defs/remote"}]}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "upload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["objectKey", "uploadedSha256", "etag", "verifiedAt"],
+      "properties": {
+        "objectKey": {"type": "string", "minLength": 1},
+        "uploadedSha256": {"$ref": "#/$defs/hash"},
+        "etag": {"type": ["string", "null"]},
+        "verifiedAt": {"type": "string", "minLength": 1}
+      }
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "objectKey"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/hash"},
+        "objectKey": {"type": "string", "minLength": 1}
+      }
+    },
+    "remote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["courseLocalId", "remoteCourseId", "slug", "status", "visibility", "revision", "definitionHash", "assets", "observedAt"],
+      "properties": {
+        "courseLocalId": {"type": "string", "minLength": 1},
+        "remoteCourseId": {"type": "string", "minLength": 1},
+        "slug": {"type": "string", "minLength": 1},
+        "status": {"enum": ["preview", "published"]},
+        "visibility": {"enum": ["private", "unlisted", "public"]},
+        "revision": {"type": "string", "minLength": 1},
+        "definitionHash": {"$ref": "#/$defs/hash"},
+        "assets": {"type": "array", "items": {"$ref": "#/$defs/asset"}},
+        "observedAt": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

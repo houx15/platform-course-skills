@@ -47,13 +47,13 @@
 
 **Files:** adapter protocols/orchestrator, in-memory fakes in tests, operation-state schema.
 
-- [ ] Define object-store and course-API protocols with verified results, idempotency keys, expected revisions, discovery, create/update, and read-back.
-- [ ] Upload each unique changed hash once, reuse verified unchanged assets, and persist each verified upload so a partial batch resumes safely.
-- [ ] Use stable operation/definition hashes for retry idempotency; after an ambiguous create/update response, discover/read before any retry and never issue a second blind create.
-- [ ] Submit create only in create mode and update only against the known remoteCourseId/revision; never turn an update failure into create.
-- [ ] Verify remote course ID, revision, definition hash, asset references, and status by post-write read before updating publish state.
-- [ ] Prove with fakes that repeated publication skips uploads and updates the same course rather than creating another one.
-- [ ] Commit: `feat: orchestrate idempotent course publication`.
+- [x] Define object-store and course-API protocols with verified results, idempotency keys, expected revisions, discovery, create/update, and read-back.
+- [x] Upload each unique changed hash once, reuse verified unchanged assets, and persist each verified upload so a partial batch resumes safely.
+- [x] Use stable operation/definition hashes for retry idempotency; after an ambiguous create/update response, discover/read before any retry and never issue a second blind create.
+- [x] Submit create only in create mode and update only against the known remoteCourseId/revision; never turn an update failure into create.
+- [x] Verify remote course ID, revision, definition hash, asset references, and status by post-write read before updating publish state.
+- [x] Prove with fakes that repeated publication skips uploads and updates the same course rather than creating another one.
+- [x] Commit: `feat: orchestrate idempotent course publication`.
 
 ## Task 5: Bind G9/G10 evidence without enabling live publication
 
