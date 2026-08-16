@@ -122,6 +122,15 @@ class WorkflowGateTests(unittest.TestCase):
             self.assertEqual(restored.source_paths, ["materials/source.md"])
             self.assertEqual(summary["nextAction"], "complete G1")
 
+    def test_pending_annotations_are_the_next_visible_action(self):
+        session = new_session("course-a", [], NOW)
+        session.pending_annotation_ids = ["annotation-required-1"]
+
+        self.assertEqual(
+            workflow_summary(session)["nextAction"],
+            "resolve preview annotations",
+        )
+
     def test_status_transition_records_failure_without_changing_phase(self):
         session = new_session("course-a", [], NOW)
 

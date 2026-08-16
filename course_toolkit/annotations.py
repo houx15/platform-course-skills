@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Dict, List, Optional
 
 from course_toolkit.blueprint import ID_RE
+from course_toolkit.course_compiler import canonical_json_hash
+from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.jsonio import load_json, write_json_atomic
 
 
@@ -376,3 +378,240 @@ class AnnotationStore:
         updated = replace(current, **values)
         self._annotations[annotation_id] = updated
         return updated
+
+
+@dataclass(frozen=True)
+class ResolvedAnnotationTarget:
+    target_id: str
+    blueprint_pointer: str
+    runtime_pointer: str
+
+
+@dataclass(frozen=True)
+class AnnotationReconciliationResult:
+    resolved_ids: tuple[str, ...]
+    rebound_ids: tuple[str, ...]
+    orphaned_ids: tuple[str, ...]
+    restored_ids: tuple[str, ...]
+    active_issue_ids: tuple[str, ...]
+
+
+def _by_id(items: object, item_id: str) -> tuple[int, dict]:
+    if not isinstance(items, list):
+        raise ValueError(f"Target {item_id} is missing")
+    matches = [
+        (index, item)
+        for index, item in enumerate(items)
+        if isinstance(item, dict) and item.get("id") == item_id
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"Target {item_id} is missing or ambiguous")
+    return matches[0]
+
+
+def resolve_annotation_target(
+    annotation: CourseAnnotation,
+    document: dict,
+    source_map: dict,
+) -> ResolvedAnnotationTarget:
+    course = document.get("course")
+    if not isinstance(course, dict) or course.get("id") != annotation.target.course_id:
+        raise ValueError(f"Course target is missing: {annotation.target.course_id}")
+    target_id = "course"
+    runtime_pointer = "/course"
+    current = course
+    target = annotation.target
+
+    if target.part_id is not None:
+        index, current = _by_id(course.get("parts"), target.part_id)
+        runtime_pointer = f"/course/parts/{index}"
+        target_id = f"part:{target.part_id}"
+    if target.slice_id is not None:
+        index, current = _by_id(current.get("slices"), target.slice_id)
+        runtime_pointer = f"{runtime_pointer}/slices/{index}"
+        target_id = f"slice:{target.slice_id}"
+    slice_data = current
+    if target.block_id is not None:
+        index, current = _by_id(slice_data.get("blocks"), target.block_id)
+        runtime_pointer = f"{runtime_pointer}/blocks/{index}"
+        target_id = f"block:{target.block_id}"
+    if target.item_id is not None:
+        item_matches = []
+        for field, value in current.items():
+            if not isinstance(value, list):
+                continue
+            for index, item in enumerate(value):
+                if isinstance(item, dict) and item.get("id") == target.item_id:
+                    item_matches.append((field, index))
+        if len(item_matches) != 1:
+            raise ValueError(f"Item target is missing or ambiguous: {target.item_id}")
+        field, index = item_matches[0]
+        runtime_pointer = f"{runtime_pointer}/{field}/{index}"
+    if target.workflow_step_id is not None:
+        workflow = slice_data.get("workflow")
+        steps = workflow.get("steps") if isinstance(workflow, dict) else None
+        index, _ = _by_id(steps, target.workflow_step_id)
+        runtime_pointer = f"{runtime_pointer}/workflow/steps/{index}"
+        target_id = (
+            f"slice:{target.slice_id}/workflow-step:{target.workflow_step_id}"
+        )
+
+    mappings = source_map.get("mappings")
+    if not isinstance(mappings, list):
+        raise ValueError("Runtime source map has no mappings")
+    mapping_matches = [
+        item
+        for item in mappings
+        if isinstance(item, dict) and item.get("targetId") == target_id
+    ]
+    if len(mapping_matches) != 1:
+        raise ValueError(f"Source-map target is missing or ambiguous: {target_id}")
+    mapping = mapping_matches[0]
+    mapped_runtime = mapping.get("runtimePointer")
+    if target.item_id is None and mapped_runtime != runtime_pointer:
+        raise ValueError(f"Source-map pointer differs for target: {target_id}")
+    if target.item_id is not None and not runtime_pointer.startswith(
+        f"{mapped_runtime}/"
+    ):
+        raise ValueError(f"Item target is outside its owning Block: {target.item_id}")
+    blueprint_pointer = mapping.get("blueprintPointer")
+    if not isinstance(blueprint_pointer, str):
+        raise ValueError(f"Source-map Blueprint pointer is missing: {target_id}")
+    if target.item_id is not None:
+        blueprint_pointer = f"{blueprint_pointer}{runtime_pointer[len(mapped_runtime):]}"
+    return ResolvedAnnotationTarget(target_id, blueprint_pointer, runtime_pointer)
+
+
+def _preview_issue_candidate(annotation: CourseAnnotation, now: str):
+    if annotation.classification == "runtime-bug" and annotation.status != "verified":
+        code = "preview-runtime-bug"
+    elif annotation.required and annotation.status == "orphaned":
+        code = "preview-orphaned-annotation"
+    elif annotation.required and annotation.status not in {"verified", "dismissed"}:
+        code = "preview-required-annotation"
+    else:
+        return None
+    return make_registered_issue(
+        code=code,
+        source="preview",
+        message=(annotation.orphan_reason or annotation.text),
+        seen_at=now,
+        target={"annotationId": annotation.id},
+        evidence=(".course-work/annotations.json",),
+        remediation=(
+            "Fix the renderer/runtime behavior and verify it in a new G7 preview."
+            if code == "preview-runtime-bug"
+            else "Resolve this annotation and verify the result in a current G7 preview."
+        ),
+    )
+
+
+def _sync_preview_issues(root: Path, store: AnnotationStore, now: str) -> tuple[str, ...]:
+    issues = IssueStore.load(root / ".course-work/issues.json")
+    candidates = [
+        candidate
+        for candidate in (
+            _preview_issue_candidate(annotation, now) for annotation in store.all()
+        )
+        if candidate is not None
+    ]
+    fingerprints = {candidate.fingerprint for candidate in candidates}
+    for candidate in candidates:
+        issues.upsert(candidate)
+    for issue in issues.all():
+        if (
+            issue.source == "preview"
+            and issue.gate_id == "G7"
+            and issue.fingerprint not in fingerprints
+            and issue.status != "resolved"
+        ):
+            issues.resolve(issue.id, now)
+    issues.save()
+    return tuple(
+        issue.id
+        for issue in issues.all()
+        if issue.source == "preview" and issue.gate_id == "G7" and issue.status == "active"
+    )
+
+
+def _sync_session_pending_annotations(
+    root: Path,
+    store: AnnotationStore,
+    now: str,
+) -> None:
+    from course_toolkit.workflow import SESSION_RELATIVE_PATH, load_session, save_session
+
+    if not (root / SESSION_RELATIVE_PATH).is_file():
+        return
+    session = load_session(root)
+    session.pending_annotation_ids = [
+        annotation.id
+        for annotation in store.all()
+        if (
+            annotation.classification == "runtime-bug"
+            and annotation.status != "verified"
+        )
+        or (
+            annotation.required
+            and annotation.status not in {"verified", "dismissed"}
+        )
+    ]
+    session.updated_at = now
+    save_session(root, session)
+
+
+def reconcile_annotations(root: Path, now: str) -> AnnotationReconciliationResult:
+    from course_toolkit.workflow import verify_g5_compilation
+
+    root = root.resolve()
+    verify_g5_compilation(root)
+    document = load_json(root / "course/course.json")
+    source_map = load_json(root / ".course-work/course-runtime-source-map.json")
+    current_hash = canonical_json_hash(document)
+    store = AnnotationStore.load(root / ".course-work/annotations.json")
+    resolved_ids = []
+    rebound_ids = []
+    orphaned_ids = []
+    restored_ids = []
+    for original in store.all():
+        if original.status == "dismissed":
+            continue
+        try:
+            resolve_annotation_target(original, document, source_map)
+        except ValueError as exc:
+            if original.status != "orphaned":
+                store.transition(
+                    original.id,
+                    "orphaned",
+                    now,
+                    orphan_reason=str(exc),
+                )
+            else:
+                store.replace(replace(original, orphan_reason=str(exc), updated_at=now))
+            orphaned_ids.append(original.id)
+            continue
+        current = store.get(original.id)
+        if current.status == "orphaned":
+            current = store.transition(current.id, "open", now)
+            restored_ids.append(current.id)
+        if current.definition_hash != current_hash:
+            store.replace(
+                replace(
+                    current,
+                    definition_hash=current_hash,
+                    rebound_from_definition_hash=current.definition_hash,
+                    updated_at=now,
+                )
+            )
+            rebound_ids.append(current.id)
+        resolved_ids.append(current.id)
+    store.save()
+    active_issue_ids = _sync_preview_issues(root, store, now)
+    _sync_session_pending_annotations(root, store, now)
+    return AnnotationReconciliationResult(
+        resolved_ids=tuple(resolved_ids),
+        rebound_ids=tuple(rebound_ids),
+        orphaned_ids=tuple(orphaned_ids),
+        restored_ids=tuple(restored_ids),
+        active_issue_ids=active_issue_ids,
+    )

@@ -53,7 +53,10 @@
             "course-package-invalid",
             "course-package-density-warning",
             "course-package-estimate-warning",
-            "course-package-media-warning"
+            "course-package-media-warning",
+            "preview-required-annotation",
+            "preview-orphaned-annotation",
+            "preview-runtime-bug"
           ]
         },
         "severity": {

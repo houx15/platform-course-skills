@@ -371,6 +371,8 @@ def workflow_summary(session: CourseProductionSession) -> dict:
         next_action = "none"
     elif session.status == "waiting-for-teacher":
         next_action = "wait for teacher decision"
+    elif session.pending_annotation_ids:
+        next_action = "resolve preview annotations"
     elif next_gate is None:
         next_action = "verify remote course"
     else:

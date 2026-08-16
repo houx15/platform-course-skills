@@ -66,6 +66,15 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
         "G6",
         "acknowledgement-required",
     ),
+    "preview-required-annotation": IssuePolicy(
+        "preview-required-annotation", "blocker", "G7"
+    ),
+    "preview-orphaned-annotation": IssuePolicy(
+        "preview-orphaned-annotation", "blocker", "G7"
+    ),
+    "preview-runtime-bug": IssuePolicy(
+        "preview-runtime-bug", "blocker", "G7"
+    ),
 }
 
 

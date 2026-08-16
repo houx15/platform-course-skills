@@ -25,13 +25,13 @@
 
 **Files:** annotation module/CLI, issue registry/schema, Workflow, tests.
 
-- [ ] Resolve course, Part, Slice, Block, item, and workflow-step targets hierarchically against current CourseDefinition 2.0.
-- [ ] Map each resolvable annotation to a stable source-map target and Blueprint pointer; item targets remain scoped under their owning Block.
-- [ ] Mark missing or structurally inconsistent targets `orphaned` with an explanation; restore an orphan to `open` if the exact stable target reappears.
-- [ ] Preserve annotations created against an older definition hash when stable IDs still resolve, while recording that rebinding occurred.
-- [ ] Synchronize required open/orphaned annotations and runtime bugs into registered G7 issues without touching unrelated issues.
-- [ ] Add `manage-annotations.py add|list|reconcile` for mock/local-file use and update session pending annotation IDs.
-- [ ] Commit: `feat: reconcile stable course annotations`.
+- [x] Resolve course, Part, Slice, Block, item, and workflow-step targets hierarchically against current CourseDefinition 2.0.
+- [x] Map each resolvable annotation to a stable source-map target and Blueprint pointer; item targets remain scoped under their owning Block.
+- [x] Mark missing or structurally inconsistent targets `orphaned` with an explanation; restore an orphan to `open` if the exact stable target reappears.
+- [x] Preserve annotations created against an older definition hash when stable IDs still resolve, while recording that rebinding occurred.
+- [x] Synchronize required open/orphaned annotations and runtime bugs into registered G7 issues without touching unrelated issues.
+- [x] Add `manage-annotations.py add|list|reconcile` for mock/local-file use and update session pending annotation IDs.
+- [x] Commit: `feat: reconcile stable course annotations`.
 
 ## Task 3: Define scoped annotation revision plans
 
