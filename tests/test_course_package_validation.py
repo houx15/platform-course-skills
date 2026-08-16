@@ -1,14 +1,22 @@
 import copy
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 
 from course_toolkit.course_package_validation import (
+    VALIDATION_REPORT_RELATIVE_PATH,
+    build_course_validation_report,
     iter_asset_references,
     validate_asset_references,
+    write_current_validation_report,
 )
-from course_toolkit.jsonio import load_json
-from tests.helpers import ROOT
+from course_toolkit.course_compiler import compile_blueprint, write_compilation_outputs_atomic
+from course_toolkit.jsonio import load_json, write_json_atomic
+from tests.helpers import ROOT, write_test_mp4, write_test_pdf
+from tests.test_html_validation import VALID_HTML, VALID_HTML_V2
 
 
 BASE = (
@@ -63,6 +71,12 @@ def full_asset_document():
             },
         ]
     )
+    slice_data["layout"] = {
+        "preset": "full",
+        "slots": [
+            {"id": "main", "blockIds": [block["id"] for block in slice_data["blocks"]]}
+        ],
+    }
     return data
 
 
@@ -187,6 +201,307 @@ class CoursePackageAssetTests(unittest.TestCase):
             result = validate_asset_references(Path(temporary), data, [])
 
         self.assertIn("asset-extension-mismatch", {i.code for i in result.issues})
+
+
+def video_interaction_document():
+    return {
+        "schemaVersion": "1.1",
+        "video": {
+            "blockId": "case-video",
+            "source": "assets/videos/case.mp4",
+            "durationSeconds": 32.533333,
+            "cues": [
+                {
+                    "id": "prediction-check",
+                    "atSeconds": 10,
+                    "pauseVideo": True,
+                    "required": True,
+                    "prompt": "What do you predict?",
+                    "activity": {
+                        "type": "singleChoice",
+                        "options": [
+                            {"id": "same", "label": "Same"},
+                            {"id": "different", "label": "Different"},
+                        ],
+                        "assessment": {"mode": "survey"},
+                        "completion": {"rule": "submit-any"},
+                    },
+                }
+            ],
+        },
+    }
+
+
+def build_full_package(root: Path):
+    document = full_asset_document()
+    video = next(
+        block
+        for block in document["course"]["parts"][0]["slices"][0]["blocks"]
+        if block["id"] == "case-video"
+    )
+    video["durationSeconds"] = 32.533333
+    video["completion"] = {"rule": "video-ended-and-interactions-completed"}
+    blueprint = load_json(
+        ROOT
+        / "tests"
+        / "fixtures"
+        / "course-blueprint"
+        / "approved-blueprint.json"
+    )
+    blueprint["course"] = document["course"]
+    write_json_atomic(root / ".course-work/course-blueprint.json", blueprint)
+    result = compile_blueprint(blueprint)
+    write_compilation_outputs_atomic(root, result)
+
+    for source in (
+        "assets/audio/open.mp3",
+        "assets/audio/close.mp3",
+        "assets/audio/introduce-check.mp3",
+        "assets/images/diagram.png",
+        "assets/images/case-poster.jpg",
+    ):
+        path = root / source
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"asset")
+    write_test_pdf(root / "assets/pdfs/source.pdf")
+    write_test_mp4(root / "assets/videos/case.mp4")
+    captions = root / "assets/captions/case.en.vtt"
+    captions.parent.mkdir(parents=True, exist_ok=True)
+    captions.write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n", encoding="utf-8")
+    interaction = root / "interactions/video/case.json"
+    interaction.parent.mkdir(parents=True, exist_ok=True)
+    interaction.write_text(
+        json.dumps(video_interaction_document()),
+        encoding="utf-8",
+    )
+    html = root / "interactions/html/simulation.html"
+    html.parent.mkdir(parents=True, exist_ok=True)
+    html.write_text(VALID_HTML_V2, encoding="utf-8")
+    return result
+
+
+def build_minimal_package(root: Path):
+    blueprint = load_json(
+        ROOT
+        / "tests"
+        / "fixtures"
+        / "course-blueprint"
+        / "approved-blueprint.json"
+    )
+    write_json_atomic(root / ".course-work/course-blueprint.json", blueprint)
+    result = compile_blueprint(blueprint)
+    write_compilation_outputs_atomic(root, result)
+    audio = root / "assets/audio/introduce-check.mp3"
+    audio.parent.mkdir(parents=True, exist_ok=True)
+    audio.write_bytes(b"audio")
+    return result
+
+
+class CourseDefinitionTwoValidationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        self.compilation = build_full_package(self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def codes(self, key="issues"):
+        return {
+            finding["code"]
+            for finding in build_course_validation_report(self.root)[key]
+        }
+
+    def test_valid_full_package_has_only_fixed_dense_slice_warning(self):
+        report = build_course_validation_report(self.root)
+
+        self.assertEqual(report["status"], "warnings")
+        self.assertEqual(report["issues"], [])
+        self.assertEqual(
+            {item["code"] for item in report["warnings"]},
+            {"dense-slice"},
+        )
+        self.assertEqual(report["summary"]["partCount"], 1)
+        self.assertEqual(report["summary"]["sliceCount"], 1)
+        self.assertEqual(report["summary"]["blockCount"], 6)
+        self.assertEqual(report["summary"]["assetCount"], 10)
+        self.assertEqual(len(report["assets"]), 10)
+        video = report["mediaEvidence"]["videos"][0]
+        self.assertEqual(video["cueCount"], 1)
+        self.assertEqual(video["requiredCueCount"], 1)
+        self.assertEqual(video["autoPauseCueCount"], 1)
+
+    def test_validation_report_is_deterministic(self):
+        first = build_course_validation_report(self.root)
+        second = build_course_validation_report(self.root)
+
+        self.assertEqual(first, second)
+        self.assertNotIn("timestamp", json.dumps(first))
+
+    def test_report_is_independent_of_absolute_course_root(self):
+        first = build_course_validation_report(self.root)
+        with tempfile.TemporaryDirectory() as temporary:
+            other = Path(temporary)
+            build_full_package(other)
+            second = build_course_validation_report(other)
+
+        self.assertEqual(first, second)
+
+    def test_pdf_signature_and_caption_header_are_required(self):
+        (self.root / "assets/pdfs/source.pdf").write_bytes(b"not pdf")
+        (self.root / "assets/captions/case.en.vtt").write_text(
+            "not vtt", encoding="utf-8"
+        )
+
+        codes = self.codes()
+
+        self.assertIn("invalid-pdf-header", codes)
+        self.assertIn("invalid-pdf-eof", codes)
+        self.assertIn("invalid-webvtt", codes)
+
+    def test_video_profile_and_declared_duration_are_checked(self):
+        write_test_mp4(
+            self.root / "assets/videos/case.mp4",
+            video_codec=b"vp09",
+            faststart=False,
+        )
+
+        codes = self.codes()
+
+        self.assertIn("unsupported-video-codec", codes)
+        self.assertIn("missing-faststart", codes)
+
+    def test_shared_video_interaction_and_actual_timing_are_checked(self):
+        path = self.root / "interactions/video/case.json"
+        data = load_json(path)
+        duplicate = copy.deepcopy(data["video"]["cues"][0])
+        duplicate["atSeconds"] = 10
+        data["video"]["cues"].append(duplicate)
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        self.assertIn("video-interaction-contract-invalid", self.codes())
+
+    def test_required_cues_require_combined_video_completion(self):
+        document_path = self.root / "course" / "course.json"
+        document = load_json(document_path)
+        video = next(
+            block
+            for block in document["course"]["parts"][0]["slices"][0]["blocks"]
+            if block["id"] == "case-video"
+        )
+        video["completion"] = {"rule": "video-ended"}
+        # Rebuild a self-consistent G5 set so this test reaches media semantics.
+        blueprint_path = self.root / ".course-work" / "course-blueprint.json"
+        blueprint = load_json(blueprint_path)
+        blueprint["course"] = document["course"]
+        write_json_atomic(blueprint_path, blueprint)
+        write_compilation_outputs_atomic(self.root, compile_blueprint(blueprint))
+
+        self.assertIn("video-completion-inconsistent", self.codes())
+
+    def test_estimated_time_drift_is_a_fixed_warning(self):
+        blueprint_path = self.root / ".course-work/course-blueprint.json"
+        blueprint = load_json(blueprint_path)
+        blueprint["course"]["estimatedMinutes"] = 10
+        write_json_atomic(blueprint_path, blueprint)
+        write_compilation_outputs_atomic(self.root, compile_blueprint(blueprint))
+
+        self.assertIn("estimated-time-drift", self.codes("warnings"))
+
+    def test_legacy_html_protocol_is_blocked(self):
+        (self.root / "interactions/html/simulation.html").write_text(
+            VALID_HTML,
+            encoding="utf-8",
+        )
+
+        codes = self.codes()
+
+        self.assertIn("missing-host-handshake", codes)
+        self.assertIn("missing-completion-evidence", codes)
+
+    def test_blocked_attempt_does_not_replace_previous_current_report(self):
+        first = build_course_validation_report(self.root)
+        write_current_validation_report(self.root, first)
+        current_path = self.root / VALIDATION_REPORT_RELATIVE_PATH
+        before = current_path.read_bytes()
+        (self.root / "assets/pdfs/source.pdf").write_bytes(b"broken")
+        blocked = build_course_validation_report(self.root)
+
+        write_current_validation_report(self.root, blocked)
+
+        self.assertEqual(current_path.read_bytes(), before)
+        self.assertTrue(
+            (self.root / ".course-work/course-validation-attempt.json").is_file()
+        )
+
+
+class CourseDefinitionTwoValidationCliTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        build_full_package(self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def run_cli(self):
+        return subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / "scripts" / "validate-course-v2.py"),
+                str(self.root),
+                "--json",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+    def test_warning_exit_one_and_report_written(self):
+        completed = self.run_cli()
+
+        self.assertEqual(completed.returncode, 1, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["status"], "warnings")
+        self.assertTrue((self.root / VALIDATION_REPORT_RELATIVE_PATH).is_file())
+
+    def test_clear_exit_zero(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build_minimal_package(root)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(ROOT / "scripts" / "validate-course-v2.py"),
+                    str(root),
+                    "--json",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["status"], "clear")
+
+    def test_blocked_exit_two(self):
+        (self.root / "assets/pdfs/source.pdf").write_bytes(b"broken")
+
+        completed = self.run_cli()
+
+        self.assertEqual(completed.returncode, 2, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["status"], "blocked")
+
+    def test_tool_failure_exit_three_without_traceback(self):
+        (self.root / ".course-work/compilation-report.json").write_text(
+            "not json", encoding="utf-8"
+        )
+
+        completed = self.run_cli()
+
+        self.assertEqual(completed.returncode, 3)
+        self.assertNotIn("Traceback", completed.stderr)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-validation-report.schema.json",
+  "title": "CourseDefinition 2.0 validation report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "validatorVersion",
+    "status",
+    "blueprintHash",
+    "courseDefinitionHash",
+    "compilationReportHash",
+    "validatorHash",
+    "assetSetHash",
+    "summary",
+    "assets",
+    "mediaEvidence",
+    "issues",
+    "warnings",
+    "browserCheckRequired"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "validatorVersion": {"type": "string", "minLength": 1},
+    "status": {"enum": ["clear", "warnings", "blocked"]},
+    "blueprintHash": {"$ref": "#/$defs/hash"},
+    "courseDefinitionHash": {"$ref": "#/$defs/hash"},
+    "compilationReportHash": {"$ref": "#/$defs/hash"},
+    "validatorHash": {"$ref": "#/$defs/hash"},
+    "assetSetHash": {"$ref": "#/$defs/hash"},
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["partCount", "sliceCount", "blockCount", "assetCount"],
+      "properties": {
+        "partCount": {"type": "integer", "minimum": 1},
+        "sliceCount": {"type": "integer", "minimum": 1},
+        "blockCount": {"type": "integer", "minimum": 1},
+        "assetCount": {"type": "integer", "minimum": 0}
+      }
+    },
+    "assets": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/asset"}
+    },
+    "mediaEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["videos", "html", "pdfs"],
+      "properties": {
+        "videos": {"type": "array", "items": {"type": "object"}},
+        "html": {"type": "array", "items": {"type": "object"}},
+        "pdfs": {"type": "array", "items": {"type": "object"}}
+      }
+    },
+    "issues": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "warnings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "browserCheckRequired": {"const": true}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "roles", "runtimePaths", "sha256", "sizeBytes"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "roles": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+        "runtimePaths": {"type": "array", "items": {"type": "string"}, "minItems": 1, "uniqueItems": true},
+        "sha256": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+        "sizeBytes": {"type": ["integer", "null"], "minimum": 0}
+      }
+    },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "code", "message"],
+      "properties": {
+        "path": {"type": "string"},
+        "code": {"type": "string", "minLength": 1},
+        "message": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}

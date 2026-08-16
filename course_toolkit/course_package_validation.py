@@ -1,9 +1,20 @@
+import json
 import re
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, List, Optional, Sequence, Tuple
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
+from course_toolkit.course_compiler import (
+    canonical_json_hash,
+    file_sha256,
+)
 from course_toolkit.errors import ValidationIssue
+from course_toolkit.html_validation import validate_interactive_html_v2
+from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.pdf_validation import validate_pdf_file
+from course_toolkit.video_interactions import inspect_video_file
 
 
 ROLE_EXTENSIONS = {
@@ -18,6 +29,11 @@ ROLE_EXTENSIONS = {
     "video-interaction": {".json"},
     "interactive-html": {".html"},
 }
+VALIDATOR_VERSION = "1.0"
+VALIDATION_REPORT_RELATIVE_PATH = Path(".course-work/course-validation-report.json")
+VALIDATION_ATTEMPT_RELATIVE_PATH = Path(".course-work/course-validation-attempt.json")
+ROOT = Path(__file__).resolve().parent.parent
+VIDEO_INTERACTION_VALIDATOR = ROOT / "scripts" / "validate-video-interaction.ts"
 
 
 @dataclass(frozen=True)
@@ -318,3 +334,404 @@ def validate_asset_references(
         if path_issue:
             issues.append(path_issue)
     return AssetValidationResult(references, tuple(issues))
+
+
+class PackageValidationToolError(RuntimeError):
+    pass
+
+
+def _blocks(document: dict) -> Iterable[Tuple[str, str, dict]]:
+    for part in document.get("course", {}).get("parts", []):
+        if not isinstance(part, dict):
+            continue
+        for slice_data in part.get("slices", []):
+            if not isinstance(slice_data, dict):
+                continue
+            slice_id = str(slice_data.get("id", "unknown"))
+            for block in slice_data.get("blocks", []):
+                if isinstance(block, dict):
+                    yield str(block.get("id", "unknown")), slice_id, block
+
+
+def _video_interaction_contract_issues(document: dict, owner: dict) -> List[ValidationIssue]:
+    with tempfile.TemporaryDirectory(prefix="video-interaction-") as temporary:
+        temporary_root = Path(temporary)
+        document_path = temporary_root / "interaction.json"
+        owner_path = temporary_root / "owner.json"
+        document_path.write_text(json.dumps(document), encoding="utf-8")
+        owner_path.write_text(json.dumps(owner), encoding="utf-8")
+        try:
+            completed = subprocess.run(
+                [
+                    "node",
+                    "--import",
+                    "tsx",
+                    str(VIDEO_INTERACTION_VALIDATOR),
+                    str(document_path),
+                    str(owner_path),
+                    "--json",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise PackageValidationToolError(
+                f"Cannot run shared video interaction validator: {exc}"
+            ) from exc
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError as exc:
+        detail = completed.stderr.strip() or completed.stdout.strip() or "no output"
+        raise PackageValidationToolError(
+            f"Shared video interaction validator returned unreadable output: {detail}"
+        ) from exc
+    if completed.returncode == 0 and payload.get("ok") is True:
+        return []
+    if completed.returncode == 2 and payload.get("ok") is False:
+        return [
+            ValidationIssue(
+                str(issue.get("path", "")),
+                "video-interaction-contract-invalid",
+                str(issue.get("message", "invalid video interaction")),
+            )
+            for issue in payload.get("issues", [])
+            if isinstance(issue, dict)
+        ]
+    detail = payload.get("error") if isinstance(payload, dict) else None
+    raise PackageValidationToolError(
+        f"Shared video interaction validator failed: {detail or completed.returncode}"
+    )
+
+
+def _prefix(prefix: str, issues: Iterable[ValidationIssue]) -> List[ValidationIssue]:
+    prefixed = []
+    for issue in issues:
+        suffix = issue.path
+        if suffix == "$" or Path(suffix).is_absolute():
+            path = prefix
+        else:
+            path = f"{prefix}:{suffix}"
+        prefixed.append(ValidationIssue(path, issue.code, issue.message))
+    return prefixed
+
+
+def _asset_evidence(root: Path, references: Sequence[AssetReference]) -> List[dict]:
+    grouped: Dict[str, List[AssetReference]] = {}
+    for reference in references:
+        grouped.setdefault(reference.source, []).append(reference)
+    evidence = []
+    for source in sorted(grouped):
+        path = root / source
+        safe_file = (
+            not _unsafe_source(source)
+            and path.is_file()
+            and not path.is_symlink()
+            and not any((root / Path(*Path(source).parts[:index])).is_symlink() for index in range(1, len(Path(source).parts)))
+        )
+        evidence.append(
+            {
+                "source": source,
+                "roles": sorted({item.role for item in grouped[source]}),
+                "runtimePaths": sorted(item.runtime_path for item in grouped[source]),
+                "sha256": file_sha256(path) if safe_file else None,
+                "sizeBytes": path.stat().st_size if safe_file else None,
+            }
+        )
+    return evidence
+
+
+def _specialized_asset_findings(
+    root: Path,
+    document: dict,
+    references: Sequence[AssetReference],
+    asset_issues: Sequence[ValidationIssue],
+) -> Tuple[List[ValidationIssue], List[ValidationIssue]]:
+    issues: List[ValidationIssue] = []
+    warnings: List[ValidationIssue] = []
+    invalid_paths = {
+        issue.path
+        for issue in asset_issues
+        if issue.code
+        in {
+            "unsafe-asset-path",
+            "symlink-asset-path",
+            "missing-asset",
+            "asset-case-mismatch",
+            "asset-extension-mismatch",
+        }
+    }
+    refs_by_role: Dict[str, List[AssetReference]] = {}
+    for reference in references:
+        refs_by_role.setdefault(reference.role, []).append(reference)
+        if reference.runtime_path in invalid_paths:
+            continue
+        path = root / reference.source
+        if reference.role == "pdf":
+            issues.extend(_prefix(reference.runtime_path, validate_pdf_file(path)))
+        elif reference.role == "interactive-html":
+            issues.extend(
+                _prefix(reference.runtime_path, validate_interactive_html_v2(path))
+            )
+        elif reference.role == "captions":
+            try:
+                prefix = path.read_text(encoding="utf-8-sig")[:32]
+            except (OSError, UnicodeError) as exc:
+                issues.append(
+                    ValidationIssue(
+                        reference.runtime_path,
+                        "unreadable-caption",
+                        str(exc),
+                    )
+                )
+            else:
+                if not prefix.startswith("WEBVTT"):
+                    issues.append(
+                        ValidationIssue(
+                            reference.runtime_path,
+                            "invalid-webvtt",
+                            "caption file must start with WEBVTT",
+                        )
+                    )
+
+    interaction_by_block = {
+        reference.block_id: reference
+        for reference in refs_by_role.get("video-interaction", [])
+        if reference.block_id
+    }
+    video_ref_by_block = {
+        reference.block_id: reference
+        for reference in refs_by_role.get("video", [])
+        if reference.block_id
+    }
+    for block_id, _, block in _blocks(document):
+        if block.get("type") != "video":
+            continue
+        video_reference = video_ref_by_block.get(block_id)
+        if video_reference is None or video_reference.runtime_path in invalid_paths:
+            continue
+        interaction_reference = interaction_by_block.get(block_id)
+        interaction_document = None
+        cue_times: List[float] = []
+        required_cues = []
+        if interaction_reference is not None and interaction_reference.runtime_path not in invalid_paths:
+            interaction_path = root / interaction_reference.source
+            try:
+                interaction_document = load_json(interaction_path)
+            except ValueError as exc:
+                issues.append(
+                    ValidationIssue(
+                        interaction_reference.runtime_path,
+                        "invalid-video-interaction-json",
+                        str(exc),
+                    )
+                )
+            else:
+                issues.extend(
+                    _prefix(
+                        interaction_reference.runtime_path,
+                        _video_interaction_contract_issues(interaction_document, block),
+                    )
+                )
+                video_data = interaction_document.get("video") if isinstance(interaction_document, dict) else None
+                cues = video_data.get("cues", []) if isinstance(video_data, dict) else []
+                if isinstance(cues, list):
+                    cue_times = [
+                        float(cue["atSeconds"])
+                        for cue in cues
+                        if isinstance(cue, dict)
+                        and isinstance(cue.get("atSeconds"), (int, float))
+                        and not isinstance(cue.get("atSeconds"), bool)
+                    ]
+                    required_cues = [
+                        cue
+                        for cue in cues
+                        if isinstance(cue, dict) and cue.get("required") is True
+                    ]
+        if required_cues and block.get("completion", {}).get("rule") != "video-ended-and-interactions-completed":
+            issues.append(
+                ValidationIssue(
+                    video_reference.runtime_path,
+                    "video-completion-inconsistent",
+                    "required video cues require video-ended-and-interactions-completed",
+                )
+            )
+        media_result = inspect_video_file(
+            root / video_reference.source,
+            video_reference.source,
+            cue_times,
+        )
+        issues.extend(_prefix(video_reference.runtime_path, media_result.issues))
+        warnings.extend(_prefix(video_reference.runtime_path, media_result.warnings))
+        if media_result.profile is None:
+            continue
+        actual_duration = media_result.profile.duration_seconds
+        declared_duration = block.get("durationSeconds")
+        if isinstance(declared_duration, (int, float)) and not isinstance(declared_duration, bool):
+            if abs(float(declared_duration) - actual_duration) > 1:
+                issues.append(
+                    ValidationIssue(
+                        video_reference.runtime_path,
+                        "video-duration-mismatch",
+                        "Video Block durationSeconds differs from the actual MP4 duration",
+                    )
+                )
+        if isinstance(interaction_document, dict):
+            video_data = interaction_document.get("video")
+            interaction_duration = video_data.get("durationSeconds") if isinstance(video_data, dict) else None
+            if isinstance(interaction_duration, (int, float)) and not isinstance(interaction_duration, bool):
+                if abs(float(interaction_duration) - actual_duration) > 1:
+                    issues.append(
+                        ValidationIssue(
+                            interaction_reference.runtime_path if interaction_reference else video_reference.runtime_path,
+                            "video-interaction-duration-mismatch",
+                            "interaction durationSeconds differs from the actual MP4 duration",
+                        )
+                    )
+            for cue_time in cue_times:
+                if cue_time >= actual_duration:
+                    issues.append(
+                        ValidationIssue(
+                            interaction_reference.runtime_path if interaction_reference else video_reference.runtime_path,
+                            "video-cue-out-of-range",
+                            f"cue at {cue_time:g}s is outside the actual MP4 duration",
+                        )
+                    )
+    return issues, warnings
+
+
+def _completeness_findings(document: dict) -> List[ValidationIssue]:
+    warnings: List[ValidationIssue] = []
+    total_seconds = 0.0
+    for part_index, part in enumerate(document.get("course", {}).get("parts", [])):
+        for slice_index, slice_data in enumerate(part.get("slices", [])):
+            total_seconds += float(slice_data.get("estimatedSeconds", 0))
+            blocks = slice_data.get("blocks", [])
+            if isinstance(blocks, list) and len(blocks) > 4:
+                warnings.append(
+                    ValidationIssue(
+                        f"course.parts[{part_index}].slices[{slice_index}].blocks",
+                        "dense-slice",
+                        f"Slice has {len(blocks)} Blocks; review one-screen density in preview",
+                    )
+                )
+    estimated_minutes = document.get("course", {}).get("estimatedMinutes")
+    if isinstance(estimated_minutes, (int, float)) and not isinstance(estimated_minutes, bool):
+        course_seconds = float(estimated_minutes) * 60
+        tolerance = max(60.0, total_seconds * 0.25)
+        if abs(course_seconds - total_seconds) > tolerance:
+            warnings.append(
+                ValidationIssue(
+                    "course.estimatedMinutes",
+                    "estimated-time-drift",
+                    "course estimatedMinutes differs materially from the Slice total",
+                )
+            )
+    return warnings
+
+
+def _media_evidence(root: Path, document: dict) -> dict:
+    evidence = {"videos": [], "html": [], "pdfs": []}
+    for block_id, _, block in _blocks(document):
+        block_type = block.get("type")
+        source = block.get("source")
+        if not isinstance(source, str):
+            continue
+        if block_type == "pdf":
+            evidence["pdfs"].append({"blockId": block_id, "source": source})
+        elif block_type == "interactiveHtml":
+            evidence["html"].append(
+                {
+                    "blockId": block_id,
+                    "source": source,
+                    "protocolVersion": block.get("protocolVersion"),
+                    "completionRule": block.get("completion", {}).get("rule"),
+                }
+            )
+        elif block_type == "video":
+            cues = []
+            interaction = block.get("interaction")
+            if isinstance(interaction, dict) and isinstance(interaction.get("source"), str):
+                try:
+                    interaction_document = load_json(root / interaction["source"])
+                except ValueError:
+                    interaction_document = None
+                if isinstance(interaction_document, dict):
+                    video_data = interaction_document.get("video")
+                    if isinstance(video_data, dict) and isinstance(video_data.get("cues"), list):
+                        cues = [cue for cue in video_data["cues"] if isinstance(cue, dict)]
+            evidence["videos"].append(
+                {
+                    "blockId": block_id,
+                    "source": source,
+                    "completionRule": block.get("completion", {}).get("rule"),
+                    "cueCount": len(cues),
+                    "requiredCueCount": sum(cue.get("required") is True for cue in cues),
+                    "autoPauseCueCount": sum(cue.get("pauseVideo") is True for cue in cues),
+                }
+            )
+    return evidence
+
+
+def build_course_validation_report(root: Path) -> dict:
+    from course_toolkit.workflow import verify_g5_compilation
+
+    root = root.resolve()
+    verify_g5_compilation(root)
+    document = load_json(root / "course/course.json")
+    compilation_report = load_json(root / ".course-work/compilation-report.json")
+    asset_result = validate_asset_references(
+        root,
+        document,
+        compilation_report.get("assetPaths", []),
+    )
+    issues = list(asset_result.issues)
+    specialized_issues, warnings = _specialized_asset_findings(
+        root,
+        document,
+        asset_result.references,
+        asset_result.issues,
+    )
+    issues.extend(specialized_issues)
+    warnings.extend(_completeness_findings(document))
+    assets = _asset_evidence(root, asset_result.references)
+    part_count = len(document["course"]["parts"])
+    slices = [
+        slice_data
+        for part in document["course"]["parts"]
+        for slice_data in part["slices"]
+    ]
+    validator_hash = file_sha256(Path(__file__))
+    return {
+        "schemaVersion": "1.0",
+        "validatorVersion": VALIDATOR_VERSION,
+        "status": "blocked" if issues else "warnings" if warnings else "clear",
+        "blueprintHash": compilation_report["blueprintHash"],
+        "courseDefinitionHash": compilation_report["courseDefinitionHash"],
+        "compilationReportHash": canonical_json_hash(compilation_report),
+        "validatorHash": validator_hash,
+        "assetSetHash": canonical_json_hash(assets),
+        "summary": {
+            "partCount": part_count,
+            "sliceCount": len(slices),
+            "blockCount": sum(len(slice_data["blocks"]) for slice_data in slices),
+            "assetCount": len(assets),
+        },
+        "assets": assets,
+        "mediaEvidence": _media_evidence(root, document),
+        "issues": [issue.as_dict() for issue in issues],
+        "warnings": [warning.as_dict() for warning in warnings],
+        "browserCheckRequired": True,
+    }
+
+
+def write_current_validation_report(root: Path, report: dict) -> Path:
+    relative = (
+        VALIDATION_ATTEMPT_RELATIVE_PATH
+        if report.get("status") == "blocked"
+        else VALIDATION_REPORT_RELATIVE_PATH
+    )
+    path = root.resolve() / relative
+    write_json_atomic(path, report)
+    return path

@@ -46,17 +46,17 @@
 
 **Files:** `course_toolkit/course_package_validation.py`, `scripts/validate-course-v2.py`, `schemas/course-validation-report.schema.json`, tests/fixtures.
 
-- [ ] Validate the current G5 evidence before inspecting assets.
-- [ ] Re-run the shared CourseDefinition contract.
-- [ ] PDF: extension, readable file, `%PDF-` header, `%%EOF`.
-- [ ] Video: MP4, H.264, AAC when audio exists, faststart, actual duration, declared-duration tolerance, long/large-video warnings.
-- [ ] Video interaction: shared 1.1 document validation against owning block, cue timing against actual MP4, `pauseVideo`/`required` evidence, and required-interaction completion consistency.
-- [ ] HTML: 2.0 protocol and completion-evidence checks.
-- [ ] Images/posters/audio/captions: existence and role-compatible extensions; captions require valid `WEBVTT` header.
-- [ ] Course completeness: at least one Part/Slice, objective evidence remains real, estimated course time is consistent with Slice totals, and dense-Slice warnings follow a fixed policy without pretending to perform layout rendering.
-- [ ] Emit `.course-work/course-validation-report.json` with deterministic hashes, ordered findings, asset evidence, and no timestamp/random ID.
-- [ ] CLI exits `0` clear, `1` warnings requiring no block, `2` blocked, `3` tool failure. A failed validation must not overwrite a previous successful report as current evidence.
-- [ ] Commit: `feat: validate course definition 2 packages`.
+- [x] Validate the current G5 evidence before inspecting assets.
+- [x] Re-run the shared CourseDefinition contract.
+- [x] PDF: extension, readable file, `%PDF-` header, `%%EOF`.
+- [x] Video: MP4, H.264, AAC when audio exists, faststart, actual duration, declared-duration tolerance, long/large-video warnings.
+- [x] Video interaction: shared 1.1 document validation against owning block, cue timing against actual MP4, `pauseVideo`/`required` evidence, and required-interaction completion consistency.
+- [x] HTML: 2.0 protocol and completion-evidence checks.
+- [x] Images/posters/audio/captions: existence and role-compatible extensions; captions require valid `WEBVTT` header.
+- [x] Course completeness: at least one Part/Slice, objective evidence remains real, estimated course time is consistent with Slice totals, and dense-Slice warnings follow a fixed policy without pretending to perform layout rendering.
+- [x] Emit `.course-work/course-validation-report.json` with deterministic hashes, ordered findings, asset evidence, and no timestamp/random ID.
+- [x] CLI exits `0` clear, `1` warnings requiring no block, `2` blocked, `3` tool failure. A failed validation must not overwrite a previous successful report as current evidence.
+- [x] Commit: `feat: validate course definition 2 packages`.
 
 ## Task 5: Synchronize registered findings and require G6 evidence
 
