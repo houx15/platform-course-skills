@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-annotations.schema.json",
+  "title": "Course preview annotation store",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "annotations"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "annotations": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/annotation"}
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "nullableHash": {"anyOf": [{"$ref": "#/$defs/hash"}, {"type": "null"}]},
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["courseId", "partId", "sliceId", "blockId", "itemId", "workflowStepId"],
+      "properties": {
+        "courseId": {"$ref": "#/$defs/id"},
+        "partId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "sliceId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "blockId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "itemId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]},
+        "workflowStepId": {"anyOf": [{"$ref": "#/$defs/id"}, {"type": "null"}]}
+      }
+    },
+    "annotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id", "type", "status", "required", "target", "definitionHash", "text",
+        "screenshotPath", "createdAt", "updatedAt", "classification", "proposedChange",
+        "resolutionDecisionId", "appliedBlueprintHash", "verifiedAgainstDefinitionHash",
+        "orphanReason", "reboundFromDefinitionHash"
+      ],
+      "properties": {
+        "id": {"$ref": "#/$defs/id"},
+        "type": {"enum": ["content", "layout", "workflow", "media", "bug", "question"]},
+        "status": {"enum": ["open", "proposed", "accepted", "applied", "verified", "dismissed", "orphaned"]},
+        "required": {"type": "boolean"},
+        "target": {"$ref": "#/$defs/target"},
+        "definitionHash": {"$ref": "#/$defs/hash"},
+        "text": {"type": "string", "minLength": 1},
+        "screenshotPath": {
+          "anyOf": [
+            {"type": "string", "pattern": "^\\.course-work/screenshots/.+\\.(?:png|jpg|jpeg|webp)$"},
+            {"type": "null"}
+          ]
+        },
+        "createdAt": {"type": "string", "minLength": 1},
+        "updatedAt": {"type": "string", "minLength": 1},
+        "classification": {"enum": [null, "mechanical", "semantic", "runtime-bug"]},
+        "proposedChange": {"type": ["string", "null"]},
+        "resolutionDecisionId": {"type": ["string", "null"]},
+        "appliedBlueprintHash": {"$ref": "#/$defs/nullableHash"},
+        "verifiedAgainstDefinitionHash": {"$ref": "#/$defs/nullableHash"},
+        "orphanReason": {"type": ["string", "null"]},
+        "reboundFromDefinitionHash": {"$ref": "#/$defs/nullableHash"}
+      }
+    }
+  }
+}

@@ -14,12 +14,12 @@
 
 **Files:** `course_toolkit/annotations.py`, `schemas/course-annotations.schema.json`, tests.
 
-- [ ] Define versioned annotation types, statuses, classifications, stable targets, definition hash, text, optional safe screenshot path, proposal/resolution fields, applied Blueprint hash, and verified definition hash.
-- [ ] Enforce legal lifecycle transitions and status-specific invariants; required annotations cannot be dismissed without a teacher decision.
-- [ ] Provide deterministic load/save/add/update behavior with stable IDs supplied by the caller and no timestamps generated inside the store.
-- [ ] Reject duplicate IDs, unknown fields, unsafe screenshot paths, CSS selectors, pixel coordinates, and array-position targets.
-- [ ] Add schema syntax and round-trip/lifecycle tests.
-- [ ] Commit: `feat: define course annotation records`.
+- [x] Define versioned annotation types, statuses, classifications, stable targets, definition hash, text, optional safe screenshot path, proposal/resolution fields, applied Blueprint hash, and verified definition hash.
+- [x] Enforce legal lifecycle transitions and status-specific invariants; required annotations cannot be dismissed without a teacher decision.
+- [x] Provide deterministic load/save/add/update behavior with stable IDs supplied by the caller and no timestamps generated inside the store.
+- [x] Reject duplicate IDs, unknown fields, unsafe screenshot paths, CSS selectors, pixel coordinates, and array-position targets.
+- [x] Add schema syntax and round-trip/lifecycle tests.
+- [x] Commit: `feat: define course annotation records`.
 
 ## Task 2: Resolve annotations through current definition and source map
 
