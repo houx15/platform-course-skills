@@ -24,12 +24,12 @@
 
 **Files:** `course_toolkit/course_package_validation.py`, `tests/test_course_package_validation.py`, new fixtures under `tests/fixtures/course-definition-2/`.
 
-- [ ] Write failing tests covering every asset-bearing field: opening/closing fallback audio, narration audio, image, PDF, video, poster, captions, video interaction JSON, and interactive HTML.
-- [ ] Define stable `AssetReference` records with runtime JSON path, asset role, block/slice identity, and raw source.
-- [ ] Treat `http(s)://` and `data:` as non-uploaded references consistently with shared `collectAssetPaths`; validate local references against the compilation report's exact sorted asset list.
-- [ ] Reject absolute paths, `..`, symlink traversal, missing files, directories, duplicate semantic owners where illegal, and case-mismatched paths.
-- [ ] Add deterministic basic file-role checks: allowed image/audio/caption extensions, `WEBVTT` captions, HTML/PDF/video extensions.
-- [ ] Commit: `feat: validate definition 2 asset references`.
+- [x] Write failing tests covering every asset-bearing field: opening/closing fallback audio, narration audio, image, PDF, video, poster, captions, video interaction JSON, and interactive HTML.
+- [x] Define stable `AssetReference` records with runtime JSON path, asset role, block/slice identity, and raw source.
+- [x] Follow the shared contract's safe-relative-path rule: URL schemes, `data:`, absolute paths, backslashes, and parent traversal are contract-invalid; validate local references against the compilation report's exact sorted asset list.
+- [x] Reject absolute paths, `..`, symlink traversal, missing files, directories, and case-mismatched paths.
+- [x] Add deterministic basic file-role extension checks; content-level `WEBVTT`, HTML, PDF, and video checks continue in Task 4.
+- [x] Commit: `feat: validate definition 2 asset references`.
 
 ## Task 3: Validate the renderer-compatible HTML authoring protocol
 
