@@ -36,12 +36,12 @@
 
 **Files:** preflight schema/CLI, DecisionStore/issue integration, tests.
 
-- [ ] Require current G6 evidence and an explicit current G8 review-evidence input; never infer publishability from compilation or static validation.
-- [ ] Emit deterministic `.course-work/publication-preflight.json` listing create/update mode, expected remote revision, definition hash, assets to upload/reuse, intended status/visibility, and limitations.
-- [ ] Synchronize identity/asset/review blockers into registered G9 issues.
-- [ ] Create one context-hashed teacher decision for the exact dry run; any changed definition, manifest, identity, revision, visibility, or asset decision invalidates approval.
-- [ ] Add CLI prepare/status commands that are read-only externally and make no network requests.
-- [ ] Commit: `feat: prepare hash bound publication dry runs`.
+- [x] Require current G6 evidence and an explicit current G8 review-evidence input; never infer publishability from compilation or static validation.
+- [x] Emit deterministic `.course-work/publication-preflight.json` listing create/update mode, expected remote revision, definition hash, assets to upload/reuse, intended status/visibility, and limitations.
+- [x] Synchronize identity/asset/review blockers into registered G9 issues.
+- [x] Create one context-hashed teacher decision for the exact dry run; any changed definition, manifest, identity, revision, visibility, or asset decision invalidates approval.
+- [x] Add CLI prepare/status commands that are read-only externally and make no network requests.
+- [x] Commit: `feat: prepare hash bound publication dry runs`.
 
 ## Task 4: Implement mockable idempotent publication orchestration
 

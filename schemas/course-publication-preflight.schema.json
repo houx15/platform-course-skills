@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-publication-preflight.schema.json",
+  "title": "Course publication dry run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "courseLocalId", "courseId", "slug", "mode", "intendedStatus", "visibility", "remote", "definition", "evidence", "assets", "limitations"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "courseLocalId": {"$ref": "#/$defs/id"},
+    "courseId": {"type": "string", "minLength": 1},
+    "slug": {"$ref": "#/$defs/id"},
+    "mode": {"enum": ["create", "update"]},
+    "intendedStatus": {"enum": ["preview", "published"]},
+    "visibility": {"enum": ["private", "unlisted", "public"]},
+    "remote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["courseId", "expectedRevision", "discoveryHash", "observedAt"],
+      "properties": {
+        "courseId": {"type": ["string", "null"]},
+        "expectedRevision": {"type": ["string", "null"]},
+        "discoveryHash": {"$ref": "#/$defs/hash"},
+        "observedAt": {"type": "string", "minLength": 1}
+      }
+    },
+    "definition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": {"const": "course/course.json"},
+        "sha256": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validationReportHash", "reviewEvidenceHash", "previewManifestHash", "reviewReportHash", "assetManifestHash"],
+      "properties": {
+        "validationReportHash": {"$ref": "#/$defs/hash"},
+        "reviewEvidenceHash": {"$ref": "#/$defs/hash"},
+        "previewManifestHash": {"$ref": "#/$defs/hash"},
+        "reviewReportHash": {"$ref": "#/$defs/hash"},
+        "assetManifestHash": {"$ref": "#/$defs/hash"}
+      }
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["upload", "reuse"],
+      "properties": {
+        "upload": {
+          "type": "array",
+          "items": {
+            "allOf": [
+              {"$ref": "#/$defs/asset"},
+              {"not": {"required": ["reuseProof"]}}
+            ]
+          }
+        },
+        "reuse": {"type": "array", "items": {"$ref": "#/$defs/reusedAsset"}}
+      }
+    },
+    "limitations": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["liveAdapterRequired", "remoteWritePerformed", "credentialsRead"],
+      "properties": {
+        "liveAdapterRequired": {"const": true},
+        "remoteWritePerformed": {"const": false},
+        "credentialsRead": {"const": false}
+      }
+    }
+  },
+  "$defs": {
+    "id": {"type": "string", "pattern": "^[a-z][a-z0-9-]*$"},
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sha256", "sizeBytes", "mimeType", "objectKey", "sources"],
+      "properties": {
+        "sha256": {"$ref": "#/$defs/hash"},
+        "sizeBytes": {"type": "integer", "minimum": 0},
+        "mimeType": {"type": "string", "minLength": 1},
+        "objectKey": {"type": "string", "minLength": 1},
+        "sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+        "reuseProof": {"enum": ["asset-manifest", "remote-discovery"]}
+      }
+    },
+    "reusedAsset": {
+      "allOf": [
+        {"$ref": "#/$defs/asset"},
+        {
+          "type": "object",
+          "required": ["reuseProof"],
+          "properties": {"reuseProof": {"enum": ["asset-manifest", "remote-discovery"]}}
+        }
+      ]
+    }
+  }
+}

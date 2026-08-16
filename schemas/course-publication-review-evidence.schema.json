@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-publication-review-evidence.schema.json",
+  "title": "Renderer-backed publication review evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "status", "rendererBacked", "courseDefinitionHash", "validationReportHash", "previewManifestHash", "reviewReportHash", "reviewedAt"],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "status": {"const": "approved"},
+    "rendererBacked": {"const": true},
+    "courseDefinitionHash": {"$ref": "#/$defs/hash"},
+    "validationReportHash": {"$ref": "#/$defs/hash"},
+    "previewManifestHash": {"$ref": "#/$defs/hash"},
+    "reviewReportHash": {"$ref": "#/$defs/hash"},
+    "reviewedAt": {"type": "string", "minLength": 1}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+  }
+}

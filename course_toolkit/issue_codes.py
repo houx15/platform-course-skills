@@ -75,6 +75,15 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
     "preview-runtime-bug": IssuePolicy(
         "preview-runtime-bug", "blocker", "G7"
     ),
+    "publication-identity-conflict": IssuePolicy(
+        "publication-identity-conflict", "blocker", "G9"
+    ),
+    "publication-review-stale": IssuePolicy(
+        "publication-review-stale", "blocker", "G9"
+    ),
+    "publication-asset-state-stale": IssuePolicy(
+        "publication-asset-state-stale", "blocker", "G9"
+    ),
 }
 
 

@@ -3,9 +3,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
+from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.course_package_validation import VALIDATION_REPORT_RELATIVE_PATH
+from course_toolkit.decisions import DecisionStore
+from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.jsonio import load_json, write_json_atomic
-from course_toolkit.workflow import hash_path, verify_g6_validation
+from course_toolkit.workflow import hash_path, load_session, save_session, verify_g6_validation
 
 
 ASSET_MANIFEST_SCHEMA_VERSION = "1.0"
@@ -13,6 +16,21 @@ ASSET_MANIFEST_RELATIVE_PATH = Path(".course-work/asset-manifest.json")
 PUBLISH_STATE_SCHEMA_VERSION = "1.0"
 PUBLISH_STATE_RELATIVE_PATH = Path(".course-work/publish-state.json")
 REMOTE_DISCOVERY_SCHEMA_VERSION = "1.0"
+PUBLICATION_REVIEW_EVIDENCE_SCHEMA_VERSION = "1.0"
+PUBLICATION_PREFLIGHT_SCHEMA_VERSION = "1.0"
+PUBLICATION_PREFLIGHT_RELATIVE_PATH = Path(".course-work/publication-preflight.json")
+PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH = Path(
+    ".course-work/publication-review-evidence.json"
+)
+REMOTE_DISCOVERY_RELATIVE_PATH = Path(".course-work/remote-discovery.json")
+PUBLICATION_DECISION_ID = "decision-publication-preflight"
+PUBLICATION_ISSUE_CODES = frozenset(
+    {
+        "publication-identity-conflict",
+        "publication-review-stale",
+        "publication-asset-state-stale",
+    }
+)
 LOCAL_ASSET_ROOTS = (
     Path("assets"),
     Path("interactions"),
@@ -483,3 +501,405 @@ def resolve_publication_identity(
         state.remote_course_id,
         state.last_known_remote_revision,
     )
+
+
+@dataclass(frozen=True)
+class PublicationReviewEvidence:
+    schema_version: str
+    status: str
+    renderer_backed: bool
+    course_definition_hash: str
+    validation_report_hash: str
+    preview_manifest_hash: str
+    review_report_hash: str
+    reviewed_at: str
+
+    def __post_init__(self) -> None:
+        if self.schema_version != PUBLICATION_REVIEW_EVIDENCE_SCHEMA_VERSION:
+            raise ValueError(
+                "Unsupported publication review evidence schemaVersion: "
+                f"{self.schema_version}"
+            )
+        if self.status != "approved":
+            raise ValueError("Publication review evidence must be approved")
+        if self.renderer_backed is not True:
+            raise ValueError("Publication review evidence must be renderer-backed")
+        _optional_hash(self.course_definition_hash, "courseDefinitionHash")
+        _optional_hash(self.validation_report_hash, "validationReportHash")
+        _optional_hash(self.preview_manifest_hash, "previewManifestHash")
+        _optional_hash(self.review_report_hash, "reviewReportHash")
+        if None in (
+            self.course_definition_hash,
+            self.validation_report_hash,
+            self.preview_manifest_hash,
+            self.review_report_hash,
+        ):
+            raise ValueError("Publication review evidence hashes are required")
+        _required_text(self.reviewed_at, "reviewedAt")
+
+    def as_dict(self) -> dict:
+        return {
+            "schemaVersion": self.schema_version,
+            "status": self.status,
+            "rendererBacked": self.renderer_backed,
+            "courseDefinitionHash": self.course_definition_hash,
+            "validationReportHash": self.validation_report_hash,
+            "previewManifestHash": self.preview_manifest_hash,
+            "reviewReportHash": self.review_report_hash,
+            "reviewedAt": self.reviewed_at,
+        }
+
+    @classmethod
+    def from_dict(cls, data: object) -> "PublicationReviewEvidence":
+        if not isinstance(data, dict):
+            raise ValueError("Publication review evidence must be an object")
+        fields = {
+            "schemaVersion",
+            "status",
+            "rendererBacked",
+            "courseDefinitionHash",
+            "validationReportHash",
+            "previewManifestHash",
+            "reviewReportHash",
+            "reviewedAt",
+        }
+        unknown = sorted(set(data).difference(fields))
+        missing = sorted(fields.difference(data))
+        if unknown:
+            raise ValueError(f"Unknown publication review evidence field: {unknown[0]}")
+        if missing:
+            raise ValueError(f"Missing publication review evidence field: {missing[0]}")
+        return cls(
+            schema_version=data["schemaVersion"],
+            status=data["status"],
+            renderer_backed=data["rendererBacked"],
+            course_definition_hash=data["courseDefinitionHash"],
+            validation_report_hash=data["validationReportHash"],
+            preview_manifest_hash=data["previewManifestHash"],
+            review_report_hash=data["reviewReportHash"],
+            reviewed_at=data["reviewedAt"],
+        )
+
+
+def _verify_review_evidence(
+    root: Path,
+    evidence: PublicationReviewEvidence,
+) -> None:
+    session = load_session(root)
+    if "G8" not in session.completed_gate_ids:
+        raise PublicationBlocked("G8 final review is not complete")
+    report_path = root / VALIDATION_REPORT_RELATIVE_PATH
+    report = load_json(report_path)
+    expected = {
+        "courseDefinitionHash": report.get("courseDefinitionHash"),
+        "validationReportHash": hash_path(report_path),
+        "previewManifestHash": hash_path(root / ".course-work/preview-manifest.json"),
+        "reviewReportHash": hash_path(root / ".course-work/review-report.json"),
+    }
+    actual = {
+        "courseDefinitionHash": evidence.course_definition_hash,
+        "validationReportHash": evidence.validation_report_hash,
+        "previewManifestHash": evidence.preview_manifest_hash,
+        "reviewReportHash": evidence.review_report_hash,
+    }
+    mismatch = next(
+        (field for field, value in actual.items() if value != expected[field]),
+        None,
+    )
+    if mismatch is not None:
+        raise PublicationBlocked(f"Publication review evidence is stale: {mismatch}")
+
+
+def _load_current_asset_manifest(root: Path, course_local_id: str) -> dict:
+    path = root / ASSET_MANIFEST_RELATIVE_PATH
+    if path.is_symlink() or not path.is_file():
+        raise PublicationBlocked("Current publication asset manifest is missing")
+    current = load_json(path)
+    rebuilt = build_asset_manifest(
+        root,
+        course_local_id,
+        previous_manifest=current,
+    )
+    if canonical_json_hash(current) != canonical_json_hash(rebuilt):
+        raise PublicationBlocked("Current publication asset manifest is stale")
+    return current
+
+
+def _asset_plan(manifest: dict, discovery: RemoteDiscoverySnapshot) -> dict:
+    discovered_by_hash = {
+        asset["sha256"]: asset["objectKey"] for asset in discovery.known_assets
+    }
+    discovered_by_key = {
+        asset["objectKey"]: asset["sha256"] for asset in discovery.known_assets
+    }
+    upload = []
+    reuse = []
+    for entry in manifest.get("entries", []):
+        if not isinstance(entry, dict):
+            raise PublicationBlocked("Current publication asset manifest is invalid")
+        sha256 = entry.get("sha256")
+        object_key = entry.get("objectKey")
+        if not isinstance(sha256, str) or not isinstance(object_key, str):
+            raise PublicationBlocked("Current publication asset manifest is incomplete")
+        collision_hash = discovered_by_key.get(object_key)
+        if collision_hash is not None and collision_hash != sha256:
+            raise PublicationBlocked(
+                f"Remote asset key has conflicting bytes: {object_key}"
+            )
+        item = {
+            "sha256": sha256,
+            "sizeBytes": entry.get("sizeBytes"),
+            "mimeType": entry.get("mimeType"),
+            "objectKey": object_key,
+            "sources": entry.get("sources", []),
+        }
+        if entry.get("state") == "reusable":
+            item["reuseProof"] = "asset-manifest"
+            reuse.append(item)
+        elif discovered_by_hash.get(sha256) == object_key:
+            item["reuseProof"] = "remote-discovery"
+            reuse.append(item)
+        else:
+            upload.append(item)
+    return {"upload": upload, "reuse": reuse}
+
+
+def _publisher_issue(code: str, message: str, now: str):
+    return make_registered_issue(
+        code=code,
+        source="publisher",
+        message=message,
+        gate_id="G9",
+        seen_at=now,
+        target={"scope": "publication-preflight"},
+        remediation="Refresh the affected evidence and prepare publication again.",
+    )
+
+
+def _sync_publication_issues(root: Path, candidates: list, now: str) -> None:
+    store = IssueStore.load(root / ".course-work/issues.json")
+    active_candidate_codes = {candidate.code for candidate in candidates}
+    for candidate in candidates:
+        store.upsert(candidate)
+    for issue in store.all():
+        if (
+            issue.source == "publisher"
+            and issue.gate_id == "G9"
+            and issue.code in PUBLICATION_ISSUE_CODES
+            and issue.code not in active_candidate_codes
+            and issue.status == "active"
+        ):
+            store.resolve(issue.id, now)
+    store.save()
+    session = load_session(root)
+    session.active_issue_ids = [
+        issue.id for issue in store.all() if issue.status == "active"
+    ]
+    session.updated_at = now
+    save_session(root, session)
+
+
+def prepare_publication_preflight(
+    *,
+    root: Path,
+    discovery: RemoteDiscoverySnapshot,
+    review_evidence: PublicationReviewEvidence,
+    intended_status: str,
+    visibility: str,
+    now: str,
+) -> dict:
+    root = root.resolve()
+    if intended_status not in {"preview", "published"}:
+        raise ValueError("intendedStatus must be preview or published")
+    if visibility not in {"private", "unlisted", "public"}:
+        raise ValueError("visibility must be private, unlisted, or public")
+
+    candidates = []
+    state = None
+    identity = None
+    manifest = None
+    asset_plan = None
+
+    try:
+        state = load_publish_state(root)
+        identity = resolve_publication_identity(state, discovery)
+    except (ValueError, PublicationBlocked) as exc:
+        candidates.append(_publisher_issue("publication-identity-conflict", str(exc), now))
+
+    try:
+        verify_g6_validation(root)
+        course_local_id = state.course_local_id if state is not None else load_session(root).course_local_id
+        manifest = _load_current_asset_manifest(root, course_local_id)
+        asset_plan = _asset_plan(manifest, discovery)
+    except (ValueError, PublicationBlocked) as exc:
+        candidates.append(_publisher_issue("publication-asset-state-stale", str(exc), now))
+
+    try:
+        _verify_review_evidence(root, review_evidence)
+    except (ValueError, PublicationBlocked) as exc:
+        candidates.append(_publisher_issue("publication-review-stale", str(exc), now))
+
+    _sync_publication_issues(root, candidates, now)
+    if candidates:
+        raise PublicationBlocked("; ".join(candidate.message for candidate in candidates))
+    assert state is not None and identity is not None and manifest is not None
+    assert asset_plan is not None
+
+    preflight = {
+        "schemaVersion": PUBLICATION_PREFLIGHT_SCHEMA_VERSION,
+        "courseLocalId": state.course_local_id,
+        "courseId": manifest["courseId"],
+        "slug": state.slug,
+        "mode": identity.mode,
+        "intendedStatus": intended_status,
+        "visibility": visibility,
+        "remote": {
+            "courseId": identity.remote_course_id,
+            "expectedRevision": identity.expected_remote_revision,
+            "discoveryHash": canonical_json_hash(discovery.as_dict()),
+            "observedAt": discovery.observed_at,
+        },
+        "definition": {
+            "path": "course/course.json",
+            "sha256": manifest["courseDefinitionHash"],
+        },
+        "evidence": {
+            "validationReportHash": manifest["validationReportHash"],
+            "reviewEvidenceHash": canonical_json_hash(review_evidence.as_dict()),
+            "previewManifestHash": review_evidence.preview_manifest_hash,
+            "reviewReportHash": review_evidence.review_report_hash,
+            "assetManifestHash": hash_path(root / ASSET_MANIFEST_RELATIVE_PATH),
+        },
+        "assets": asset_plan,
+        "limitations": {
+            "liveAdapterRequired": True,
+            "remoteWritePerformed": False,
+            "credentialsRead": False,
+        },
+    }
+    write_json_atomic(root / REMOTE_DISCOVERY_RELATIVE_PATH, discovery.as_dict())
+    write_json_atomic(
+        root / PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH,
+        review_evidence.as_dict(),
+    )
+    write_json_atomic(root / PUBLICATION_PREFLIGHT_RELATIVE_PATH, preflight)
+
+    context_hash = canonical_json_hash(preflight)
+    decisions = DecisionStore.load(root / ".course-work/decisions.json")
+    try:
+        existing = decisions.get(PUBLICATION_DECISION_ID)
+    except ValueError:
+        existing = None
+    if existing is not None and existing.context_hash != context_hash:
+        decisions.reconcile_context(PUBLICATION_DECISION_ID, context_hash, now)
+    decision = decisions.request(
+        PUBLICATION_DECISION_ID,
+        "Approve this exact publication dry run?",
+        context_hash,
+        context={
+            "preflightHash": context_hash,
+            "mode": identity.mode,
+            "intendedStatus": intended_status,
+            "visibility": visibility,
+            "uploadCount": len(asset_plan["upload"]),
+            "reuseCount": len(asset_plan["reuse"]),
+        },
+        options=("approve", "revise"),
+        affected_artifact_ids=(PUBLICATION_PREFLIGHT_RELATIVE_PATH.as_posix(),),
+        requested_at=now,
+    )
+    decisions.save()
+    session = load_session(root)
+    pending = set(session.pending_decision_ids)
+    if decision.status == "pending":
+        pending.add(PUBLICATION_DECISION_ID)
+    else:
+        pending.discard(PUBLICATION_DECISION_ID)
+    session.pending_decision_ids = sorted(pending)
+    save_session(root, session)
+    return preflight
+
+
+def publication_preflight_status(root: Path) -> dict:
+    root = root.resolve()
+    path = root / PUBLICATION_PREFLIGHT_RELATIVE_PATH
+    if path.is_symlink() or not path.is_file():
+        raise PublicationBlocked("Publication preflight is missing")
+    preflight = load_json(path)
+    context_hash = canonical_json_hash(preflight)
+    stale_reasons = []
+    try:
+        if preflight.get("schemaVersion") != PUBLICATION_PREFLIGHT_SCHEMA_VERSION:
+            stale_reasons.append("unsupported-preflight-schema")
+        definition = load_json(root / "course/course.json")
+        if canonical_json_hash(definition) != preflight["definition"]["sha256"]:
+            stale_reasons.append("course-definition-changed")
+        current_hashes = {
+            "validationReportHash": hash_path(root / VALIDATION_REPORT_RELATIVE_PATH),
+            "previewManifestHash": hash_path(
+                root / ".course-work/preview-manifest.json"
+            ),
+            "reviewReportHash": hash_path(root / ".course-work/review-report.json"),
+            "assetManifestHash": hash_path(root / ASSET_MANIFEST_RELATIVE_PATH),
+        }
+        for key, current_hash in current_hashes.items():
+            if preflight["evidence"][key] != current_hash:
+                stale_reasons.append(f"{key}-changed")
+        current_review = PublicationReviewEvidence.from_dict(
+            load_json(root / PUBLICATION_REVIEW_EVIDENCE_RELATIVE_PATH)
+        )
+        if (
+            canonical_json_hash(current_review.as_dict())
+            != preflight["evidence"]["reviewEvidenceHash"]
+        ):
+            stale_reasons.append("review-evidence-changed")
+        current_discovery = RemoteDiscoverySnapshot.from_dict(
+            load_json(root / REMOTE_DISCOVERY_RELATIVE_PATH)
+        )
+        if (
+            canonical_json_hash(current_discovery.as_dict())
+            != preflight["remote"]["discoveryHash"]
+        ):
+            stale_reasons.append("remote-discovery-changed")
+        state = load_publish_state(root)
+        if state.course_local_id != preflight["courseLocalId"] or state.slug != preflight["slug"]:
+            stale_reasons.append("publish-identity-changed")
+        if preflight["mode"] == "create":
+            if state.remote_course_id is not None:
+                stale_reasons.append("publish-mode-changed")
+        elif (
+            state.remote_course_id != preflight["remote"]["courseId"]
+            or state.last_known_remote_revision
+            != preflight["remote"]["expectedRevision"]
+        ):
+            stale_reasons.append("remote-revision-changed")
+    except (KeyError, TypeError, ValueError):
+        stale_reasons.append("preflight-evidence-unreadable")
+    stale_reasons = sorted(set(stale_reasons))
+    decisions = DecisionStore.load(root / ".course-work/decisions.json")
+    try:
+        decision = decisions.get(PUBLICATION_DECISION_ID)
+    except ValueError:
+        return {
+            "preflightHash": context_hash,
+            "decisionStatus": "missing",
+            "current": not stale_reasons,
+            "staleReasons": stale_reasons,
+            "approved": False,
+        }
+    answer = decision.answer if isinstance(decision.answer, dict) else {}
+    approved = (
+        decision.status == "confirmed"
+        and decision.context_hash == context_hash
+        and answer.get("choice") == "approve"
+        and isinstance(answer.get("rationale"), str)
+        and bool(answer["rationale"].strip())
+        and not stale_reasons
+    )
+    return {
+        "preflightHash": context_hash,
+        "decisionStatus": decision.status,
+        "current": not stale_reasons,
+        "staleReasons": stale_reasons,
+        "approved": approved,
+    }
