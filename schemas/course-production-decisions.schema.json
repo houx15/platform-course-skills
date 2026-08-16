@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-production-decisions.schema.json",
+  "title": "Course production teacher decision store",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "decisions"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "decisions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/decision" }
+    }
+  },
+  "$defs": {
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "question",
+        "context",
+        "contextHash",
+        "options",
+        "answer",
+        "status",
+        "affectedArtifactIds",
+        "requestedAt",
+        "decidedAt",
+        "invalidatedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "question": { "type": "string", "minLength": 1 },
+        "context": { "type": ["object", "null"] },
+        "contextHash": { "type": "string", "minLength": 1 },
+        "options": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "answer": {},
+        "status": { "enum": ["pending", "confirmed", "invalidated"] },
+        "affectedArtifactIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        },
+        "requestedAt": { "type": ["string", "null"] },
+        "decidedAt": { "type": ["string", "null"] },
+        "invalidatedAt": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

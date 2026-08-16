@@ -218,7 +218,7 @@ git commit -m "feat: add course production issue store"
 - Create: `schemas/course-production-decisions.schema.json`
 - Create: `tests/test_decisions.py`
 
-- [ ] **Step 1: Write failing decision lifecycle tests**
+- [x] **Step 1: Write failing decision lifecycle tests**
 
 Cover request creation, answer recording, no silent re-answer, and invalidation when the context hash changes:
 
@@ -231,29 +231,29 @@ def test_confirmed_decision_is_invalidated_by_new_context_hash(self):
     self.assertEqual(store.get("d-objective").status, "invalidated")
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `python -m unittest tests.test_decisions -v`
 
 Expected: module import failure.
 
-- [ ] **Step 3: Implement the decision store**
+- [x] **Step 3: Implement the decision store**
 
 Persist `{ "schemaVersion": "1.0", "decisions": [...] }`. Each decision contains stable ID, question, context, context hash, options, answer, status (`pending`, `confirmed`, `invalidated`), affected artifact IDs, decided time, and invalidated time.
 
 The store must reject confirmation of an unknown request and reject overwriting a confirmed decision without explicit invalidation.
 
-- [ ] **Step 4: Add the closed JSON Schema**
+- [x] **Step 4: Add the closed JSON Schema**
 
 Encode the exact persisted shape and status enum.
 
-- [ ] **Step 5: Run tests**
+- [x] **Step 5: Run tests**
 
 Run: `python -m unittest tests.test_decisions -v`
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add course_toolkit/decisions.py schemas/course-production-decisions.schema.json tests/test_decisions.py
