@@ -6,15 +6,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from course_toolkit.html_validation import validate_interactive_html
+from course_toolkit.html_validation import (
+    validate_interactive_html,
+    validate_interactive_html_v2,
+)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate one platform HTML interaction")
     parser.add_argument("html_file", type=Path)
+    parser.add_argument(
+        "--course-definition-2",
+        action="store_true",
+        help="Validate the mind-course-interaction 1.0 renderer handshake",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    issues = validate_interactive_html(args.html_file)
+    validator = (
+        validate_interactive_html_v2
+        if args.course_definition_2
+        else validate_interactive_html
+    )
+    issues = validator(args.html_file)
     if args.json:
         print(
             json.dumps(

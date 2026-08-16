@@ -35,12 +35,12 @@
 
 **Files:** `course_toolkit/html_validation.py`, `skills/design-course-html/SKILL.md`, `skills/design-course-html/references/html-contract.md`, HTML fixtures/tests.
 
-- [ ] Replace the legacy `INTERACTION_COMPLETE` assumption for 2.0 with the actual `mind-course-interaction` 1.0 handshake: receive host protocol/version/sessionToken, echo all envelope fields, and use one of `ready|progress|completed|error`.
-- [ ] Require a completed payload with a stable `interactionId` and JSON-compatible `evidence`; prohibit completion without learning data.
-- [ ] Preserve existing self-containment, no-external-resource, aspect ratio, horizontal overflow, and 16px/14px typography checks.
-- [ ] Detect prohibited host access/storage/network APIs that conflict with the sandboxed self-contained iframe model.
-- [ ] Keep legacy HTML validation available only for legacy review; expose an explicit 2.0 validator mode.
-- [ ] Commit: `feat: validate course html protocol 1`.
+- [x] Replace the legacy `INTERACTION_COMPLETE` assumption for 2.0 with the actual `mind-course-interaction` 1.0 handshake: receive host protocol/version/sessionToken, echo all envelope fields, and use one of `ready|progress|completed|error`.
+- [x] Require a completed payload with a stable `interactionId` and JSON-compatible `evidence`; prohibit completion without learning data.
+- [x] Preserve existing self-containment, no-external-resource, aspect ratio, horizontal overflow, and 16px/14px typography checks.
+- [x] Detect prohibited host access/storage/network APIs that conflict with the sandboxed self-contained iframe model.
+- [x] Keep legacy HTML validation available only for legacy review; expose an explicit 2.0 validator mode.
+- [x] Commit: `feat: validate course html protocol 1`.
 
 ## Task 4: Build deterministic CourseDefinition 2.0 validation reports
 

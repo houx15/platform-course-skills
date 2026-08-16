@@ -30,30 +30,46 @@
 ## Message
 
 ```javascript
-window.parent.postMessage({
-  type: "INTERACTION_COMPLETE",
-  version: "1.0",
-  payload: {
-    lessonId: "stable-lesson-id",
-    duration: 120,
-    interactions: [
-      {
-        interactionId: "stable-interaction-id",
-        type: "choice",
-        answer: "option-id",
-        correctAnswer: "option-id",
-        isCorrect: true,
-        duration: 15
-      }
-    ]
+const PROTOCOL = "mind-course-interaction";
+const VERSION = "1.0";
+let sessionToken = null;
+
+function send(type, payload) {
+  if (!sessionToken) return;
+  window.parent.postMessage({
+    protocol: PROTOCOL,
+    version: VERSION,
+    sessionToken,
+    type,
+    payload
+  }, "*");
+}
+
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (message.protocol !== PROTOCOL ||
+      message.version !== VERSION ||
+      !message.sessionToken) return;
+  sessionToken = message.sessionToken;
+  send("ready", { interactionId: "stable-interaction-id" });
+});
+
+send("completed", {
+  interactionId: "stable-interaction-id",
+  evidence: {
+    answer: "option-id",
+    isCorrect: true,
+    attempts: 1
   }
-}, "*");
+});
 ```
 
-Every interaction requires `interactionId`, `type`, and `answer`. Include correctness fields only for objectively graded interactions.
+The frame may send `ready`, `progress`, `completed`, or `error`. Every message echoes the current host-issued token. A completed payload always contains a stable `interactionId` and JSON-compatible `evidence`; include correctness only for objectively graded interactions. The authoring validator checks these fields, but browser/runtime persistence remains a separate platform verification.
+
+Do not use `fetch`, XMLHttpRequest, WebSocket, EventSource, beacon APIs, browser storage, cookies, opener/top access, or `parent.document`. The file is self-contained and communicates only through the message protocol.
 
 ## Validation
 
-Run the toolkit HTML validator, then generate deterministic JSON and Markdown under `.course-work/html-reports/`. Regenerate both after every HTML change; a missing or stale report blocks full Review.
+Run `scripts/validate-html.py HTML_FILE --course-definition-2`. Existing `.course-work/html-reports/` files remain schemaVersion 1.1 artifacts until replaced by the 2.0 course-level validation report; do not use a legacy passing report as G6 evidence.
 
 Treat the report as a static contract check, not a browser screenshot or real iframe test. It always records `browserCheckRequired: true`.

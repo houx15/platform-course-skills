@@ -464,3 +464,134 @@ def validate_interactive_html(path: Path) -> List[ValidationIssue]:
         )
     )
     return issues
+
+
+V2_PROTOCOL_ISSUE_CODES = {"missing-post-message", "invalid-message-contract"}
+PROHIBITED_V2_APIS = (
+    (r"\bfetch\s*\(", "fetch"),
+    (r"\bXMLHttpRequest\b", "XMLHttpRequest"),
+    (r"\bWebSocket\b", "WebSocket"),
+    (r"\bEventSource\b", "EventSource"),
+    (r"\bsendBeacon\s*\(", "sendBeacon"),
+    (r"\blocalStorage\b", "localStorage"),
+    (r"\bsessionStorage\b", "sessionStorage"),
+    (r"\bindexedDB\b", "indexedDB"),
+    (r"\bdocument\s*\.\s*cookie\b", "document.cookie"),
+    (r"\b(?:window\s*\.\s*)?parent\s*\.\s*document\b", "parent.document"),
+    (r"\b(?:window\s*\.\s*)?top\s*\.", "window.top"),
+    (r"\b(?:window\s*\.\s*)?opener\b", "window.opener"),
+)
+
+
+def _completion_window(text: str) -> str:
+    match = re.search(r"[\"']completed[\"']", text, re.I)
+    if match is None:
+        return ""
+    end = text.find(");", match.end())
+    if end < 0:
+        end = min(len(text), match.end() + 1200)
+    return text[match.start() : end]
+
+
+def validate_interactive_html_v2(path: Path) -> List[ValidationIssue]:
+    """Validate the CourseDefinition 2.0 iframe handshake and authoring policy.
+
+    The student renderer currently validates the envelope and treats payload as
+    unknown. This authoring-side check deliberately requires completion identity
+    and evidence without claiming the runtime already persists those fields.
+    """
+    issues = [
+        issue
+        for issue in validate_interactive_html(path)
+        if issue.code not in V2_PROTOCOL_ISSUE_CODES
+    ]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return issues
+
+    listener = re.search(
+        r"(?:window\s*\.\s*)?addEventListener\s*\(\s*[\"']message[\"']",
+        text,
+        re.I,
+    )
+    reads_message = re.search(r"\b[a-z_$][\w$]*\s*\.\s*data\b", text, re.I)
+    protocol_tokens = all(
+        token in text
+        for token in (
+            "mind-course-interaction",
+            "1.0",
+            "sessionToken",
+        )
+    )
+    if listener is None or reads_message is None or not protocol_tokens:
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "missing-host-handshake",
+                "HTML must receive the mind-course-interaction 1.0 host message and sessionToken",
+            )
+        )
+
+    receives_token = re.search(
+        r"\bsessionToken\s*=\s*[a-z_$][\w$]*\s*\.\s*sessionToken\b",
+        text,
+        re.I,
+    )
+    posts_token = re.search(
+        r"postMessage\s*\(\s*\{[\s\S]{0,1200}?\bsessionToken\b",
+        text,
+        re.I,
+    )
+    if receives_token is None or posts_token is None:
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "missing-session-token-echo",
+                "HTML must store the host sessionToken and echo it in every frame message",
+            )
+        )
+
+    envelope_fields = all(
+        re.search(rf"\b{field}\s*(?::|,|\}})", text)
+        for field in ("protocol", "version", "sessionToken", "type", "payload")
+    )
+    has_ready = re.search(r"[\"']ready[\"']", text) is not None
+    has_completed = re.search(r"[\"']completed[\"']", text) is not None
+    if (
+        "mind-course-interaction" not in text
+        or not envelope_fields
+        or not has_ready
+        or not has_completed
+    ):
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "invalid-frame-message-contract",
+                "frame messages require protocol, version, sessionToken, type, payload, ready, and completed",
+            )
+        )
+
+    completion = _completion_window(text)
+    if not completion or not all(
+        re.search(rf"\b{field}\b", completion)
+        for field in ("interactionId", "evidence")
+    ):
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "missing-completion-evidence",
+                "completed payload must include a stable interactionId and learning evidence",
+            )
+        )
+
+    for pattern, api_name in PROHIBITED_V2_APIS:
+        if re.search(pattern, text, re.I):
+            issues.append(
+                ValidationIssue(
+                    str(path),
+                    "prohibited-html-api",
+                    f"self-contained sandboxed HTML must not use {api_name}",
+                )
+            )
+    return issues

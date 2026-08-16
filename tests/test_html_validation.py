@@ -2,7 +2,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from course_toolkit.html_validation import validate_interactive_html
+from course_toolkit.html_validation import (
+    validate_interactive_html,
+    validate_interactive_html_v2,
+)
 from tests.helpers import ROOT
 
 
@@ -28,6 +31,57 @@ function finish() {
     version: "1.0",
     payload: { lessonId: "lesson-1", duration: 12, interactions }
   }, "*");
+}
+document.getElementById("complete").addEventListener("click", finish);
+</script>
+</body>
+</html>
+"""
+
+VALID_HTML_V2 = """<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+html, body { margin: 0; width: 100%; height: 100%; overflow-x: hidden; font-size: 16px; }
+button, input, select, textarea { font-size: inherit; }
+.canvas { width: 100%; height: 100%; aspect-ratio: 4 / 3; }
+</style>
+</head>
+<body>
+<main class="canvas">
+  <button id="complete" type="button">完成任务</button>
+</main>
+<script>
+const PROTOCOL = "mind-course-interaction";
+const VERSION = "1.0";
+const interactionId = "evidence-check";
+let sessionToken = null;
+let selectedAnswer = "source-and-method";
+
+function send(type, payload) {
+  if (!sessionToken) return;
+  window.parent.postMessage({
+    protocol: PROTOCOL,
+    version: VERSION,
+    sessionToken,
+    type,
+    payload
+  }, "*");
+}
+
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (message.protocol !== PROTOCOL || message.version !== VERSION || !message.sessionToken) return;
+  sessionToken = message.sessionToken;
+  send("ready", { interactionId });
+});
+
+function finish() {
+  send("completed", {
+    interactionId,
+    evidence: { answer: selectedAnswer, attempts: 1 }
+  });
 }
 document.getElementById("complete").addEventListener("click", finish);
 </script>
@@ -250,6 +304,63 @@ class HtmlValidationTests(unittest.TestCase):
                     f".{class_name} {{ font-size: 15px; }}\n</style>",
                 )
                 self.assertIn("unmarked-small-text", self.codes(text))
+
+
+class HtmlV2ValidationTests(unittest.TestCase):
+    def validate_text(self, text):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "interaction.html"
+            path.write_text(text, encoding="utf-8")
+            return validate_interactive_html_v2(path)
+
+    def codes(self, text):
+        return {issue.code for issue in self.validate_text(text)}
+
+    def test_valid_renderer_handshake_and_completion_evidence_pass(self):
+        self.assertEqual(self.validate_text(VALID_HTML_V2), [])
+
+    def test_legacy_completion_message_is_not_v2_compatible(self):
+        codes = self.codes(VALID_HTML)
+        self.assertIn("missing-host-handshake", codes)
+        self.assertIn("invalid-frame-message-contract", codes)
+
+    def test_session_token_must_be_received_and_echoed(self):
+        text = VALID_HTML_V2.replace(
+            "sessionToken = message.sessionToken;",
+            "// token was not accepted",
+        )
+        self.assertIn("missing-session-token-echo", self.codes(text))
+
+    def test_completed_payload_requires_identity_and_learning_evidence(self):
+        no_identity = VALID_HTML_V2.replace("interactionId,\n    evidence", "resultId: 1,\n    evidence")
+        no_evidence = VALID_HTML_V2.replace("evidence: { answer: selectedAnswer, attempts: 1 }", "status: 'done'")
+
+        self.assertIn("missing-completion-evidence", self.codes(no_identity))
+        self.assertIn("missing-completion-evidence", self.codes(no_evidence))
+
+    def test_network_and_host_storage_apis_are_prohibited(self):
+        snippets = (
+            "fetch('/track')",
+            "new XMLHttpRequest()",
+            "new WebSocket('wss://example.test')",
+            "localStorage.setItem('x', 'y')",
+            "document.cookie = 'x=y'",
+            "window.parent.document.body",
+        )
+        for snippet in snippets:
+            with self.subTest(snippet=snippet):
+                text = VALID_HTML_V2.replace("function finish() {", f"{snippet};\nfunction finish() {{")
+                self.assertIn("prohibited-html-api", self.codes(text))
+
+    def test_v2_preserves_common_self_containment_and_typography_checks(self):
+        external = VALID_HTML_V2.replace(
+            "</head>",
+            '<script src="https://example.com/app.js"></script></head>',
+        )
+        small = VALID_HTML_V2.replace("font-size: 16px;", "font-size: 12px;", 1)
+
+        self.assertIn("external-resource", self.codes(external))
+        self.assertIn("base-font-too-small", self.codes(small))
 
 
 if __name__ == "__main__":
