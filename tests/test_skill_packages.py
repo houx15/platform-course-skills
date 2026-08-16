@@ -79,6 +79,44 @@ class SkillPackageTests(unittest.TestCase):
 
         self.assertNotIn("### 1. `materials-intake`", workflow)
 
+    def test_build_platform_course_uses_blueprint_as_authoring_truth(self):
+        skill_path = ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        workflow_path = (
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "workflow.md"
+        )
+        combined = "\n".join(
+            [
+                skill_path.read_text(encoding="utf-8"),
+                workflow_path.read_text(encoding="utf-8"),
+            ]
+        )
+        required = (
+            ".course-work/course-blueprint.json",
+            "authoring source of truth",
+            "import-legacy-course.py",
+            "does not carry forward legacy approval",
+            "compile-course.py",
+            "never hand edit `course/course.json`",
+            "shared student Zod contract",
+            "current compilation hashes",
+            "student renderer",
+            "browser preview",
+            "OSS",
+            "real course POST",
+        )
+        for phrase in required:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+        self.assertNotIn(
+            "the repository still generates legacy `schemaVersion: 1.1`",
+            combined,
+        )
+
     def test_pdf_rules_are_consistent_across_skill_references(self):
         required = {
             ROOT

@@ -8,6 +8,7 @@ This reference governs the persistent process behind `build-platform-course`. Th
 - Restore and reconcile before any analysis or generation.
 - Follow the earliest incomplete or invalidated gate. G0–G10 cannot be skipped.
 - A file's existence is not evidence that a gate passed for the current hashes.
+- `.course-work/course-blueprint.json` is the authoring source of truth. Generated runtime files are never edited directly.
 - Blockers cannot be accepted or dismissed. Decisions wait for the teacher. Warnings follow the registered code policy.
 - All semantic changes require teacher confirmation. Never silently change learning purpose, source disposition, correct answers, rubrics, blocking rules, media behavior, or a substantive course structure.
 - Raw sources remain unchanged. Ignore ZIP files. Keep writes inside `course/`, `.course-work/`, and named generated views.
@@ -95,7 +96,7 @@ Exit: the teacher approves the brief and all required decisions are confirmed.
 
 Inputs: approved brief and source coverage.
 
-Checks: design the 课程开场, Parts, Pieces/Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Present the 课程首尾设计表, then one Part/Piece row per learning unit. Static text, images, or PDF alone do not prove objective attainment.
+Checks: design the 课程开场, Parts, Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Present the 课程首尾设计表, then one Part/Slice row per learning unit. Static text, images, or PDF alone do not prove objective attainment. Encode the approved result as `.course-work/course-blueprint.json`, including provenance and the exact decision IDs that approve it.
 
 Exit: the teacher confirms the complete design, including required assets and meaningful assessment behavior.
 
@@ -109,17 +110,19 @@ Exit: every complex-media design and source file is confirmed and technically ch
 
 ### G5 — Compile
 
-Target architecture: compile approved `.course-work/course-blueprint.json` deterministically into CourseDefinition 2.0 and a source map. CourseDefinition 2.0 is generated output and is never directly hand edited.
+For existing `schemaVersion: 1.1` material, use `python scripts/import-legacy-course.py LEGACY_COURSE STORYBOARD OUTPUT --json`. The import does not carry forward legacy approval. It records every CourseDefinition 2.0 assumption and remains unconfirmed until the teacher answers a new context-hashed decision.
 
-Current implementation boundary: the repository still generates legacy `schemaVersion: 1.1` from `course-storyboard.json`. Keep using the existing `course-contract.md` until the Iteration 2 compiler exists. Never claim that legacy output is CourseDefinition 2.0 or that G5's final architecture has been implemented.
+Compile the approved Blueprint with `python scripts/compile-course.py ROOT --json`. The command deterministically emits CourseDefinition 2.0, a runtime source map, and a compilation report as one recoverable output set. The shared student Zod contract is the sole runtime schema gate. Always return changes to Blueprint and never hand edit `course/course.json`.
 
-Exit today: the legacy course package is generated without unconfirmed content. Exit after Iteration 2: the compiler and source map succeed reproducibly.
+Complete G5 with `python scripts/course-workflow.py complete-gate ROOT G5 --json`. G5 requires current compilation hashes for Blueprint, definition, source map, report, compiler code, and contract snapshot; it also reruns the shared contract. A stale or partial output set cannot pass.
+
+Exit: compilation succeeds reproducibly, the source map resolves stable runtime targets, and all current compilation hashes are recorded.
 
 ### G6 — Static and asset validation
 
 Inputs: generated course definition and all referenced local assets.
 
-Checks: contract, references, IDs, learning alignment, HTML bridge/report rules, video container/codecs/faststart/timing, PDF signature/completeness, and asset path safety. `review-platform-course` performs the existing independent validation. Static checks cannot claim real browser rendering.
+Checks: contract, references, IDs, learning alignment, HTML bridge/report rules, video container/codecs/faststart/timing, PDF signature/completeness, and asset path safety. Static checks cannot claim real browser rendering. The legacy `review-platform-course` path still targets schema 1.1; until the enhanced 2.0 validator is complete, do not use it to certify G6.
 
 Exit: no blocker or unresolved teacher decision remains. Any warning follows its registered policy.
 
@@ -129,7 +132,7 @@ Inputs: the exact definition hash, asset hashes, renderer version, and preview m
 
 Checks: use the same renderer implementation as the student platform; inspect layouts, media, navigation, workflow, iframe behavior, and completion events in a real browser. Collect structure-linked annotations outside the runtime definition.
 
-The real student renderer and annotation UI are not implemented in this repository yet. Do not complete G7 from `index.md`, static validation, or an invented preview. When the integration exists, the teacher must mark the current preview review complete and required annotations must be resolved.
+The student renderer, browser preview, and annotation UI are not implemented in this repository yet. Do not complete G7 from `index.md`, static validation, or an invented preview. When the integration exists, the teacher must mark the current preview review complete and required annotations must be resolved.
 
 ### G8 — Independent final review
 
@@ -145,7 +148,7 @@ Inputs: approved definition hash, asset manifest, remote identity/publish state,
 
 Checks: prepare a dry run showing create versus update, changed versus reused assets, remote revision expectations, and intended visibility. Require explicit publication approval for that exact plan. Do not infer approval from local course completion or a previous publication.
 
-Exit: the exact dry run is approved and still current. Real OSS and course API calls remain outside the current implementation.
+Exit: the exact dry run is approved and still current. OSS and the real course POST remain outside the current implementation.
 
 ### G10 — Remote verification
 
@@ -170,9 +173,9 @@ All tools use `.course-work/issues.json` and one versioned issue-code registry:
 
 - Changed raw material or an explicit external source invalidates G1 and downstream work.
 - Changed course brief invalidates G2 and downstream work.
-- Changed Blueprint/storyboard invalidates G3 and downstream work.
+- Changed Blueprint invalidates G3 and downstream work.
 - Changed media design invalidates G4 and downstream work.
-- Changed generated definition invalidates G5 and downstream work.
+- Changed generated definition, source map, compilation report, compiler code, or shared contract snapshot invalidates G5 and downstream work.
 - Changed delivery assets invalidate G6 and downstream work.
 - Changed renderer version or preview manifest invalidates G7 and downstream work.
 - Open or changed annotations invalidate G8 and G9; in short, annotations invalidate G8 and G9 until verified in a new preview.

@@ -40,6 +40,7 @@
 - Create: `tests/test_legacy_course_import.py`
 - Create: `tests/test_course_compiler.py`
 - Create: `tests/test_course_compiler_cli.py`
+- Create: `tests/test_real_course_migration.py`
 - Create: `tests/fixtures/course-blueprint/approved-blueprint.json`
 - Create: `tests/fixtures/course-blueprint/legacy-course.json`
 - Create: `tests/fixtures/course-blueprint/legacy-storyboard.json`
@@ -57,6 +58,7 @@
 - Modify: `tests/test_workflow.py`
 - Modify: `tests/test_workflow_cli.py`
 - Modify: `tests/test_skill_packages.py`
+- Modify: `tests/skill_scenarios/build-platform-course.json`
 - Modify: `docs/validation-report.md`
 
 ## Task 1: Vendor and prove the shared student course contract
@@ -417,7 +419,7 @@ git commit -m "feat: gate compiled course definition evidence"
 
 **Files:** Skill/reference/tests/report.
 
-- [ ] **Step 1: Write failing Skill contract tests**
+- [x] **Step 1: Write failing Skill contract tests**
 
 Require:
 
@@ -429,19 +431,19 @@ Require:
 - G5 requires current compilation hashes;
 - the student renderer, browser preview, OSS, and real POST remain unavailable boundaries.
 
-- [ ] **Step 2: Run Skill tests and verify failure**
+- [x] **Step 2: Run Skill tests and verify failure**
 
 Run: `python -m unittest tests.test_skill_packages -v`
 
-- [ ] **Step 3: Update director and workflow instructions**
+- [x] **Step 3: Update director and workflow instructions**
 
 Replace the temporary legacy G5 boundary. Preserve the ability to validate old 1.1 packages, but route new authoring through Blueprint. Teachers see the migration assumptions in readable form and must confirm them before compile.
 
-- [ ] **Step 4: Migrate the repository's valid real fixture**
+- [x] **Step 4: Migrate the repository's valid real fixture**
 
 Use the existing real end-to-end pair `e2e/for-test-course/course/course.json` and `e2e/for-test-course/.course-work/course-storyboard.json` to produce a reviewable Blueprint in a temporary directory. Explicitly confirm the migration assumptions through a test decision record, compile twice, and validate with the shared contract. Record Part/Slice/Block counts and hashes without committing the ignored teacher-derived course package.
 
-- [ ] **Step 5: Run all Python and shared-contract tests**
+- [x] **Step 5: Run all Python and shared-contract tests**
 
 Run:
 
@@ -451,11 +453,11 @@ pnpm --filter @mind-imprint/course-contract test
 pnpm --filter @mind-imprint/course-contract typecheck
 ```
 
-- [ ] **Step 6: Update validation report with exact boundaries**
+- [x] **Step 6: Update validation report with exact boundaries**
 
 State that CourseDefinition 2.0 generation/validation exists, while renderer preview, annotation UI, enhanced media completeness gates, OSS, and real API publication do not.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add skills/build-platform-course/SKILL.md skills/build-platform-course/references/workflow.md tests/test_skill_packages.py docs/validation-report.md docs/superpowers/plans/2026-08-16-course-production-workflow-iteration-2.md

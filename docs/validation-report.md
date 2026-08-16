@@ -2,6 +2,51 @@
 
 日期：2026-08-12
 
+## 2026-08-16：CourseBlueprint 与 CourseDefinition 2.0 编译迭代
+
+### 本轮范围
+
+- 分支：`dev`；仅本地提交，未 push，未上传 OSS，未调用课程接口。
+- 将学生端 `@mind-imprint/course-contract` 以可核验快照纳入工具包。快照对应学生端提交 `df36a8ecd1b30f28c27789fcf02e898b5bee6e21`；当前学生端仓库 HEAD 已前进到 `4306b88a63ced5090ef61c5926928a8de19203f3`，但 contract 的全部 `src/**/*.ts` 字节哈希无漂移。
+- 新增 CourseBlueprint 1.0。`.course-work/course-blueprint.json` 是作者态事实源；它保存完整 runtime-shaped course、教师审批决定、来源映射和迁移假设。
+- 新增 schemaVersion 1.1 迁移器。Piece 按一对一规则变为 Slice，七种 Block 转成 2.0 形状，legacy `blocking` 转成显式 Workflow；迁移器记录布局、工作流、预计时间、个性化、目标对齐和媒体默认假设，且永远不会沿用旧审批。
+- 新增确定性编译器。它只从已确认 Blueprint 生成 `course/course.json`、runtime source map 和 compilation report；学生端共享 Zod、引用校验和 Workflow 校验是唯一运行时 contract gate。
+- 新增原子编译 CLI 与 G5 证据门。三项输出必须来自同一次编译；Blueprint、definition、source map、report、编译器代码或 contract 快照任一不匹配都会阻止或失效 G5。失败重编译保留上一套完整输出，模拟中途替换失败可回滚。
+
+### 自动验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `python -m unittest discover -s tests -q` | 252 项通过，0 failure，0 error |
+| `pnpm --filter @mind-imprint/course-contract test` | 13 个 test file、56 项测试通过 |
+| `pnpm --filter @mind-imprint/course-contract typecheck` | 通过 |
+| `python scripts/check-course-contract-sync.py --upstream /Users/houyuxin/08Coding/mind-imprint --json` | `mismatches: []`；仅仓库 HEAD 比快照更新 |
+| Blueprint 编译复现 | frozen CourseDefinition 与 source map 连续两次字节一致 |
+| 编译输出故障注入 | 第二项 final replace 失败后，三项旧输出全部恢复且无 `.tmp`/`.bak` 遗留 |
+
+### 真实旧课程迁移演练
+
+使用 `e2e/for-test-course/course/course.json` 与 `.course-work/course-storyboard.json` 在临时目录演练：
+
+1. 导入得到未确认 Blueprint，并记录 5 项迁移假设；
+2. 用 context hash 新建并确认 `decision-legacy-two-migration`，确认内容精确包含当次 assumption IDs；
+3. 仅在该决定确认后写入 Blueprint approval；
+4. 连续编译两次，并再次通过共享学生端 contract。
+
+结果为 6 个 Part、13 个 Slice、27 个 Block、2 个本地素材路径。确定性哈希如下：
+
+- Blueprint：`2da724d90f9c9f4ec54804a43f63132ede5d560966a7418b8b9af8c758435204`
+- CourseDefinition：`eabdc283ce9824a12201c3f6331083fb2e5862bfb46aeeb6286526174060a131`
+- runtime source map：`2d624b51bdd532580e4c4d1fe68fdd4353c03129cb13aaf93764cc3dfe5ec543`
+
+### 当前明确边界
+
+- CourseDefinition 2.0 的生成、共享 contract 校验、来源映射、原子输出和 G5 当前证据检查已经实现。
+- 现有 `review-platform-course` 仍以 legacy 1.1 为输入，不能用于认证 2.0。面向 2.0 的 HTML 完成事件与函数协议、视频格式/时间点、PDF 完整性、资产存在性、学习完整性和 warning policy 将在下一验证迭代接入 G6。
+- 学生 renderer、真实 browser preview、布局/媒体运行时检查和预览批注 UI 尚未接入，因此不得完成 G7 或把静态文件称为学生端一致预览。
+- OSS 上传、素材哈希去重、稳定远端课程身份、create/update dry run、真实 course POST 与远端回读尚未实现。G10 仍只能由未来的真实发布适配器完成。
+- 本地 compile、validate、review 或 preview 请求均不授权外部写入；当前迭代没有使用任何凭证或外部 mutation。
+
 ## 2026-08-16：课程生产 Workflow 迭代一
 
 ### 本轮范围
@@ -32,9 +77,9 @@
 
 这证明恢复过程不会把材料变化误判成已完成，也不会无条件重启到 G0。
 
-### 明确边界
+### 当轮边界（已由上方迭代二更新）
 
-- 当前生成链仍是 legacy `schemaVersion: 1.1`。`.course-work/course-blueprint.json`、CourseDefinition 2.0 编译器和 runtime source map 属于迭代二，尚未实现。
+- 截至迭代一，生成链仍是 legacy `schemaVersion: 1.1`；Blueprint、CourseDefinition 2.0 编译器和 runtime source map 当时尚未实现，现已由上方迭代二补齐。
 - G0–G10 内核目前验证顺序、活动 blocker 和待确认决定。各 gate 的完整确定性证据适配器会随编译、增强校验、预览、批注和发布迭代接入；现阶段不得仅因 CLI 可以顺序记录 gate 就声称对应外部能力已完成。
 - 尚未实现学生端 renderer 预览、真实浏览器验证、批注 UI 或 TTS。静态 `index.md` 不能证明 G7 通过；本地 CLI 也不能手工完成 G10。
 - 尚未实现 CourseDefinition 2.0 的增强格式/完整性检查、HTML runtime bridge 全量检查、预览批注应用协议、asset manifest、publish state、OSS 去重上传或课程 create/update 接口。
