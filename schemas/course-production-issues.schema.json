@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-production-issues.schema.json",
+  "title": "Course production issue store",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "issues"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "issues": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/issue" }
+    }
+  },
+  "$defs": {
+    "issue": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "fingerprint",
+        "code",
+        "severity",
+        "status",
+        "gateId",
+        "source",
+        "message",
+        "firstSeenAt",
+        "lastSeenAt",
+        "target",
+        "evidence",
+        "remediation",
+        "warningPolicy",
+        "teacherDecisionId",
+        "rationale",
+        "resolvedAt"
+      ],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "fingerprint": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "code": {
+          "enum": [
+            "workflow-gate-prerequisite",
+            "workflow-active-blocker",
+            "workflow-pending-decision",
+            "workflow-artifact-changed",
+            "workflow-missing-source"
+          ]
+        },
+        "severity": {
+          "enum": ["blocker", "decision-required", "warning", "info"]
+        },
+        "status": {
+          "enum": ["active", "resolved", "dismissed", "accepted"]
+        },
+        "gateId": { "type": "string", "pattern": "^G(?:[0-9]|10)$" },
+        "source": {
+          "enum": ["workflow", "compiler", "validator", "preview", "review", "publisher"]
+        },
+        "message": { "type": "string", "minLength": 1 },
+        "firstSeenAt": { "type": "string", "minLength": 1 },
+        "lastSeenAt": { "type": "string", "minLength": 1 },
+        "target": { "type": ["object", "null"] },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "remediation": { "type": ["string", "null"] },
+        "warningPolicy": {
+          "enum": [null, "acknowledgement-required", "no-acknowledgement-required"]
+        },
+        "teacherDecisionId": { "type": ["string", "null"] },
+        "rationale": { "type": ["string", "null"] },
+        "resolvedAt": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

@@ -99,7 +99,7 @@ git commit -m "feat: add atomic workflow persistence"
 - Create: `schemas/course-production-issues.schema.json`
 - Create: `tests/test_issue_store.py`
 
-- [ ] **Step 1: Write failing registry and issue-store tests**
+- [x] **Step 1: Write failing registry and issue-store tests**
 
 Cover:
 
@@ -125,13 +125,13 @@ def test_blocker_cannot_be_accepted(self):
         store.accept(blocker.id, rationale="ignore")
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail**
+- [x] **Step 2: Run the tests to verify they fail**
 
 Run: `python -m unittest tests.test_issue_store -v`
 
 Expected: module import failures.
 
-- [ ] **Step 3: Implement the issue-code registry**
+- [x] **Step 3: Implement the issue-code registry**
 
 Define:
 
@@ -167,7 +167,7 @@ ISSUE_POLICIES = {
 
 Unknown issue codes must raise `ValueError`; Skills cannot invent policy in prose.
 
-- [ ] **Step 4: Implement issue persistence**
+- [x] **Step 4: Implement issue persistence**
 
 Provide:
 
@@ -193,17 +193,17 @@ class CourseProductionIssue:
 
 `IssueStore` must load/save `{ "schemaVersion": "1.0", "issues": [...] }`, upsert by deterministic fingerprint, resolve, dismiss, and accept only warnings whose policy permits acknowledgement.
 
-- [ ] **Step 5: Add the JSON Schema**
+- [x] **Step 5: Add the JSON Schema**
 
 The schema must close all objects with `additionalProperties: false`, enumerate severity/status/source/warning policy, and require all identity/timestamp fields.
 
-- [ ] **Step 6: Run focused tests**
+- [x] **Step 6: Run focused tests**
 
 Run: `python -m unittest tests.test_issue_store -v`
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add course_toolkit/issue_codes.py course_toolkit/issues.py schemas/course-production-issues.schema.json tests/test_issue_store.py
