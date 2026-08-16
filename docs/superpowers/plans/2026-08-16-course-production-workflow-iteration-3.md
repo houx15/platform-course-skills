@@ -74,9 +74,9 @@
 
 **Files:** real migration validation test, director/review Skill docs, validation report, this plan.
 
-- [ ] Create valid local media stand-ins only inside a temporary test directory; never modify the committed teacher fixture or original assets.
-- [ ] Import and explicitly approve the real 6-Part/13-Slice/27-Block fixture, compile, validate twice, and prove deterministic report hashes.
-- [ ] Update the director to run the 2.0 validator and complete G6 only from current evidence.
-- [ ] State the exact remaining boundary: student renderer/browser preview/annotation UI at G7 and real OSS/course POST at G9/G10.
-- [ ] Run all Python tests, shared contract tests, typecheck, schema syntax checks, and contract sync.
-- [ ] Commit: `docs: route g6 through definition 2 validation`.
+- [x] Create valid local media stand-ins only inside a temporary test directory; never modify the committed teacher fixture or original assets.
+- [x] Import and explicitly approve the real 6-Part/13-Slice/27-Block fixture, compile, validate twice, and prove deterministic report hashes.
+- [x] Update the director to run the 2.0 validator and complete G6 only from current evidence.
+- [x] State the exact remaining boundary: student renderer/browser preview/annotation UI at G7 and real OSS/course POST at G9/G10.
+- [x] Run all Python tests, shared contract tests, typecheck, schema syntax checks, and contract sync.
+- [x] Commit: `docs: route g6 through definition 2 validation`.

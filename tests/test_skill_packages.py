@@ -103,6 +103,10 @@ class SkillPackageTests(unittest.TestCase):
             "never hand edit `course/course.json`",
             "shared student Zod contract",
             "current compilation hashes",
+            "validate-course-v2.py",
+            "complete-gate ROOT G6",
+            "accept-warning",
+            "course-validation-report.json",
             "student renderer",
             "browser preview",
             "OSS",
@@ -116,6 +120,7 @@ class SkillPackageTests(unittest.TestCase):
             "the repository still generates legacy `schemaVersion: 1.1`",
             combined,
         )
+        self.assertNotIn("still being added", combined)
 
     def test_pdf_rules_are_consistent_across_skill_references(self):
         required = {

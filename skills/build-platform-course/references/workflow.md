@@ -122,9 +122,25 @@ Exit: compilation succeeds reproducibly, the source map resolves stable runtime 
 
 Inputs: generated course definition and all referenced local assets.
 
-Checks: contract, references, IDs, learning alignment, HTML bridge/report rules, video container/codecs/faststart/timing, PDF signature/completeness, and asset path safety. Static checks cannot claim real browser rendering. The legacy `review-platform-course` path still targets schema 1.1; until the enhanced 2.0 validator is complete, do not use it to certify G6.
+Run `python scripts/validate-course-v2.py ROOT --json`. It checks the current G5 set, shared contract, exact referenced asset inventory and hashes, safe paths, PDF signature/completeness, MP4 codecs/faststart/duration, interaction cues and completion consistency, WEBVTT headers, the renderer-compatible HTML protocol and completion evidence, and fixed course-completeness warnings. Static checks cannot claim real browser rendering. The legacy `review-platform-course` path still targets schema 1.1 and cannot certify G6 for CourseDefinition 2.0.
 
-Exit: no blocker or unresolved teacher decision remains. Any warning follows its registered policy.
+Successful validation writes `.course-work/course-validation-report.json`; blocked validation writes `.course-work/course-validation-attempt.json` and preserves the previous successful report. Validation findings synchronize into `.course-work/issues.json`. `course-package-density-warning` is advisory. `course-package-estimate-warning` and `course-package-media-warning` require explicit teacher acknowledgement and a real rationale:
+
+```bash
+python scripts/course-workflow.py accept-warning ROOT ISSUE_ID \
+  --rationale "TEACHER_RATIONALE" \
+  --json
+```
+
+Never invent acknowledgement. Complete the gate only through:
+
+```bash
+python scripts/course-workflow.py complete-gate ROOT G6 --json
+```
+
+This rebuilds validation and verifies the exact definition, report, validator-code, asset-set, and per-asset hashes. Any changed delivery asset or validator invalidates G6 and downstream work, including assets stored outside `course/assets/`.
+
+Exit: the deterministic report is current, no blocker remains, every required warning is explicitly accepted, and G6 evidence hashes are recorded.
 
 ### G7 — Preview review
 

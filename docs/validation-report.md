@@ -2,12 +2,51 @@
 
 日期：2026-08-12
 
+## 2026-08-16：CourseDefinition 2.0 静态与素材验证迭代
+
+### 本轮范围
+
+- 分支：`dev`；仅本地提交，未 push，未上传 OSS，未调用课程接口。
+- 新增确定性 CourseDefinition 2.0 包验证器与 `validate-course-v2.py`。验证从当前 G5 证据开始，覆盖共享 Zod contract、素材清单与安全相对路径、文件存在性/大小/SHA-256、PDF 头尾、MP4/H.264/AAC/faststart/真实时长、视频互动 1.1 cue、WEBVTT、HTML `mind-course-interaction` 1.0 握手与完成学习证据，以及固定课程完整性 warning。
+- 成功或仅有 warning 时写入 `.course-work/course-validation-report.json`；阻断结果单独写入 `.course-work/course-validation-attempt.json`，不会把上一份成功证据冒充为当前失败结果。
+- G6 现在核验 definition、validation report、验证器依赖代码、asset set 与每个素材的当前哈希。素材无论位于 `course/assets/`、`assets/` 或 `interactions/`，内容变化、缺失或变成 symlink 都会使 G6 及下游失效。
+- 原始检查码保留在 validation report；工作流只登记四类稳定问题。包错误是不可接受的 blocker；Slice 密度 warning 不要求确认；预计时间和媒体 warning 必须由教师明确给出理由后通过 `accept-warning` 接受。
+- CourseDefinition 2.0 HTML 校验使用学生 renderer 已实现的 envelope、session token 回显与 ready/completed 类型；本地进一步要求 completed payload 包含稳定 `interactionId` 和 JSON-compatible `evidence`。学生端是否持久化该 payload 仍属于 G7 runtime 集成边界。
+
+### 自动验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `python -m unittest discover -s tests -q` | 297 项通过，0 failure，0 error |
+| G6/包验证/issue/CLI 聚焦测试 | 77 项通过 |
+| `pnpm --filter @mind-imprint/course-contract test` | 13 个 test file、56 项测试通过 |
+| `pnpm --filter @mind-imprint/course-contract typecheck` | 通过 |
+| `python scripts/check-course-contract-sync.py --upstream /Users/houyuxin/08Coding/mind-imprint --json` | `mismatches: []`；学生端当前 HEAD 为 `5624178c91c83d61709af306818c6b88756a2c65`，快照 commit 较早但 contract 源码无漂移 |
+| 全部 `schemas/*.json` | `python -m json.tool` 语法通过 |
+
+### 真实旧课程 G6 演练
+
+使用原 6 Part / 13 Slice / 27 Block fixture，在临时目录完成显式迁移确认、两次确定性编译与两次完整验证。PDF 仅复制原始字节；旧 HTML 不修改 fixture，只在临时目录换成 CourseDefinition 2.0 协议测试文件。
+
+结果：2 个素材，validation 状态 `clear`，0 issue，0 warning；G6 能复验当前 asset-set 与逐素材哈希。
+
+- validation report：`aea48de252a18643ef9da09e98929586c9417f1c28d380a58e1aa97edbdecb2d`
+- asset set：`394b65715385a91e458a4d8e1eb340bb0ce03436d0aa603f44c1f5a9976ef7ef`
+- validator code：`6e74451e292eb843a95f5c2f9dc657bcd0a53d3c581b6840e00cd57f8544c8bc`
+
+### 当前明确边界
+
+- 本地流程现已完成至 G6：Blueprint、CourseDefinition 2.0 编译、共享 contract、静态/素材/媒体/HTML 验证与可失效证据门均可使用。
+- G7 仍依赖学生 renderer、真实浏览器预览和结构化批注 UI。静态报告不能证明布局、自动播放、iframe、视频弹窗互动或完成事件在学生端真实运行。
+- G8 需要基于当前 preview hashes 与批注的独立终审；在 G7 尚未接入时不得伪造完成。
+- G9/G10 的 OSS 去重上传、稳定远端课程身份、create/update dry run、真实课程 POST、幂等重试和远端回读仍未实现。本轮没有使用凭证或发生任何外部 mutation。
+
 ## 2026-08-16：CourseBlueprint 与 CourseDefinition 2.0 编译迭代
 
 ### 本轮范围
 
 - 分支：`dev`；仅本地提交，未 push，未上传 OSS，未调用课程接口。
-- 将学生端 `@mind-imprint/course-contract` 以可核验快照纳入工具包。快照对应学生端提交 `df36a8ecd1b30f28c27789fcf02e898b5bee6e21`；当前学生端仓库 HEAD 已前进到 `4306b88a63ced5090ef61c5926928a8de19203f3`，但 contract 的全部 `src/**/*.ts` 字节哈希无漂移。
+- 将学生端 `@mind-imprint/course-contract` 以可核验快照纳入工具包。快照对应学生端提交 `df36a8ecd1b30f28c27789fcf02e898b5bee6e21`；学生端仓库后来继续前进，但 contract 的全部 `src/**/*.ts` 字节哈希无漂移。
 - 新增 CourseBlueprint 1.0。`.course-work/course-blueprint.json` 是作者态事实源；它保存完整 runtime-shaped course、教师审批决定、来源映射和迁移假设。
 - 新增 schemaVersion 1.1 迁移器。Piece 按一对一规则变为 Slice，七种 Block 转成 2.0 形状，legacy `blocking` 转成显式 Workflow；迁移器记录布局、工作流、预计时间、个性化、目标对齐和媒体默认假设，且永远不会沿用旧审批。
 - 新增确定性编译器。它只从已确认 Blueprint 生成 `course/course.json`、runtime source map 和 compilation report；学生端共享 Zod、引用校验和 Workflow 校验是唯一运行时 contract gate。
@@ -39,10 +78,10 @@
 - CourseDefinition：`eabdc283ce9824a12201c3f6331083fb2e5862bfb46aeeb6286526174060a131`
 - runtime source map：`2d624b51bdd532580e4c4d1fe68fdd4353c03129cb13aaf93764cc3dfe5ec543`
 
-### 当前明确边界
+### 当轮边界（已由上方 G6 迭代更新）
 
-- CourseDefinition 2.0 的生成、共享 contract 校验、来源映射、原子输出和 G5 当前证据检查已经实现。
-- 现有 `review-platform-course` 仍以 legacy 1.1 为输入，不能用于认证 2.0。面向 2.0 的 HTML 完成事件与函数协议、视频格式/时间点、PDF 完整性、资产存在性、学习完整性和 warning policy 将在下一验证迭代接入 G6。
+- 当时已实现 CourseDefinition 2.0 的生成、共享 contract 校验、来源映射、原子输出和 G5 当前证据检查；上方迭代现已补齐 G6。
+- 现有 `review-platform-course` 仍以 legacy 1.1 为输入，不能用于认证 2.0；CourseDefinition 2.0 改由 `validate-course-v2.py` 和 G6 证据门认证。
 - 学生 renderer、真实 browser preview、布局/媒体运行时检查和预览批注 UI 尚未接入，因此不得完成 G7 或把静态文件称为学生端一致预览。
 - OSS 上传、素材哈希去重、稳定远端课程身份、create/update dry run、真实 course POST 与远端回读尚未实现。G10 仍只能由未来的真实发布适配器完成。
 - 本地 compile、validate、review 或 preview 请求均不授权外部写入；当前迭代没有使用任何凭证或外部 mutation。
