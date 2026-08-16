@@ -2,15 +2,21 @@
 import argparse
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from course_toolkit.course_package_validation import (
     build_course_validation_report,
+    sync_validation_issues,
     write_current_validation_report,
 )
 from course_toolkit.workflow import WorkflowError
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def main() -> int:
@@ -23,7 +29,12 @@ def main() -> int:
     try:
         report = build_course_validation_report(args.root)
         output_path = write_current_validation_report(args.root, report)
-        payload = {**report, "output": str(output_path)}
+        active_issue_ids = sync_validation_issues(args.root, report, utc_now())
+        payload = {
+            **report,
+            "output": str(output_path),
+            "activeWorkflowIssueIds": list(active_issue_ids),
+        }
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
         else:

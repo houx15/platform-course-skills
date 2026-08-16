@@ -5,10 +5,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from course_toolkit.issues import IssueStore, make_registered_issue
+
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPOSITORY_ROOT / "scripts" / "course-workflow.py"
 COMPILER = REPOSITORY_ROOT / "scripts" / "compile-course.py"
+VALIDATOR = REPOSITORY_ROOT / "scripts" / "validate-course-v2.py"
 APPROVED = (
     REPOSITORY_ROOT
     / "tests"
@@ -150,6 +153,18 @@ class WorkflowCliTests(unittest.TestCase):
                     check=False,
                 )
                 self.assertEqual(compilation.returncode, 0, compilation.stderr)
+            if index == 6:
+                audio = self.root / "assets/audio/introduce-check.mp3"
+                audio.parent.mkdir(parents=True, exist_ok=True)
+                audio.write_bytes(b"audio")
+                validation = subprocess.run(
+                    [sys.executable, str(VALIDATOR), str(self.root), "--json"],
+                    cwd=REPOSITORY_ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(validation.returncode, 0, validation.stderr)
             completed = self.run_cli(
                 "complete-gate", self.root, f"G{index}", "--json"
             )
@@ -176,6 +191,99 @@ class WorkflowCliTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2)
         self.assertIn("compilation evidence is missing", payload["error"]["message"])
+
+    def test_g6_cannot_complete_without_current_validation_report(self):
+        self.init()
+        blueprint = self.root / ".course-work/course-blueprint.json"
+        blueprint.write_bytes(APPROVED.read_bytes())
+        for index in range(6):
+            if index == 5:
+                compilation = subprocess.run(
+                    [sys.executable, str(COMPILER), str(self.root), "--json"],
+                    cwd=REPOSITORY_ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(compilation.returncode, 0, compilation.stderr)
+            completed = self.run_cli(
+                "complete-gate", self.root, f"G{index}", "--json"
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+        completed, payload = self.json_result(
+            "complete-gate", self.root, "G6", "--json"
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("validation report is missing", payload["error"]["message"])
+
+    def test_g6_completes_from_current_validator_evidence(self):
+        self.init()
+        blueprint = self.root / ".course-work/course-blueprint.json"
+        blueprint.write_bytes(APPROVED.read_bytes())
+        for index in range(6):
+            if index == 5:
+                subprocess.run(
+                    [sys.executable, str(COMPILER), str(self.root), "--json"],
+                    cwd=REPOSITORY_ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=True,
+                )
+            completed = self.run_cli(
+                "complete-gate", self.root, f"G{index}", "--json"
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+        audio = self.root / "assets/audio/introduce-check.mp3"
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"audio")
+        validation = subprocess.run(
+            [sys.executable, str(VALIDATOR), str(self.root), "--json"],
+            cwd=REPOSITORY_ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(validation.returncode, 0, validation.stderr)
+
+        completed, payload = self.json_result(
+            "complete-gate", self.root, "G6", "--json"
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["completedGates"][-1], "G6")
+
+    def test_acknowledgement_required_warning_can_be_accepted_explicitly(self):
+        self.init()
+        store = IssueStore(self.root / ".course-work/issues.json")
+        warning = store.upsert(
+            make_registered_issue(
+                code="course-package-estimate-warning",
+                source="validator",
+                message="Review the estimate",
+                seen_at="2026-08-16T00:00:00Z",
+                target={
+                    "path": "course.estimatedMinutes",
+                    "validationCode": "estimated-time-drift",
+                },
+            )
+        )
+        store.save()
+
+        completed, payload = self.json_result(
+            "accept-warning",
+            self.root,
+            warning.id,
+            "--rationale",
+            "Teacher reviewed the intended pacing",
+            "--json",
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["issues"], [])
+        restored = IssueStore.load(self.root / ".course-work/issues.json")
+        self.assertEqual(restored.get(warning.id).status, "accepted")
 
     def test_malformed_session_is_tool_error_without_traceback(self):
         work = self.root / ".course-work"

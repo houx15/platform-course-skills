@@ -26,6 +26,16 @@ class IssuePolicyTests(unittest.TestCase):
         self.assertEqual(policy.severity, "decision-required")
         self.assertEqual(policy.default_gate_id, "G3")
 
+    def test_g6_warning_policies_are_fixed_by_semantic_category(self):
+        density = get_issue_policy("course-package-density-warning")
+        estimate = get_issue_policy("course-package-estimate-warning")
+        media = get_issue_policy("course-package-media-warning")
+
+        self.assertEqual(density.warning_policy, "no-acknowledgement-required")
+        self.assertEqual(estimate.warning_policy, "acknowledgement-required")
+        self.assertEqual(media.warning_policy, "acknowledgement-required")
+        self.assertEqual({density.default_gate_id, estimate.default_gate_id, media.default_gate_id}, {"G6"})
+
 
 class IssueStoreTests(unittest.TestCase):
     def setUp(self):

@@ -10,11 +10,13 @@ from course_toolkit.course_package_validation import (
     VALIDATION_REPORT_RELATIVE_PATH,
     build_course_validation_report,
     iter_asset_references,
+    sync_validation_issues,
     validate_asset_references,
     write_current_validation_report,
 )
 from course_toolkit.course_compiler import compile_blueprint, write_compilation_outputs_atomic
 from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.issues import IssueStore, make_registered_issue
 from tests.helpers import ROOT, write_test_mp4, write_test_pdf
 from tests.test_html_validation import VALID_HTML, VALID_HTML_V2
 
@@ -433,6 +435,78 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertTrue(
             (self.root / ".course-work/course-validation-attempt.json").is_file()
         )
+
+
+class ValidationIssueSynchronizationTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.root = Path(self.temporary.name)
+        build_full_package(self.root)
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def store(self):
+        return IssueStore.load(self.root / ".course-work/issues.json")
+
+    def test_report_findings_use_stable_registered_workflow_codes(self):
+        report = build_course_validation_report(self.root)
+
+        active_ids = sync_validation_issues(self.root, report, "2026-08-16T00:00:00Z")
+
+        issues = self.store().all()
+        self.assertEqual(active_ids, (issues[0].id,))
+        self.assertEqual(issues[0].code, "course-package-density-warning")
+        self.assertEqual(issues[0].target["validationCode"], "dense-slice")
+        self.assertEqual(
+            issues[0].warning_policy,
+            "no-acknowledgement-required",
+        )
+
+    def test_disappeared_validator_findings_resolve_without_touching_other_sources(self):
+        warning_report = build_course_validation_report(self.root)
+        sync_validation_issues(self.root, warning_report, "2026-08-16T00:00:00Z")
+        store = self.store()
+        unrelated = store.upsert(
+            make_registered_issue(
+                code="workflow-artifact-changed",
+                source="workflow",
+                message="changed",
+                gate_id="G6",
+                seen_at="2026-08-16T00:00:00Z",
+                target={"path": "course/assets/"},
+            )
+        )
+        store.save()
+
+        clear_report = {**warning_report, "status": "clear", "warnings": []}
+        sync_validation_issues(self.root, clear_report, "2026-08-16T01:00:00Z")
+
+        restored = self.store()
+        validator_issue = next(
+            issue for issue in restored.all() if issue.source == "validator"
+        )
+        self.assertEqual(validator_issue.status, "resolved")
+        self.assertEqual(restored.get(unrelated.id).status, "active")
+
+    def test_acknowledged_warning_is_not_reactivated_by_identical_validation(self):
+        report = build_course_validation_report(self.root)
+        report["warnings"] = [
+            {
+                "path": "course.estimatedMinutes",
+                "code": "estimated-time-drift",
+                "message": "review estimate",
+            }
+        ]
+        sync_validation_issues(self.root, report, "2026-08-16T00:00:00Z")
+        store = self.store()
+        issue = store.all()[0]
+        store.accept(issue.id, "Teacher reviewed the estimate")
+        store.save()
+
+        sync_validation_issues(self.root, report, "2026-08-16T01:00:00Z")
+
+        self.assertEqual(self.store().get(issue.id).status, "accepted")
 
 
 class CourseDefinitionTwoValidationCliTests(unittest.TestCase):

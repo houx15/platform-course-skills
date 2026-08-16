@@ -34,6 +34,14 @@ VALIDATION_REPORT_RELATIVE_PATH = Path(".course-work/course-validation-report.js
 VALIDATION_ATTEMPT_RELATIVE_PATH = Path(".course-work/course-validation-attempt.json")
 ROOT = Path(__file__).resolve().parent.parent
 VIDEO_INTERACTION_VALIDATOR = ROOT / "scripts" / "validate-video-interaction.ts"
+VALIDATOR_ARTIFACTS = (
+    ROOT / "course_toolkit" / "course_package_validation.py",
+    ROOT / "course_toolkit" / "html_validation.py",
+    ROOT / "course_toolkit" / "mp4.py",
+    ROOT / "course_toolkit" / "pdf_validation.py",
+    ROOT / "course_toolkit" / "video_interactions.py",
+    VIDEO_INTERACTION_VALIDATOR,
+)
 
 
 @dataclass(frozen=True)
@@ -338,6 +346,23 @@ def validate_asset_references(
 
 class PackageValidationToolError(RuntimeError):
     pass
+
+
+def validator_code_hash() -> str:
+    files = list(VALIDATOR_ARTIFACTS)
+    files.extend(
+        path
+        for path in (ROOT / "packages" / "course-contract" / "src").rglob("*.ts")
+        if path.is_file()
+    )
+    evidence = [
+        {
+            "path": path.relative_to(ROOT).as_posix(),
+            "sha256": file_sha256(path),
+        }
+        for path in sorted(files)
+    ]
+    return canonical_json_hash(evidence)
 
 
 def _blocks(document: dict) -> Iterable[Tuple[str, str, dict]]:
@@ -702,7 +727,7 @@ def build_course_validation_report(root: Path) -> dict:
         for part in document["course"]["parts"]
         for slice_data in part["slices"]
     ]
-    validator_hash = file_sha256(Path(__file__))
+    validator_hash = validator_code_hash()
     return {
         "schemaVersion": "1.0",
         "validatorVersion": VALIDATOR_VERSION,
@@ -735,3 +760,77 @@ def write_current_validation_report(root: Path, report: dict) -> Path:
     path = root.resolve() / relative
     write_json_atomic(path, report)
     return path
+
+
+def _workflow_issue_code(finding: dict, *, warning: bool) -> str:
+    if not warning:
+        return "course-package-invalid"
+    if finding.get("code") == "dense-slice":
+        return "course-package-density-warning"
+    if finding.get("code") == "estimated-time-drift":
+        return "course-package-estimate-warning"
+    return "course-package-media-warning"
+
+
+def validation_issue_candidates(report: dict, now: str):
+    from course_toolkit.issues import make_registered_issue
+
+    candidates = []
+    evidence_path = (
+        VALIDATION_ATTEMPT_RELATIVE_PATH
+        if report.get("status") == "blocked"
+        else VALIDATION_REPORT_RELATIVE_PATH
+    ).as_posix()
+    for field, warning in (("issues", False), ("warnings", True)):
+        for finding in report.get(field, []):
+            if not isinstance(finding, dict):
+                continue
+            target = {
+                "path": str(finding.get("path", "")),
+                "validationCode": str(finding.get("code", "unknown")),
+            }
+            candidate = make_registered_issue(
+                code=_workflow_issue_code(finding, warning=warning),
+                source="validator",
+                message=str(finding.get("message", "Course package validation failed")),
+                seen_at=now,
+                target=target,
+                evidence=(evidence_path,),
+                remediation=(
+                    "Fix the reported package problem and run validation again."
+                    if not warning
+                    else "Review this warning in context before completing G6."
+                ),
+            )
+            candidates.append(candidate)
+    return tuple(candidates)
+
+
+def sync_validation_issues(root: Path, report: dict, now: str) -> Tuple[str, ...]:
+    from course_toolkit.issues import IssueStore
+
+    root = root.resolve()
+    store = IssueStore.load(root / ".course-work/issues.json")
+    candidates = validation_issue_candidates(report, now)
+
+    candidate_fingerprints = {candidate.fingerprint for candidate in candidates}
+    existing_by_fingerprint = {issue.fingerprint: issue for issue in store.all()}
+    for candidate in candidates:
+        existing = existing_by_fingerprint.get(candidate.fingerprint)
+        if existing is not None and existing.status in {"accepted", "dismissed"}:
+            continue
+        store.upsert(candidate)
+    for issue in store.all():
+        if (
+            issue.source == "validator"
+            and issue.gate_id == "G6"
+            and issue.fingerprint not in candidate_fingerprints
+            and issue.status != "resolved"
+        ):
+            store.resolve(issue.id, now)
+    store.save()
+    return tuple(
+        issue.id
+        for issue in store.all()
+        if issue.source == "validator" and issue.gate_id == "G6" and issue.status == "active"
+    )

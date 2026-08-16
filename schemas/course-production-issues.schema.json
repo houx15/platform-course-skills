@@ -49,7 +49,11 @@
             "blueprint-unconfirmed",
             "legacy-migration-confirmation-required",
             "legacy-missing-objective-alignment",
-            "course-contract-invalid"
+            "course-contract-invalid",
+            "course-package-invalid",
+            "course-package-density-warning",
+            "course-package-estimate-warning",
+            "course-package-media-warning"
           ]
         },
         "severity": {

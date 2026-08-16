@@ -62,13 +62,13 @@
 
 **Files:** issue registry/schema, Workflow/CLI, validation CLI, tests.
 
-- [ ] Register stable G6 issue codes and severities; blockers cannot be accepted, fixed warnings use explicit acknowledgement policy.
-- [ ] Synchronize current validation findings into `.course-work/issues.json`, resolve disappeared validator findings, and preserve unrelated workflow/review issues.
-- [ ] Add `.course-work/course-validation-report.json` to G6 artifact tracking.
-- [ ] Implement `verify_g6_validation(root)` checking current G5 evidence, report status, definition/asset/report hashes, validator code hash, and zero active blockers/decisions.
-- [ ] Prevent manual G6 completion without current evidence; store hashes on successful completion.
-- [ ] Changing definition/assets/validator invalidates G6 and downstream gates.
-- [ ] Commit: `feat: gate definition 2 validation evidence`.
+- [x] Register stable G6 issue codes and severities; blockers cannot be accepted, fixed warnings use explicit acknowledgement policy.
+- [x] Synchronize current validation findings into `.course-work/issues.json`, resolve disappeared validator findings, and preserve unrelated workflow/review issues.
+- [x] Add `.course-work/course-validation-report.json` to G6 artifact tracking.
+- [x] Implement `verify_g6_validation(root)` checking current G5 evidence, report status, definition/asset/report hashes, validator code hash, and zero active blockers/decisions.
+- [x] Prevent manual G6 completion without current evidence; store hashes on successful completion.
+- [x] Changing definition/assets/validator invalidates G6 and downstream gates.
+- [x] Commit: `feat: gate definition 2 validation evidence`.
 
 ## Task 6: Verify a real migrated course and update the director boundary
 

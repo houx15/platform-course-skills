@@ -45,6 +45,27 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
     "course-contract-invalid": IssuePolicy(
         "course-contract-invalid", "blocker", "G5"
     ),
+    "course-package-invalid": IssuePolicy(
+        "course-package-invalid", "blocker", "G6"
+    ),
+    "course-package-density-warning": IssuePolicy(
+        "course-package-density-warning",
+        "warning",
+        "G6",
+        "no-acknowledgement-required",
+    ),
+    "course-package-estimate-warning": IssuePolicy(
+        "course-package-estimate-warning",
+        "warning",
+        "G6",
+        "acknowledgement-required",
+    ),
+    "course-package-media-warning": IssuePolicy(
+        "course-package-media-warning",
+        "warning",
+        "G6",
+        "acknowledgement-required",
+    ),
 }
 
 

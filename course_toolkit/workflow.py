@@ -87,6 +87,7 @@ ARTIFACT_GATE_RULES = (
     ArtifactRule(".course-work/course-runtime-source-map.json", "G5"),
     ArtifactRule(".course-work/compilation-report.json", "G5"),
     ArtifactRule("course/assets/", "G6"),
+    ArtifactRule(".course-work/course-validation-report.json", "G6"),
     ArtifactRule(".course-work/preview-manifest.json", "G7"),
     ArtifactRule(".course-work/annotations.json", "G7"),
     ArtifactRule(".course-work/review-report.json", "G8"),
@@ -102,6 +103,13 @@ G5_EVIDENCE_KEYS = (
     "@toolkit/course-compiler",
     "@toolkit/course-contract-snapshot",
 )
+
+G6_EVIDENCE_KEYS = (
+    ".course-work/course-validation-report.json",
+    "@toolkit/course-package-validator",
+    "@course/asset-set",
+)
+G6_ASSET_EVIDENCE_PREFIX = "@course/asset:"
 
 TOOLKIT_G5_ARTIFACTS = {
     "@toolkit/course-compiler": Path(__file__).resolve().parent / "course_compiler.py",
@@ -275,6 +283,14 @@ def complete_gate(
         if missing:
             raise WorkflowError(
                 f"G5 requires current compilation evidence: {missing[0]}"
+            )
+        session.artifact_hashes.update(evidence)
+    if gate_id == "G6":
+        evidence = gate_evidence or {}
+        missing = [key for key in G6_EVIDENCE_KEYS if key not in evidence]
+        if missing:
+            raise WorkflowError(
+                f"G6 requires current package validation evidence: {missing[0]}"
             )
         session.artifact_hashes.update(evidence)
     if gate_id not in session.completed_gate_ids:
@@ -485,6 +501,74 @@ def verify_g5_compilation(root: Path) -> Dict[str, str]:
     return evidence
 
 
+def verify_g6_validation(root: Path) -> Dict[str, str]:
+    from course_toolkit.course_package_validation import (
+        VALIDATION_REPORT_RELATIVE_PATH,
+        build_course_validation_report,
+        validation_issue_candidates,
+        validator_code_hash,
+    )
+
+    root = root.resolve()
+    verify_g5_compilation(root)
+    report_path = root / VALIDATION_REPORT_RELATIVE_PATH
+    if report_path.is_symlink() or not report_path.is_file():
+        raise WorkflowError("G6 package validation report is missing")
+    report = load_json(report_path)
+    if report.get("status") not in {"clear", "warnings"} or report.get("issues"):
+        raise WorkflowError("G6 package validation report is blocked")
+
+    rebuilt = build_course_validation_report(root)
+    if canonical_json_hash(report) != canonical_json_hash(rebuilt):
+        raise WorkflowError("G6 package validation report is stale")
+    if report.get("validatorHash") != validator_code_hash():
+        raise WorkflowError("G6 package validation report uses stale validator code")
+
+    store = IssueStore.load(root / ".course-work/issues.json")
+    stored_by_fingerprint = {issue.fingerprint: issue for issue in store.all()}
+    candidates = validation_issue_candidates(report, "verification")
+    candidate_fingerprints = {candidate.fingerprint for candidate in candidates}
+    for candidate in candidates:
+        stored = stored_by_fingerprint.get(candidate.fingerprint)
+        if stored is None or stored.status == "resolved":
+            raise WorkflowError(
+                "G6 validation findings are not synchronized with the issue store"
+            )
+        if (
+            candidate.warning_policy == "acknowledgement-required"
+            and stored.status != "accepted"
+        ):
+            raise WorkflowError(
+                f"G6 warning requires acknowledgement: {stored.id}"
+            )
+    stale_active = next(
+        (
+            issue
+            for issue in store.all()
+            if issue.source == "validator"
+            and issue.gate_id == "G6"
+            and issue.status == "active"
+            and issue.fingerprint not in candidate_fingerprints
+        ),
+        None,
+    )
+    if stale_active is not None:
+        raise WorkflowError("G6 issue store contains stale active validation findings")
+
+    evidence = {
+        ".course-work/course-validation-report.json": hash_path(report_path),
+        "@toolkit/course-package-validator": report["validatorHash"],
+        "@course/asset-set": report["assetSetHash"],
+    }
+    for asset in report.get("assets", []):
+        source = asset.get("source") if isinstance(asset, dict) else None
+        asset_hash = asset.get("sha256") if isinstance(asset, dict) else None
+        if not isinstance(source, str) or not isinstance(asset_hash, str):
+            raise WorkflowError("G6 asset evidence is incomplete")
+        evidence[f"{G6_ASSET_EVIDENCE_PREFIX}{source}"] = asset_hash
+    return evidence
+
+
 def _safe_course_path(root: Path, relative_path: str) -> Path:
     relative = Path(relative_path)
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
@@ -612,6 +696,62 @@ def reconcile_artifacts(
             )
         )
         session.artifact_hashes[artifact_id] = current_hash
+
+    validator_id = "@toolkit/course-package-validator"
+    previous_validator_hash = session.artifact_hashes.get(validator_id)
+    if previous_validator_hash is not None:
+        from course_toolkit.course_package_validation import validator_code_hash
+
+        current_validator_hash = validator_code_hash()
+        if current_validator_hash != previous_validator_hash:
+            changed_paths.append(validator_id)
+            changed_gate_ids.append("G6")
+            issue_store.upsert(
+                make_registered_issue(
+                    code="workflow-artifact-changed",
+                    source="workflow",
+                    message=f"Tracked course artifact changed: {validator_id}",
+                    gate_id="G6",
+                    seen_at=now,
+                    target={"path": validator_id},
+                    remediation="Re-run CourseDefinition 2.0 validation and G6.",
+                )
+            )
+            session.artifact_hashes[validator_id] = current_validator_hash
+
+    for artifact_id, previous_hash in list(session.artifact_hashes.items()):
+        if not artifact_id.startswith(G6_ASSET_EVIDENCE_PREFIX):
+            continue
+        source = artifact_id.removeprefix(G6_ASSET_EVIDENCE_PREFIX)
+        try:
+            asset = _safe_course_path(root, source)
+        except WorkflowError:
+            current_hash = None
+        else:
+            current_hash = (
+                hash_path(asset)
+                if asset.is_file() and not asset.is_symlink()
+                else None
+            )
+        if current_hash == previous_hash:
+            continue
+        changed_paths.append(artifact_id)
+        changed_gate_ids.append("G6")
+        issue_store.upsert(
+            make_registered_issue(
+                code="workflow-artifact-changed",
+                source="workflow",
+                message=f"Tracked course asset changed: {source}",
+                gate_id="G6",
+                seen_at=now,
+                target={"path": source},
+                remediation="Re-run CourseDefinition 2.0 validation and G6.",
+            )
+        )
+        if current_hash is None:
+            session.artifact_hashes.pop(artifact_id, None)
+        else:
+            session.artifact_hashes[artifact_id] = current_hash
 
     earliest_gate_id = None
     if changed_gate_ids:

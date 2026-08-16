@@ -21,6 +21,7 @@ from course_toolkit.workflow import (
     save_session,
     set_phase_status,
     verify_g5_compilation,
+    verify_g6_validation,
     workflow_summary,
 )
 
@@ -151,6 +152,13 @@ def build_parser() -> argparse.ArgumentParser:
     add_common_arguments(gate_parser)
     gate_parser.add_argument("gate_id", choices=tuple(GATE_BY_ID))
 
+    accept_parser = commands.add_parser(
+        "accept-warning", help="Accept one acknowledgement-required warning"
+    )
+    add_common_arguments(accept_parser)
+    accept_parser.add_argument("issue_id")
+    accept_parser.add_argument("--rationale", required=True)
+
     status_update_parser = commands.add_parser(
         "set-status", help="Set a non-terminal workflow status"
     )
@@ -193,9 +201,12 @@ def execute(args: argparse.Namespace) -> tuple:
             )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
-        gate_evidence = (
-            verify_g5_compilation(root) if args.gate_id == "G5" else None
-        )
+        if args.gate_id == "G5":
+            gate_evidence = verify_g5_compilation(root)
+        elif args.gate_id == "G6":
+            gate_evidence = verify_g6_validation(root)
+        else:
+            gate_evidence = None
         complete_gate(
             session,
             args.gate_id,
@@ -204,6 +215,19 @@ def execute(args: argparse.Namespace) -> tuple:
             pending_decision_ids=session.pending_decision_ids,
             gate_evidence=gate_evidence,
         )
+        save_session(root, session)
+    elif args.command == "accept-warning":
+        session = require_session(root)
+        issues = IssueStore.load(root / ".course-work/issues.json")
+        try:
+            issues.accept(args.issue_id, args.rationale)
+        except ValueError as exc:
+            raise WorkflowError(str(exc)) from exc
+        issues.save()
+        reconciliation = reconcile_artifacts(root, session, now)
+        session.active_issue_ids = [
+            issue.id for issue in reconciliation.active_issues
+        ]
         save_session(root, session)
     elif args.command == "set-status":
         session = require_session(root)
