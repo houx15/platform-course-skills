@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mind-imprint.local/schemas/course-blueprint.schema.json",
+  "title": "CourseBlueprint authoring document",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "targetContractVersion",
+    "approval",
+    "course",
+    "provenance",
+    "migration"
+  ],
+  "properties": {
+    "schemaVersion": {"const": "1.0"},
+    "targetContractVersion": {"const": "2.0"},
+    "approval": {"$ref": "#/$defs/approval"},
+    "course": {
+      "type": "object",
+      "$comment": "The projected course is validated by the vendored @mind-imprint/course-contract Zod schema. This authoring schema intentionally does not duplicate it."
+    },
+    "provenance": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/provenance"}
+    },
+    "migration": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/$defs/migration"}
+      ]
+    }
+  },
+  "$defs": {
+    "stringIds": {
+      "type": "array",
+      "items": {"type": "string", "minLength": 1},
+      "uniqueItems": true
+    },
+    "targetId": {
+      "type": "string",
+      "pattern": "^(course|opening|closing|(objective|part|slice|block):[a-z0-9]+(-[a-z0-9]+)*|slice:[a-z0-9]+(-[a-z0-9]+)*/(narration|workflow-step):[a-z0-9]+(-[a-z0-9]+)*)$"
+    },
+    "approval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["teacherConfirmed", "decisionIds"],
+      "properties": {
+        "teacherConfirmed": {"type": "boolean"},
+        "decisionIds": {"$ref": "#/$defs/stringIds"}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetId", "sourceIds", "decisionIds", "status"],
+      "properties": {
+        "targetId": {"$ref": "#/$defs/targetId"},
+        "sourceIds": {"$ref": "#/$defs/stringIds"},
+        "decisionIds": {"$ref": "#/$defs/stringIds"},
+        "status": {
+          "enum": ["source-backed", "teacher-confirmed", "ai-proposed"]
+        }
+      }
+    },
+    "migration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSchemaVersion", "sourceHash", "assumptions"],
+      "properties": {
+        "sourceSchemaVersion": {"const": "1.1"},
+        "sourceHash": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+        "assumptions": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/assumption"}
+        }
+      }
+    },
+    "assumption": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "description", "targetIds"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "description": {"type": "string", "minLength": 1},
+        "targetIds": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/targetId"},
+          "uniqueItems": true
+        }
+      }
+    }
+  }
+}

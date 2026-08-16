@@ -149,7 +149,7 @@ git commit -m "build: vendor shared course contract"
 
 **Files:** Blueprint module/schema/tests/fixture.
 
-- [ ] **Step 1: Write failing Blueprint tests**
+- [x] **Step 1: Write failing Blueprint tests**
 
 Require this top-level shape:
 
@@ -176,11 +176,11 @@ Require this top-level shape:
 
 Tests must reject unknown top-level/authoring fields, duplicate provenance targets, malformed target IDs, unconfirmed compilation, target contract other than 2.0, and provenance pointing at nonexistent runtime entities. The `course` member is validated by the shared Zod contract after projection rather than by a copied Python schema.
 
-- [ ] **Step 2: Run focused tests and verify failure**
+- [x] **Step 2: Run focused tests and verify failure**
 
 Run: `python -m unittest tests.test_blueprint -v`
 
-- [ ] **Step 3: Implement Blueprint parsing and target indexing**
+- [x] **Step 3: Implement Blueprint parsing and target indexing**
 
 Provide:
 
@@ -207,19 +207,19 @@ slice:<slice-id>/workflow-step:<id>
 
 Require globally unique block IDs and slice IDs at the authoring layer so mappings are stable. Approval failure is a `decision-required` compiler issue, not an auto-fix.
 
-- [ ] **Step 4: Add the closed authoring JSON Schema**
+- [x] **Step 4: Add the closed authoring JSON Schema**
 
 Close Blueprint, approval, provenance, and migration objects. Deliberately leave `course` structurally delegated to the shared Zod validator and document this in `$comment`; do not hand-maintain a second CourseDefinition schema.
 
-- [ ] **Step 5: Add the approved Blueprint fixture**
+- [x] **Step 5: Add the approved Blueprint fixture**
 
 Exercise text, assessment, layout, narration, workflow, navigation, opening, closing, objective evidence, and provenance without requiring real asset bytes.
 
-- [ ] **Step 6: Run tests and schema syntax check**
+- [x] **Step 6: Run tests and schema syntax check**
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add course_toolkit/blueprint.py schemas/course-blueprint.schema.json tests/test_blueprint.py tests/fixtures/course-blueprint/approved-blueprint.json
