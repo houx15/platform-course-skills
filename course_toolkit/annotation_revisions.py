@@ -475,6 +475,7 @@ def _record_semantic_decision(
             "targetId": entry.target_id,
             "sourceIds": [],
             "decisionIds": [],
+            "status": "teacher-confirmed",
         }
         provenance.append(record)
     decision_ids = record.get("decisionIds")

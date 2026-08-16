@@ -150,6 +150,34 @@ Checks: use the same renderer implementation as the student platform; inspect la
 
 The student renderer, browser preview, and annotation UI are not implemented in this repository yet. Do not complete G7 from `index.md`, static validation, or an invented preview. When the integration exists, the teacher must mark the current preview review complete and required annotations must be resolved.
 
+The authoring-side annotation protocol is available before the UI integration. Reconcile stable targets with:
+
+```bash
+python scripts/manage-annotations.py reconcile ROOT --json
+```
+
+Write a current-hash `.course-work/annotation-revision-plan.json`, then prepare it:
+
+```bash
+python scripts/manage-annotations.py prepare ROOT \
+  .course-work/annotation-revision-plan.json \
+  --json
+```
+
+Mechanical copy changes may proceed. Semantic layout, workflow, media, correctness, completion, or source changes require the exact pending decision to be presented to the teacher. After explicit approval and rationale:
+
+```bash
+python scripts/course-workflow.py confirm-decision ROOT DECISION_ID \
+  --choice approve \
+  --rationale "TEACHER_RATIONALE" \
+  --json
+python scripts/manage-annotations.py apply ROOT \
+  .course-work/annotation-revision-plan.json \
+  --json
+```
+
+Application writes Blueprint and annotations atomically, then requires reconcile, compile, G5, CourseDefinition 2.0 validation, and G6. Runtime bugs have no Blueprint operations and remain preview blockers. After application, applied annotations remain unverified until the shared renderer verifies the new definition in a later G7 preview. The local CLI refuses manual G7 completion while that adapter is absent.
+
 ### G8 — Independent final review
 
 Inputs: original sources, decisions, Blueprint/storyboard, generated definition, assets, validation reports, and current preview evidence.

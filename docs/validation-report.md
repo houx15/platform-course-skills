@@ -2,6 +2,47 @@
 
 日期：2026-08-12
 
+## 2026-08-16：结构化批注与 Blueprint 修订迭代
+
+### 本轮范围
+
+- 新增 `.course-work/annotations.json` 1.0 合同。批注只接受 course/Part/Slice/Block/item/workflow-step 稳定 ID，不接受 CSS selector、屏幕坐标或数组位置；截图路径只能位于 `.course-work/screenshots/`。
+- 批注状态具有固定迁移规则。required 批注不能在没有教师决定时 dismissed；`applied` 仅表示 Blueprint 已修改，`verified` 必须等待未来 G7 真实 renderer 对新 definition hash 的验证。
+- 新增 annotation target reconciliation。当前 definition/source map 可解析的旧批注按稳定 ID 重绑定；目标消失时变为 `orphaned` 并产生 G7 blocker，目标以同一 ID 恢复后重新打开。
+- 新增 `.course-work/annotation-revision-plan.json`。每个操作绑定当前 Blueprint/definition/source-map 哈希、annotation、稳定 target、相对 JSON pointer 与旧值哈希。机械修改仅允许 copy 字段；布局、workflow、媒体、答案、反馈、完成和 source 等修改归为 semantic；runtime bug 不得包含 Blueprint 操作。
+- semantic 修改由 `prepare` 创建 context-hashed decision，只有教师明确选择 `approve` 并提供 rationale 后才能 apply。应用在 Blueprint 副本上完成，保持全部稳定 target 不变，通过 Blueprint 校验后才原子写入 Blueprint 与 annotations；故障注入证明两份文件都会回滚。
+- 应用工具不写 `course/course.json`，会返回必须执行的 reconcile → compile → G5 → CourseDefinition 2.0 validate → G6 序列。G7 在 renderer preview adapter 接入前不能由 CLI 手工完成。
+
+### 混合批注演练
+
+在完整本地课程临时副本中同时处理：
+
+1. content 文案机械修改；
+2. layout 三栏 grid semantic 修改；
+3. workflow 初始可见 Block semantic 修改；
+4. video poster semantic 修改；
+5. HTML modal focus runtime bug。
+
+前三类 semantic 修改分别取得精确教师决定后，与机械修改一起原子更新 Blueprint；runtime bug 没有内容操作并保持 active。应用前后的 `course/course.json` 字节一致，证明未手改生成物。随后重新编译、完成 G5、更新 poster 素材、重新验证并通过 G6。四个已应用批注的 `verifiedAgainstDefinitionHash` 均为空，runtime bug 继续以 `preview-runtime-bug` 阻断 G7。
+
+### 自动验证
+
+| 验证 | 结果 |
+| --- | --- |
+| `python -m unittest discover -s tests -q` | 329 项通过，0 failure，0 error |
+| annotation/revision/Workflow CLI/Skill 聚焦测试 | 55 项通过 |
+| `pnpm --filter @mind-imprint/course-contract test` | 13 个 test file、56 项测试通过 |
+| `pnpm --filter @mind-imprint/course-contract typecheck` | 通过 |
+| 全部 `schemas/*.json` | `python -m json.tool` 语法通过 |
+| contract sync | `mismatches: []`；当前学生端 HEAD `5624178c91c83d61709af306818c6b88756a2c65` |
+
+### 当前明确边界
+
+- 本轮实现的是预览 UI 可直接写入/读取的本地合同、CLI 和 AI 修订协议，没有复制或模拟学生 renderer。
+- 当前可以使用 mock/local-file annotation 演练完整 authoring revision；不能声称教师已在真实学生端一致画面中看过或验证修改。
+- G7 仍等待学生 renderer、preview manifest、真实浏览器覆盖记录和 UI 写入适配器。G8 必须等待当前 G7 证据。
+- OSS、真实 course POST 与远端回读仍未调用或实现。
+
 ## 2026-08-16：CourseDefinition 2.0 静态与素材验证迭代
 
 ### 本轮范围

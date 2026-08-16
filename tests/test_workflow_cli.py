@@ -7,6 +7,13 @@ from pathlib import Path
 
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore, make_registered_issue
+from course_toolkit.workflow import (
+    G5_EVIDENCE_KEYS,
+    G6_EVIDENCE_KEYS,
+    complete_gate,
+    load_session,
+    save_session,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -142,34 +149,21 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g10_cannot_be_manually_completed_without_publication_adapter(self):
         self.init()
-        blueprint = self.root / ".course-work" / "course-blueprint.json"
-        blueprint.write_bytes(APPROVED.read_bytes())
         for index in range(10):
+            session = load_session(self.root)
             if index == 5:
-                compilation = subprocess.run(
-                    [sys.executable, str(COMPILER), str(self.root), "--json"],
-                    cwd=REPOSITORY_ROOT,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(compilation.returncode, 0, compilation.stderr)
-            if index == 6:
-                audio = self.root / "assets/audio/introduce-check.mp3"
-                audio.parent.mkdir(parents=True, exist_ok=True)
-                audio.write_bytes(b"audio")
-                validation = subprocess.run(
-                    [sys.executable, str(VALIDATOR), str(self.root), "--json"],
-                    cwd=REPOSITORY_ROOT,
-                    text=True,
-                    capture_output=True,
-                    check=False,
-                )
-                self.assertEqual(validation.returncode, 0, validation.stderr)
-            completed = self.run_cli(
-                "complete-gate", self.root, f"G{index}", "--json"
+                evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
+            elif index == 6:
+                evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            else:
+                evidence = None
+            complete_gate(
+                session,
+                f"G{index}",
+                "2026-08-16T00:00:00Z",
+                gate_evidence=evidence,
             )
-            self.assertEqual(completed.returncode, 0, completed.stderr)
+            save_session(self.root, session)
 
         completed, payload = self.json_result(
             "complete-gate", self.root, "G10", "--json"
@@ -177,6 +171,31 @@ class WorkflowCliTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2)
         self.assertIn("publication adapter", payload["error"]["message"])
+
+    def test_g7_cannot_be_manually_completed_without_renderer_preview(self):
+        self.init()
+        session = load_session(self.root)
+        for index in range(7):
+            if index == 5:
+                evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
+            elif index == 6:
+                evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            else:
+                evidence = None
+            complete_gate(
+                session,
+                f"G{index}",
+                "2026-08-16T00:00:00Z",
+                gate_evidence=evidence,
+            )
+        save_session(self.root, session)
+
+        completed, payload = self.json_result(
+            "complete-gate", self.root, "G7", "--json"
+        )
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("real renderer preview adapter", payload["error"]["message"])
 
     def test_g5_cannot_complete_without_current_compilation_outputs(self):
         self.init()

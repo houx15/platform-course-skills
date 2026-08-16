@@ -60,9 +60,9 @@
 
 **Files:** real/mock batch fixture test, director/reference Skill, validation report, this plan.
 
-- [ ] Exercise content, layout/semantic, workflow/semantic, media/semantic, and runtime-bug annotations against stable targets without hand-editing CourseDefinition.
-- [ ] Prove mechanical application, semantic decision blocking/confirmation, runtime-bug non-mutation, orphan handling, recompilation/G6 invalidation, and no premature `verified` state.
-- [ ] Update the director to read/reconcile annotations, present proposed semantic decisions, apply approved revisions, then recompile and rerun G5/G6.
-- [ ] State that only future G7 preview evidence can verify applied annotations or clear runtime bugs.
-- [ ] Run all Python tests, shared contract tests, typecheck, schema checks, contract sync, and Skill scenarios.
-- [ ] Commit: `docs: route preview feedback through blueprint revisions`.
+- [x] Exercise content, layout/semantic, workflow/semantic, media/semantic, and runtime-bug annotations against stable targets without hand-editing CourseDefinition.
+- [x] Prove mechanical application, semantic decision blocking/confirmation, runtime-bug non-mutation, orphan handling, recompilation/G6 invalidation, and no premature `verified` state.
+- [x] Update the director to read/reconcile annotations, present proposed semantic decisions, apply approved revisions, then recompile and rerun G5/G6.
+- [x] State that only future G7 preview evidence can verify applied annotations or clear runtime bugs.
+- [x] Run all Python tests, shared contract tests, typecheck, schema checks, contract sync, and Skill scenarios.
+- [x] Commit: `docs: route preview feedback through blueprint revisions`.

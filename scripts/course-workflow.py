@@ -207,6 +207,10 @@ def execute(args: argparse.Namespace) -> tuple:
             raise WorkflowError(
                 "G10 requires remote verification by the publication adapter"
             )
+        if args.gate_id == "G7":
+            raise WorkflowError(
+                "G7 requires current evidence from the real renderer preview adapter"
+            )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
         if args.gate_id == "G5":

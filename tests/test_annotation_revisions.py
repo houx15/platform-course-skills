@@ -14,11 +14,18 @@ from course_toolkit.annotation_revisions import (
 )
 from course_toolkit.annotations import AnnotationStore, AnnotationTarget, CourseAnnotation
 from course_toolkit.course_compiler import canonical_json_hash
+from course_toolkit.course_compiler import compile_blueprint, write_compilation_outputs_atomic
+from course_toolkit.course_package_validation import (
+    build_course_validation_report,
+    sync_validation_issues,
+    write_current_validation_report,
+)
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore
 from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.workflow import WorkflowError, verify_g5_compilation, verify_g6_validation
 from tests.helpers import ROOT
-from tests.test_course_package_validation import build_minimal_package
+from tests.test_course_package_validation import build_full_package, build_minimal_package
 
 
 NOW = "2026-08-16T00:00:00Z"
@@ -330,6 +337,231 @@ class AnnotationRevisionPlanTests(unittest.TestCase):
             "python scripts/compile-course.py ROOT --json",
             payload["application"]["nextRequiredCommands"],
         )
+
+
+class MixedAnnotationRevisionBatchTests(unittest.TestCase):
+    def test_mixed_batch_updates_authoring_truth_and_preserves_runtime_bug(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build_full_package(root)
+            blueprint = load_json(root / ".course-work/course-blueprint.json")
+            document = load_json(root / "course/course.json")
+            source_map = load_json(
+                root / ".course-work/course-runtime-source-map.json"
+            )
+            definition_hash = canonical_json_hash(document)
+            slice_data = blueprint["course"]["parts"][0]["slices"][0]
+            target_base = {
+                "course_id": "blueprint-sample",
+                "part_id": "part-evidence-check",
+                "slice_id": "slice-read-and-answer",
+            }
+            records = [
+                CourseAnnotation(
+                    id="annotation-content-copy",
+                    type="content",
+                    status="open",
+                    required=True,
+                    target=AnnotationTarget(**target_base, block_id="claim-text"),
+                    definition_hash=definition_hash,
+                    text="Tighten the opening statement.",
+                    created_at=NOW,
+                    updated_at=NOW,
+                ),
+                CourseAnnotation(
+                    id="annotation-layout-grid",
+                    type="layout",
+                    status="open",
+                    required=True,
+                    target=AnnotationTarget(**target_base),
+                    definition_hash=definition_hash,
+                    text="Use a three-cell grid for this Slice.",
+                    created_at=NOW,
+                    updated_at=NOW,
+                ),
+                CourseAnnotation(
+                    id="annotation-workflow-visibility",
+                    type="workflow",
+                    status="open",
+                    required=True,
+                    target=AnnotationTarget(**target_base),
+                    definition_hash=definition_hash,
+                    text="Show the diagram when the Slice begins.",
+                    created_at=NOW,
+                    updated_at=NOW,
+                ),
+                CourseAnnotation(
+                    id="annotation-media-poster",
+                    type="media",
+                    status="open",
+                    required=True,
+                    target=AnnotationTarget(**target_base, block_id="case-video"),
+                    definition_hash=definition_hash,
+                    text="Use the revised video poster.",
+                    created_at=NOW,
+                    updated_at=NOW,
+                ),
+                CourseAnnotation(
+                    id="annotation-runtime-focus",
+                    type="bug",
+                    status="open",
+                    required=False,
+                    target=AnnotationTarget(**target_base, block_id="simulation"),
+                    definition_hash=definition_hash,
+                    text="Focus is lost after the iframe completion modal closes.",
+                    created_at=NOW,
+                    updated_at=NOW,
+                ),
+            ]
+            annotations = AnnotationStore(root / ".course-work/annotations.json")
+            for record in records:
+                annotations.add(record)
+            annotations.save()
+
+            blocks = {block["id"]: block for block in slice_data["blocks"]}
+            new_layout = {
+                "preset": "grid",
+                "slots": [
+                    {"id": "cell-1", "blockIds": ["claim-text", "evidence-question"]},
+                    {"id": "cell-2", "blockIds": ["diagram", "source-paper"]},
+                    {"id": "cell-3", "blockIds": ["case-video", "simulation"]},
+                ],
+            }
+            new_visible = ["claim-text", "evidence-question", "diagram"]
+            entries = [
+                {
+                    "annotationId": "annotation-content-copy",
+                    "classification": "mechanical",
+                    "targetId": "block:claim-text",
+                    "summary": "Tighten wording without changing meaning.",
+                    "decisionId": None,
+                    "operations": [{
+                        "op": "replace",
+                        "relativePointer": "/content",
+                        "beforeHash": canonical_json_hash(blocks["claim-text"]["content"]),
+                        "value": "A conclusion needs traceable evidence.",
+                    }],
+                },
+                {
+                    "annotationId": "annotation-layout-grid",
+                    "classification": "semantic",
+                    "targetId": "slice:slice-read-and-answer",
+                    "summary": "Adopt the approved three-cell grid.",
+                    "decisionId": "decision-layout-grid",
+                    "operations": [{
+                        "op": "replace",
+                        "relativePointer": "/layout",
+                        "beforeHash": canonical_json_hash(slice_data["layout"]),
+                        "value": new_layout,
+                    }],
+                },
+                {
+                    "annotationId": "annotation-workflow-visibility",
+                    "classification": "semantic",
+                    "targetId": "slice:slice-read-and-answer",
+                    "summary": "Show the diagram in the initial workflow state.",
+                    "decisionId": "decision-workflow-visibility",
+                    "operations": [{
+                        "op": "replace",
+                        "relativePointer": "/workflow/initialState/visibleBlockIds",
+                        "beforeHash": canonical_json_hash(slice_data["workflow"]["initialState"]["visibleBlockIds"]),
+                        "value": new_visible,
+                    }],
+                },
+                {
+                    "annotationId": "annotation-media-poster",
+                    "classification": "semantic",
+                    "targetId": "block:case-video",
+                    "summary": "Use the teacher-approved revised poster.",
+                    "decisionId": "decision-media-poster",
+                    "operations": [{
+                        "op": "replace",
+                        "relativePointer": "/poster",
+                        "beforeHash": canonical_json_hash(blocks["case-video"]["poster"]),
+                        "value": "assets/images/case-poster-v2.jpg",
+                    }],
+                },
+                {
+                    "annotationId": "annotation-runtime-focus",
+                    "classification": "runtime-bug",
+                    "targetId": "block:simulation",
+                    "summary": "Fix focus restoration in the shared renderer.",
+                    "decisionId": None,
+                    "operations": [],
+                },
+            ]
+            plan_data = {
+                "schemaVersion": "1.0",
+                "planId": "annotation-revision-mixed",
+                "baseBlueprintHash": canonical_json_hash(blueprint),
+                "baseDefinitionHash": definition_hash,
+                "baseSourceMapHash": canonical_json_hash(source_map),
+                "entries": entries,
+            }
+            plan_path = root / ".course-work/mixed-plan.json"
+            write_json_atomic(plan_path, plan_data)
+            prepared = prepare_revision_plan(root, plan_path, NOW)
+            decisions = DecisionStore.load(root / ".course-work/decisions.json")
+            for decision_id in prepared.pending_decision_ids:
+                decisions.confirm(
+                    decision_id,
+                    {"choice": "approve", "rationale": "Teacher approved this exact revision."},
+                    "2026-08-16T01:00:00Z",
+                )
+            decisions.save()
+            definition_before = (root / "course/course.json").read_bytes()
+
+            applied = apply_revision_plan(
+                root,
+                plan_path,
+                "2026-08-16T02:00:00Z",
+            )
+
+            self.assertEqual((root / "course/course.json").read_bytes(), definition_before)
+            with self.assertRaisesRegex(WorkflowError, "Blueprint hash"):
+                verify_g5_compilation(root)
+            revised_blueprint = load_json(root / ".course-work/course-blueprint.json")
+            revised_slice = revised_blueprint["course"]["parts"][0]["slices"][0]
+            revised_blocks = {block["id"]: block for block in revised_slice["blocks"]}
+            self.assertEqual(revised_slice["layout"], new_layout)
+            self.assertEqual(
+                revised_slice["workflow"]["initialState"]["visibleBlockIds"],
+                new_visible,
+            )
+            self.assertEqual(
+                revised_blocks["case-video"]["poster"],
+                "assets/images/case-poster-v2.jpg",
+            )
+            states = {
+                item.id: item
+                for item in AnnotationStore.load(
+                    root / ".course-work/annotations.json"
+                ).all()
+            }
+            self.assertEqual(states["annotation-runtime-focus"].status, "proposed")
+            self.assertTrue(
+                all(
+                    states[annotation_id].status == "applied"
+                    and states[annotation_id].verified_against_definition_hash is None
+                    for annotation_id in applied.applied_annotation_ids
+                )
+            )
+
+            poster = root / "assets/images/case-poster-v2.jpg"
+            poster.write_bytes(b"revised poster")
+            compiled = compile_blueprint(revised_blueprint)
+            write_compilation_outputs_atomic(root, compiled)
+            self.assertIn("course/course.json", verify_g5_compilation(root))
+            report = build_course_validation_report(root)
+            write_current_validation_report(root, report)
+            sync_validation_issues(root, report, "2026-08-16T03:00:00Z")
+            self.assertIn("@course/asset-set", verify_g6_validation(root))
+            runtime_issue = next(
+                issue
+                for issue in IssueStore.load(root / ".course-work/issues.json").all()
+                if issue.code == "preview-runtime-bug"
+            )
+            self.assertEqual(runtime_issue.status, "active")
 
 
 if __name__ == "__main__":
