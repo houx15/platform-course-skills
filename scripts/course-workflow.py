@@ -159,6 +159,14 @@ def build_parser() -> argparse.ArgumentParser:
     accept_parser.add_argument("issue_id")
     accept_parser.add_argument("--rationale", required=True)
 
+    confirm_parser = commands.add_parser(
+        "confirm-decision", help="Record one explicit teacher decision"
+    )
+    add_common_arguments(confirm_parser)
+    confirm_parser.add_argument("decision_id")
+    confirm_parser.add_argument("--choice", required=True)
+    confirm_parser.add_argument("--rationale", required=True)
+
     status_update_parser = commands.add_parser(
         "set-status", help="Set a non-terminal workflow status"
     )
@@ -228,6 +236,25 @@ def execute(args: argparse.Namespace) -> tuple:
         session.active_issue_ids = [
             issue.id for issue in reconciliation.active_issues
         ]
+        save_session(root, session)
+    elif args.command == "confirm-decision":
+        session = require_session(root)
+        decisions = DecisionStore.load(root / ".course-work/decisions.json")
+        try:
+            decision = decisions.get(args.decision_id)
+            if decision.options and args.choice not in decision.options:
+                raise ValueError(
+                    f"Decision choice must be one of: {', '.join(decision.options)}"
+                )
+            decisions.confirm(
+                args.decision_id,
+                {"choice": args.choice, "rationale": args.rationale},
+                now,
+            )
+        except ValueError as exc:
+            raise WorkflowError(str(exc)) from exc
+        decisions.save()
+        sync_pending_decisions(root, session)
         save_session(root, session)
     elif args.command == "set-status":
         session = require_session(root)

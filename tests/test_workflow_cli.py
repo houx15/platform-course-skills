@@ -5,6 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore, make_registered_issue
 
 
@@ -284,6 +285,37 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(payload["issues"], [])
         restored = IssueStore.load(self.root / ".course-work/issues.json")
         self.assertEqual(restored.get(warning.id).status, "accepted")
+
+    def test_pending_teacher_decision_is_confirmed_only_with_choice_and_rationale(self):
+        self.init()
+        store = DecisionStore(self.root / ".course-work/decisions.json")
+        store.request(
+            "decision-annotation-copy-1",
+            "Approve this semantic revision?",
+            "a" * 64,
+            options=("approve", "revise"),
+            requested_at="2026-08-16T00:00:00Z",
+        )
+        store.save()
+
+        completed, payload = self.json_result(
+            "confirm-decision",
+            self.root,
+            "decision-annotation-copy-1",
+            "--choice",
+            "approve",
+            "--rationale",
+            "The intended learning meaning is preserved.",
+            "--json",
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["pendingDecisions"], [])
+        decision = DecisionStore.load(
+            self.root / ".course-work/decisions.json"
+        ).get("decision-annotation-copy-1")
+        self.assertEqual(decision.status, "confirmed")
+        self.assertEqual(decision.answer["choice"], "approve")
 
     def test_malformed_session_is_tool_error_without_traceback(self):
         work = self.root / ".course-work"

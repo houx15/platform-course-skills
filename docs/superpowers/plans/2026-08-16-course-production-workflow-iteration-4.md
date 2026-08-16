@@ -48,13 +48,13 @@
 
 **Files:** revision module/CLI, DecisionStore/Workflow integration, tests.
 
-- [ ] Add an explicit CLI path to confirm a pending teacher decision only from a supplied teacher answer; never infer confirmation.
-- [ ] Apply safe mechanical entries directly and semantic entries only when their exact context-hashed decision is confirmed.
-- [ ] Verify base hashes and every before-value hash, apply all operations to a copy, validate the resulting Blueprint, then write Blueprint plus annotation states atomically with rollback.
-- [ ] Never write `course/course.json`; require the existing compile, G5, validation, and G6 sequence after application.
-- [ ] Mark applied annotations with the new Blueprint hash and resolution decision where applicable, but leave `verifiedAgainstDefinitionHash` empty.
-- [ ] Reapplying the exact plan is idempotent; partial application or stale plans fail without mutation.
-- [ ] Commit: `feat: apply approved annotation revisions`.
+- [x] Add an explicit CLI path to confirm a pending teacher decision only from a supplied teacher answer; never infer confirmation.
+- [x] Apply safe mechanical entries directly and semantic entries only when their exact context-hashed decision is confirmed.
+- [x] Verify base hashes and every before-value hash, apply all operations to a copy, validate the resulting Blueprint, then write Blueprint plus annotation states atomically with rollback.
+- [x] Never write `course/course.json`; require the existing compile, G5, validation, and G6 sequence after application.
+- [x] Mark applied annotations with the new Blueprint hash and resolution decision where applicable, but leave `verifiedAgainstDefinitionHash` empty.
+- [x] Reapplying the exact plan is idempotent; partial application or stale plans fail without mutation.
+- [x] Commit: `feat: apply approved annotation revisions`.
 
 ## Task 5: Prove a mixed revision batch and update the teacher workflow
 

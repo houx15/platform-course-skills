@@ -12,7 +12,10 @@ from course_toolkit.annotations import (
     CourseAnnotation,
     reconcile_annotations,
 )
-from course_toolkit.annotation_revisions import prepare_revision_plan
+from course_toolkit.annotation_revisions import (
+    apply_revision_plan,
+    prepare_revision_plan,
+)
 from course_toolkit.jsonio import load_json
 from course_toolkit.workflow import WorkflowError
 
@@ -62,6 +65,10 @@ def build_parser() -> argparse.ArgumentParser:
     prepare.add_argument("root", type=Path)
     prepare.add_argument("plan", type=Path)
     prepare.add_argument("--json", action="store_true")
+    apply = commands.add_parser("apply")
+    apply.add_argument("root", type=Path)
+    apply.add_argument("plan", type=Path)
+    apply.add_argument("--json", action="store_true")
     return parser
 
 
@@ -89,6 +96,28 @@ def main() -> int:
                 print(json.dumps(result, ensure_ascii=False, indent=2))
             else:
                 print(f"Prepared annotation revision plan: {prepared.plan_id}")
+            return 0
+        elif args.command == "apply":
+            applied = apply_revision_plan(root, args.plan, utc_now())
+            result = payload(root)
+            result["application"] = {
+                "planId": applied.plan_id,
+                "blueprintHash": applied.blueprint_hash,
+                "appliedAnnotationIds": list(applied.applied_annotation_ids),
+                "runtimeBugAnnotationIds": list(applied.runtime_bug_annotation_ids),
+                "idempotent": applied.idempotent,
+                "nextRequiredCommands": [
+                    "python scripts/course-workflow.py reconcile ROOT --json",
+                    "python scripts/compile-course.py ROOT --json",
+                    "python scripts/course-workflow.py complete-gate ROOT G5 --json",
+                    "python scripts/validate-course-v2.py ROOT --json",
+                    "python scripts/course-workflow.py complete-gate ROOT G6 --json",
+                ],
+            }
+            if args.json:
+                print(json.dumps(result, ensure_ascii=False, indent=2))
+            else:
+                print(f"Applied annotation revision plan: {applied.plan_id}")
             return 0
         elif args.command == "reconcile":
             reconciliation = reconcile_annotations(root, utc_now())
