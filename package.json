@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "packageManager": "pnpm@10.29.3",
   "scripts": {
-    "build:runtime": "node scripts/build-runtime-bundles.mjs",
+    "build:runtime": "node scripts/build-runtime-bundles.mjs && pnpm --dir preview_app build",
+    "test:preview": "pnpm --dir preview_app test",
+    "typecheck:preview": "pnpm --dir preview_app typecheck",
     "test:contract": "pnpm --filter @mind-imprint/course-contract test",
     "typecheck:contract": "pnpm --filter @mind-imprint/course-contract typecheck",
     "validate:course2": "node --import tsx scripts/validate-course-definition.ts"
