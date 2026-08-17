@@ -26,6 +26,7 @@ from course_toolkit.publication import (
 from course_toolkit.workflow import (
     complete_gate,
     G7_EVIDENCE_KEYS,
+    G8_EVIDENCE_KEYS,
     hash_path,
     new_session,
     save_session,
@@ -48,7 +49,12 @@ def complete_through_g8(root: Path) -> None:
         NOW,
         gate_evidence={key: "e" * 64 for key in G7_EVIDENCE_KEYS},
     )
-    complete_gate(session, "G8", NOW)
+    complete_gate(
+        session,
+        "G8",
+        NOW,
+        gate_evidence={key: "f" * 64 for key in G8_EVIDENCE_KEYS},
+    )
     save_session(root, session)
 
 

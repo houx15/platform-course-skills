@@ -194,10 +194,9 @@ class SkillPackageTests(unittest.TestCase):
             / "review-platform-course"
             / "references"
             / "review-rubric.md": (
-                "courseIntroduction",
-                "courseConclusion",
+                "CourseDefinition 2.0",
                 "migration-required",
-                "学习证据",
+                "evidenceBlockIds",
             ),
         }
         for path, phrases in required.items():
@@ -236,7 +235,7 @@ class SkillPackageTests(unittest.TestCase):
             / "review-rubric.md": (
                 "unsupported-video-codec",
                 "missing-faststart",
-                "stale-html-report",
+                "completion/student-data",
                 "真实 iframe",
             ),
         }

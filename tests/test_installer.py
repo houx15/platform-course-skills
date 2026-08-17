@@ -42,6 +42,7 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((runtime / "course_toolkit" / "package_review.py").is_file())
         self.assertTrue((runtime / "course_toolkit" / "runtime_dist" / "preview" / "index.html").is_file())
         self.assertTrue((runtime / "scripts" / "preview-course.py").is_file())
+        self.assertTrue((runtime / "scripts" / "review-course-v2.py").is_file())
         self.assertTrue((runtime / "schemas" / "course.schema.json").is_file())
         self.assertTrue((runtime / "scripts" / "validate-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "generate-html-report.py").is_file())

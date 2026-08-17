@@ -224,6 +224,10 @@ def execute(args: argparse.Namespace) -> tuple:
             from course_toolkit.preview_evidence import verify_g7_preview
 
             gate_evidence = verify_g7_preview(root)
+        elif args.gate_id == "G8":
+            from course_toolkit.package_review import verify_g8_review
+
+            gate_evidence = verify_g8_review(root)
         else:
             gate_evidence = None
         complete_gate(
@@ -234,6 +238,10 @@ def execute(args: argparse.Namespace) -> tuple:
             pending_decision_ids=session.pending_decision_ids,
             gate_evidence=gate_evidence,
         )
+        if args.gate_id == "G8":
+            from course_toolkit.package_review import write_publication_review_evidence_v2
+
+            write_publication_review_evidence_v2(root)
         save_session(root, session)
     elif args.command == "accept-warning":
         session = require_session(root)

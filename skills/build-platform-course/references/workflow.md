@@ -122,7 +122,7 @@ Exit: compilation succeeds reproducibly, the source map resolves stable runtime 
 
 Inputs: generated course definition and all referenced local assets.
 
-Run `python scripts/validate-course-v2.py ROOT --json`. It checks the current G5 set, shared contract, exact referenced asset inventory and hashes, safe paths, PDF signature/completeness, MP4 codecs/faststart/duration, interaction cues and completion consistency, WEBVTT headers, the renderer-compatible HTML protocol and completion evidence, and fixed course-completeness warnings. Static checks cannot claim real browser rendering. The legacy `review-platform-course` path still targets schema 1.1 and cannot certify G6 for CourseDefinition 2.0.
+Run `python scripts/validate-course-v2.py ROOT --json`. It checks the current G5 set, shared contract, exact referenced asset inventory and hashes, safe paths, PDF signature/completeness, MP4 codecs/faststart/duration, interaction cues and completion consistency, WEBVTT headers, the renderer-compatible HTML protocol and completion evidence, and fixed course-completeness warnings. Static checks cannot claim real browser rendering. `review-platform-course` runs independently at G8 after real G7 preview and cannot substitute for G6 validation.
 
 Successful validation writes `.course-work/course-validation-report.json`; blocked validation writes `.course-work/course-validation-attempt.json` and preserves the previous successful report. Validation findings synchronize into `.course-work/issues.json`. `course-package-density-warning` is advisory. `course-package-estimate-warning` and `course-package-media-warning` require explicit teacher acknowledgement and a real rationale:
 

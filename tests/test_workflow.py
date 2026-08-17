@@ -9,6 +9,7 @@ from course_toolkit.workflow import (
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
+    G8_EVIDENCE_KEYS,
     G9_EVIDENCE_KEYS,
     G10_EVIDENCE_KEYS,
     WorkflowError,
@@ -43,6 +44,8 @@ def fully_gated_through(gate_id):
             evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
         elif index == 7:
             evidence = {key: "e" * 64 for key in G7_EVIDENCE_KEYS}
+        elif index == 8:
+            evidence = {key: "f" * 64 for key in G8_EVIDENCE_KEYS}
         elif index == 9:
             evidence = {key: "c" * 64 for key in G9_EVIDENCE_KEYS}
         elif index == 10:
@@ -197,6 +200,12 @@ class WorkflowGateTests(unittest.TestCase):
         with self.assertRaisesRegex(WorkflowError, "publication preflight evidence"):
             complete_gate(session, "G9", NOW)
 
+    def test_g8_requires_independent_review_evidence(self):
+        session = fully_gated_through("G7")
+
+        with self.assertRaisesRegex(WorkflowError, "independent review evidence"):
+            complete_gate(session, "G8", NOW)
+
     def test_g7_requires_renderer_preview_evidence(self):
         session = fully_gated_through("G6")
 
@@ -279,7 +288,12 @@ class ArtifactReconciliationTests(unittest.TestCase):
 
     def test_publisher_code_change_invalidates_g9_only(self):
         session = fully_gated_through("G9")
-        for key in (*G5_EVIDENCE_KEYS, *G6_EVIDENCE_KEYS, *G7_EVIDENCE_KEYS):
+        for key in (
+            *G5_EVIDENCE_KEYS,
+            *G6_EVIDENCE_KEYS,
+            *G7_EVIDENCE_KEYS,
+            *G8_EVIDENCE_KEYS,
+        ):
             session.artifact_hashes.pop(key, None)
         session.artifact_hashes["@toolkit/course-publisher"] = "0" * 64
 

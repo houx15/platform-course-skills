@@ -1,101 +1,34 @@
-# Review rubric
+# CourseDefinition 2.0 independent review rubric
 
-## 1. Source and audience fidelity
+## Evidence boundary
 
-- Every extracted source ID appears exactly once in `audience-classification.json` and `source-coverage.json`.
-- Student core/evidence reaches real course blocks or has teacher-approved exclusion.
-- Teacher design, AI/system rules, references, and proposed exclusions remain outside learner output.
-- Every merge retains all source IDs and real destinations.
-- Every substantive AI addition is confirmed.
-- Conflicting source claims remain unresolved until the teacher decides.
+The current `course/course.json`, G6 validation report, G7 preview manifest, Blueprint, sources, decisions, unresolved items, and annotations must agree by hash. A legacy 1.0/1.1 report is `migration-required` and cannot certify CourseDefinition 2.0. ZIP files are ignored.
 
-## 2. Course-frame review
+## Part dimensions
 
-- `courseFrame.introduction` and `courseFrame.conclusion` exactly match `course.json`.
-- The introduction gives students a concise overview, 1–5 concrete objectives, 2–6 key points, and the fixed `开始学习` action before any Part.
-- Every objective appears exactly once in `objectiveAlignment`, points to a real Part, and points to at least one real 学习证据 Block inside those aligned Parts. `fillBlank`, `singleChoice`, result-producing `interactiveHtml`, and video interaction may provide evidence; static text, images, and PDF do not by themselves.
-- The conclusion appears after all Parts, accurately summarizes the designed course, gives takeaways and transfer applications, and does not claim an individual student has already mastered or demonstrated an outcome.
-- Every substantive AI-authored framing statement has source evidence and teacher confirmation.
+For each Part, record `pass|revise` and specific evidence for:
 
-## 3. Part-by-Part pedagogical review
+1. `instructionalGoalStructure`: objectives are explicit; Slices form an intelligible sequence; each Slice contributes to the Part goal.
+2. `contentCompleteness`: explanations, examples, instructions, and synthesis are sufficient; source evidence is not flattened or omitted.
+3. `studentFacingPresentation`: learner text contains no teacher notes, AI rules, implementation detail, or source-coverage commentary.
+4. `modalityChoice`: text, images, `pdf`, video, HTML, and questions each serve the learning action; one Slice remains legible on one desktop screen.
+5. `practiceFeedback`: evidence comes after adequate teaching, answers/rubrics and feedback are valid, and completion rules reflect the intended learning action.
+6. `resourcesFormat`: all references are safe, current, complete, accessible, and consistent with the confirmed Blueprint and source.
 
-Review each Part independently. A polished file does not compensate for a failed dimension.
+Each Slice also requires explicit review of content purpose, layout, workflow reachability, interaction completion, and media behavior. Exercise meaningful branches in G7 rather than inspecting only the initial state.
 
-### `instructionalGoalStructure` — 教学目标与结构
+## Objective evidence
 
-- The Part has one clear stage goal.
-- Pieces form an intelligible learning sequence.
-- Each Piece contributes to that goal instead of mirroring source headings.
+Every objective must be listed once with the exact contract `evidenceBlockIds`. Every evidence Block must be inside a Part whose `objectiveIds` includes that objective and must collect a result. `fillBlank`, `singleChoice`, result-producing `interactiveHtml`, and video interaction can count. Static text, images, or PDF alone cannot.
 
-### `contentCompleteness` — 内容完整性
+## Media
 
-- Each Piece is a sufficiently complete student teaching unit.
-- Explanations, examples, instructions, and conclusions needed for understanding are present.
-- Source tables, relationships, and evidence were not flattened or fragmented into meaningless text.
+- PDF: preserve the 完整文档 bytes; require `.pdf`, `%PDF-`, `%%EOF`, learner-facing purpose, G6 integrity, and G7 embedded reading/download behavior. Static checks cannot prove every page renders or the edition is authoritative.
+- Video: require MP4/H.264, AAC when audio exists, faststart, correct duration, in-range cues, required-cue completion, and G7 auto-pause/modal behavior. `unsupported-video-codec`, `unsupported-audio-codec`, and `missing-faststart` block. Report `long-video` and `large-video` separately.
+- HTML: require the declared completion/student-data message contract, current source hash, safe iframe behavior, and G7 evidence. Verify audio lifecycle when `capabilities.audio` is true. Visible text follows 16px / 14px rules. Static validation never substitutes for the 真实 iframe.
 
-### `studentFacingPresentation` — 学生呈现
+## Overall checks
 
-- Titles and content directly address student learning.
-- No design rationale, teacher notes, AI roles, system rules, backend behavior, coverage commentary, or unconfirmed suggestion appears.
-- Text is concise and coherent rather than many tiny blocks or raw document dumps.
+All of these must pass with evidence: `allPartsPass`, `sourceClassificationCoverage`, `teacherDecisions`, `resourcesPresent`, `courseContract`, `objectiveEvidence`, `layoutWorkflow`, `pdf`, `video`, `html`, `previewRuntime`, and `unresolved`.
 
-### `modalityChoice` — 模态选择
-
-- Every block type serves a learning function.
-- Text was not used by default where comparison, observation, temporal process, manipulation, or practice calls for another supported modality.
-- Images, `pdf`, video, and HTML are used only with real assets and confirmed designs.
-- A PDF Piece tells students what to locate, compare, verify, or consult; it does not present a raw file without a learning purpose.
-
-### `practiceFeedback` — 练习与反馈
-
-- Activities appear after adequate instruction.
-- Questions have valid answers or rubrics, useful feedback, and appropriate blocking/completion rules.
-- Practice provides evidence related to the Part goal.
-
-### `resourcesFormat` — 资源与格式
-
-- All referenced resources exist, use safe relative paths, and meet their specific contracts.
-- Images have meaningful alt text.
-- Every PDF has a learner-facing title, safe `.pdf` path, `%PDF-` header, `%%EOF` trailer, and the complete document required by the teacher.
-- Video and HTML interaction records match actual files.
-- The Part's Piece/block structure matches the confirmed storyboard.
-
-For every dimension record `status: pass|revise` and concrete evidence. The Part conclusion is `pass` only if all six dimensions pass.
-
-## 4. Overall review
-
-The second table and `overallChecks` must include:
-
-- `allPartsPass`
-- `sourceClassificationCoverage`
-- `resourcesPresent`
-- `courseJsonSchema`
-- `indexConsistency`
-- `courseIntroduction`
-- `courseConclusion`
-- `images`
-- `pdf`
-- `video`
-- `html`
-- `assessments`
-- `unresolved`
-
-Every check needs `status: pass|revise` plus concrete evidence. A category that is intentionally unused can pass only with evidence that no block or confirmed design requires it.
-
-Schema 1.0 returns `migration-required`. It cannot pass until the missing course frame is drafted from source evidence, confirmed by the teacher, written as schema 1.1, and fully reviewed.
-
-## 5. Media contracts
-
-PDF files are copied without changing their bytes. When the teacher requested a 论文原文、报告全文或其他完整文档, a summary, screenshot excerpt, reconstructed file, or unconfirmed replacement fails Review. Static header/trailer checks do not prove every page renders in the real platform or that the file is an authoritative edition; test embedded reading and download before upload.
-
-HTML must be one self-contained file with a confirmed task, standardized completion action, valid `INTERACTION_COMPLETE` 1.0 payload, and no prohibited runtime dependency. Base/content/control text is at least `16px`; only explicit auxiliary text may use `14px`, and nothing is smaller. Full Review requires matching `.course-work/html-reports/<block-id>.json` and `.md`; missing, failing, or `stale-html-report` records block upload. A passing static report still requires a 真实 iframe check.
-
-The final video uses an MP4 container, H.264 video, AAC audio when audio exists, and faststart. `unsupported-video-codec`, `unsupported-audio-codec`, `missing-faststart`, and any unverified profile block upload. A Video Block and its interaction JSON must resolve to the same source file; `video-source-mismatch` blocks upload. Video JSON is canonical, Markdown is generated, declared duration matches the actual MP4, final times are ordered/unique/in range, and no event remains `needs-timing`. Report `long-video`, `sparse-video-interactions`, and `large-video` as warnings without changing an otherwise passing status.
-
-## 6. Outcome labels
-
-- `可上传`: every Part dimension and overall check passes; deterministic validation has no issue.
-- `修改后可上传`: only explicitly listed mechanical repairs remain.
-- `缺少必要材料，暂不可上传`: any Part needs revision, evidence/asset/decision is missing, or a contract fails.
-
-Never upgrade a result because the files look polished.
+Any `revise`, stale hash, runtime error, open required annotation, unresolved runtime bug, pending decision, blocking unresolved item, missing asset, or invalid completion path yields `blocked`. A polished preview cannot override missing evidence.

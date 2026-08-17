@@ -1,65 +1,66 @@
 ---
 name: review-platform-course
-description: Use when a standardized platform course is believed complete, before upload, or when checking source coverage, course.json, generated Markdown, PDF documents, HTML interactions, video timing, resource paths, and unresolved teacher decisions.
+description: Use when a CourseDefinition 2.0 course has current G6 validation and G7 renderer preview evidence and needs an independent, source-backed decision before publication.
 ---
 
 # Review Platform Course
 
-## Review independently
+Review independently from the builder. Re-read the current evidence and record what you personally verified; do not convert the builder's confidence, contract success, or page polish into a pass.
 
-Do not accept the builder's completion claim. Reconstruct the evidence chain from originals, teacher confirmations, the storyboard, learner files, and referenced resources.
+## Start from current evidence
 
-## Procedure
+1. Run `python _course-toolkit/scripts/course-workflow.py status ROOT --json`. Require completed G7 and no invalidated earlier gate.
+2. 重新读取原始材料并忽略 ZIP. Read the approved `.course-work/course-blueprint.json`, `source-coverage.json`, `audience-classification.json` when present, `course-storyboard.json` when present, `decisions.json`, `unresolved.json`, `course/course.json`, `.course-work/course-validation-report.json`, `.course-work/preview-manifest.json`, and `.course-work/annotations.json`.
+3. Read [review-rubric.md](references/review-rubric.md), then run:
 
-1. 重新读取原始材料 and all authoring records: `materials-extracted.json`, `source-coverage.json`, `audience-classification.json`, `course-storyboard.json`, `decisions.json`, `unresolved.json`, `session.json`, plus `course/course.json`, generated Markdown, HTML, video interaction data, and referenced assets. 忽略 ZIP everywhere.
-2. Read [review-rubric.md](references/review-rubric.md).
-3. Reconcile every extracted source ID against audience classification and coverage. Confirm non-student material stayed outside the learner course and every student item reaches real course blocks or has teacher-approved exclusion.
-4. Compare the storyboard `courseFrame` and every Piece with `course.json`. Require the introduction and conclusion to match exactly. Verify each course objective has exactly one alignment record, links the 目标与真实 Part, and points to at least one real 学习证据 Block inside those aligned Parts. Static text, images, and PDF cannot count as learning evidence by themselves. Then compare the actual Part/Piece/block structure and modality. Confirm `course.json` and `index.md` contain only final learner-facing material.
-5. Resolve the runtime relative to this skill: prefer sibling `../_course-toolkit/`, otherwise source root `../../`.
-6. Run:
-
-   ```text
-   scripts/validate-course.py course/ --work-dir .course-work --json
+   ```bash
+   python _course-toolkit/scripts/review-course-v2.py prepare ROOT --json
    ```
 
-7. Inspect every video Block, including videos without interaction JSON. Require MP4 container, H.264 video, AAC audio when audio exists, and faststart. `unsupported-video-codec`, `unsupported-audio-codec`, `missing-faststart`, and an unverified video profile mean `缺少必要材料，暂不可上传`. Show `long-video`, `sparse-video-interactions`, and `large-video` as separate teacher-facing warnings; these do not by themselves fail the course. For a video 超过 10 分钟, inspect whether the checkpoint gaps are pedagogically justified rather than adding arbitrary pauses.
-8. Inspect every HTML Block and its `.course-work/html-reports/<block-id>.json` and `.md`. Require current SHA-256, all static checks passing, base/content/control text at least `16px`, explicit auxiliary text at least `14px`, and a deterministic Markdown match. A missing report or `stale-html-report` blocks full Review. The report cannot replace testing in the 真实 iframe.
-9. Inspect 逐个 PDF Block. Require a real safe relative file path, `.pdf` extension, `%PDF-` header, `%%EOF` trailer, a learner-facing title, and a confirmed Piece purpose that explains what students locate, compare, or verify. When the teacher requires the 完整文档, confirm it was not replaced by a summary, excerpt screenshot, reconstructed file, or unconfirmed substitute. A missing, damaged, mislinked, or substituted PDF blocks upload.
-10. Perform a separate Part 逐项 Review for every Part. Inspect every Piece within it and record evidence for all six dimensions:
+   This rejects a legacy CourseDefinition or review schema as `migration-required`, stale G6/G7 hashes, unresolved teacher decisions, and invalid objective evidence. It writes a hash-bound `.course-work/review-report.json` scaffold. It does not make the pedagogical judgment for you.
 
-   - 教学目标与结构;
-   - 内容完整性;
-   - 学生呈现;
-   - 模态选择;
-   - 练习与反馈;
-   - 资源与格式.
+## Review each Part and Slice
 
-   任一维度 fails means that Part is `revise`; any `revise` Part blocks the whole course.
-11. Perform the 整体 Review: all Parts pass, source classification/coverage, resources present, course JSON schema, index consistency, `courseIntroduction`, `courseConclusion`, images, video, HTML, assessments, and unresolved decisions. `courseIntroduction` must verify the first learner screen, student-facing overview/objectives/key points, and fixed `开始学习` action. `courseConclusion` must verify the final summary/takeaways/transfer applications, source consistency, and absence of unsupported claims that a student has already mastered the course. Also execute the 整体 `pdf` Review. If no PDF is used, `pdf` may pass only with evidence that neither the storyboard nor confirmed teacher requirements need one.
-12. Persist the structured result at `.course-work/review-report.json`, then render `.course-work/review-report.md` with `scripts/render-review-report.py`.
-13. Automatically fix only mechanical issues that cannot change teaching meaning: generated Markdown drift, deterministic formatting, and unambiguous safe-path corrections.
-14. For pedagogical failures, provide concrete restructuring advice to the builder. The builder must produce a revised course-storyboard table. Ask the teacher to confirm any semantic change, then rebuild.
-15. A `schemaVersion` 1.0 course must return `migration-required`; migrate it to 1.1, draft the missing course frame from source evidence, and obtain teacher confirmation before it can pass. Do not silently infer approval from old content.
-16. After any fix, 重新运行完整 Review from original sources through the deterministic validator and both tables. Never reuse a previous pass.
+For every Part, complete all six dimensions with `pass|revise` and concrete evidence:
 
-## Required result tables
+- 教学目标与结构 (`instructionalGoalStructure`);
+- 内容完整性 (`contentCompleteness`);
+- 学生呈现 (`studentFacingPresentation`);
+- 模态选择 (`modalityChoice`);
+- 练习与反馈 (`practiceFeedback`);
+- 资源与格式 (`resourcesFormat`).
 
-First show one row per Part:
+Within every Part, review every Slice's content purpose, one-screen desktop layout, workflow reachability and meaningful branches, interaction completion, and media behavior. Inspect actual G7 runtime events and errors. 任一维度 or Slice check marked `revise` makes the Part fail and blocks G8.
 
-| Part | 标题 | 教学目标与结构 | 内容完整性 | 学生呈现 | 模态选择 | 练习与反馈 | 资源与格式 | 结论 | 修改建议 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+Check each objective against its exact `evidenceBlockIds`, linking the 目标与真实 Part and at least one 学习证据 Block. That Block must sit inside a Part aligned to the objective and collect a real result; static text, images, or PDF alone do not count.
 
-Then show the overall result:
+## Overall Review
 
-| 检查项 | 结果 | 证据 |
-| --- | --- | --- |
+Complete every `overallChecks` item. Confirm source classification and coverage, teacher decisions, resources, the shared CourseDefinition 2.0 contract, objective evidence, layout/workflow, PDF, video, HTML, preview runtime, and unresolved items.
 
-## Status
+- Review every PDF Block against the original 完整文档. Require safe `.pdf`, `%PDF-`, `%%EOF`, a learner purpose, and G7 reading/download behavior. Static checks cannot prove every page or publication authority.
+- Review video codec/timing evidence and real preview behavior, including auto-pause and modal interactions. `unsupported-video-codec`, `unsupported-audio-codec`, `missing-faststart`, out-of-range cues, or incomplete required cues block. `long-video` and `large-video` remain explicit warnings, not silent passes.
+- Review HTML source, current validation evidence, the iframe completion/student-data protocol, capabilities, and real iframe behavior. When `capabilities.audio` is true, verify host lifecycle audio control and user-gesture behavior. Text must follow the 16px / 14px rules. A stale or missing report/evidence blocks; 静态检查不能证明真实 iframe behavior.
+- Review the opening and closing fallback content without claiming actual learner mastery. Confirm all layouts, workflow actions/transitions, navigation behavior, and one-screen density in the real renderer.
 
-Return exactly one leading status:
+## Record and verify
 
-- `可上传`
-- `修改后可上传`
-- `缺少必要材料，暂不可上传`
+1. Fill the prepared JSON. Use `status: pass` only with a non-empty, specific evidence sentence. Set the overall `status` to `publishable` only when every Part, Slice, objective, and overall check passes. Otherwise keep `blocked` and return findings to `build-platform-course`.
+2. Run:
 
-`review-report.json` may claim `uploadable` only when every Part dimension and every overall check passes. 静态检查不能证明 PDF 每一页能在真实平台中正确渲染、文件是权威出版版本，或学生已经阅读理解；真实上传前仍需测试平台内嵌阅读和下载。 Static/content review can verify structure, traceability, and recorded pedagogical completeness; it 不能证明真实学习效果, subject-matter truth, or real iframe behavior without corresponding evidence.
+   ```bash
+   python _course-toolkit/scripts/review-course-v2.py verify ROOT --json
+   ```
+
+   This verifies current hashes and renders `.course-work/review-report.md`.
+3. Only after verification succeeds, run:
+
+   ```bash
+   python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G8 --json
+   ```
+
+   G8 completion writes renderer-backed publication review evidence for the exact definition, validation report, preview manifest, and review report.
+
+## Teacher-facing result
+
+Lead with exactly one result: `可上传` or `缺少必要材料，暂不可上传`. Show a Part table and an overall table with concrete findings. 重新运行完整 Review after any content, asset, decision, validation, preview, annotation, or renderer change. Independent review 不能证明真实学习效果 or subject-matter truth without corresponding evidence, and it never uploads or publishes.
