@@ -12,7 +12,9 @@ SKILL_NAMES = {
     "analyze-course-materials",
     "build-platform-course",
     "design-course-html",
+    "design-course-blueprint",
     "design-video-interactions",
+    "preview-platform-course",
     "review-platform-course",
 }
 
@@ -38,6 +40,8 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((parent / name / "SKILL.md").is_file())
         runtime = parent / "_course-toolkit"
         self.assertTrue((runtime / "course_toolkit" / "package_review.py").is_file())
+        self.assertTrue((runtime / "course_toolkit" / "runtime_dist" / "preview" / "index.html").is_file())
+        self.assertTrue((runtime / "scripts" / "preview-course.py").is_file())
         self.assertTrue((runtime / "schemas" / "course.schema.json").is_file())
         self.assertTrue((runtime / "scripts" / "validate-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "generate-html-report.py").is_file())

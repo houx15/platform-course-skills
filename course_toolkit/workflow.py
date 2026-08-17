@@ -115,6 +115,11 @@ G6_EVIDENCE_KEYS = (
 )
 G6_ASSET_EVIDENCE_PREFIX = "@course/asset:"
 
+G7_EVIDENCE_KEYS = (
+    ".course-work/preview-manifest.json",
+    "@toolkit/course-preview-bundle",
+)
+
 G9_EVIDENCE_KEYS = (
     ".course-work/publication-preflight.json",
     ".course-work/asset-manifest.json",
@@ -315,6 +320,14 @@ def complete_gate(
         if missing:
             raise WorkflowError(
                 f"G6 requires current package validation evidence: {missing[0]}"
+            )
+        session.artifact_hashes.update(evidence)
+    if gate_id == "G7":
+        evidence = gate_evidence or {}
+        missing = [key for key in G7_EVIDENCE_KEYS if key not in evidence]
+        if missing:
+            raise WorkflowError(
+                f"G7 requires current renderer preview evidence: {missing[0]}"
             )
         session.artifact_hashes.update(evidence)
     if gate_id == "G9":

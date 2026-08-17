@@ -40,7 +40,7 @@ describe("AnnotationPanel", () => {
       );
     }));
 
-    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} runtimeErrors={[]} />);
+    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} />);
     await screen.findByText("课程预览与批注");
     fireEvent.change(screen.getByLabelText("批注目标"), { target: { value: "item:image-gallery:image-alpha" } });
     fireEvent.change(screen.getByLabelText("具体批注"), { target: { value: "Please make this image larger." } });
@@ -55,6 +55,37 @@ describe("AnnotationPanel", () => {
       blockId: "image-gallery",
       itemId: "image-alpha",
       workflowStepId: null,
+    });
+  });
+
+  it("records explicit review evidence only after every Slice was visited", async () => {
+    const posted: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "POST") posted.push(init);
+      return new Response(
+        init?.method === "POST" ? JSON.stringify({ ok: true }) : JSON.stringify({ schemaVersion: "1.0", annotations: [] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }));
+
+    render(
+      <AnnotationPanel
+        document={document}
+        definitionHash={"a".repeat(64)}
+        sliceIndex={0}
+        visitedSliceIds={["slice-one"]}
+        events={[{ id: "event-one", type: "student.continue", sourceId: "course-nav", sliceId: "slice-one" }]}
+        runtimeErrors={[]}
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "确认我已完整审查" }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    const payload = JSON.parse(String(posted[0]?.body));
+    expect(payload).toMatchObject({
+      visitedSliceIds: ["slice-one"],
+      teacherConfirmed: true,
+      runtimeErrors: [],
     });
   });
 });

@@ -9,6 +9,7 @@ from urllib.parse import unquote, urlsplit
 
 from course_toolkit.annotations import AnnotationStore, CourseAnnotation
 from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.preview_evidence import record_preview_evidence
 
 
 LOOPBACK_HOST = "127.0.0.1"
@@ -67,7 +68,6 @@ class CoursePreviewHTTPServer(ThreadingHTTPServer):
         self.course_root = self.course_project_root / "course"
         self.static_dir = static_dir.resolve()
         self.annotations_path = self.course_project_root / ".course-work" / "annotations.json"
-        self.evidence_path = self.course_project_root / ".course-work" / "preview-evidence.json"
         super().__init__(address, CoursePreviewRequestHandler)
 
 
@@ -170,10 +170,11 @@ class CoursePreviewRequestHandler(BaseHTTPRequestHandler):
             return
         try:
             payload = self._read_json()
-            if not isinstance(payload, dict):
-                raise ValueError("preview evidence must be an object")
-            write_json_atomic(self.server.evidence_path, payload)
-            self._send_json(HTTPStatus.OK, {"ok": True})
+            manifest = record_preview_evidence(self.server.course_project_root, payload)
+            self._send_json(
+                HTTPStatus.OK,
+                {"ok": True, "definitionHash": manifest["definitionHash"]},
+            )
         except ValueError as exc:
             self._error(HTTPStatus.BAD_REQUEST, "invalid-preview-evidence", str(exc))
         except Exception as exc:

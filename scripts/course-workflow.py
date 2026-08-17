@@ -214,16 +214,16 @@ def execute(args: argparse.Namespace) -> tuple:
                 "G9 requires handoff to the live publication adapter; "
                 "the local dry-run CLI cannot complete it"
             )
-        if args.gate_id == "G7":
-            raise WorkflowError(
-                "G7 requires current evidence from the real renderer preview adapter"
-            )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
         if args.gate_id == "G5":
             gate_evidence = verify_g5_compilation(root)
         elif args.gate_id == "G6":
             gate_evidence = verify_g6_validation(root)
+        elif args.gate_id == "G7":
+            from course_toolkit.preview_evidence import verify_g7_preview
+
+            gate_evidence = verify_g7_preview(root)
         else:
             gate_evidence = None
         complete_gate(

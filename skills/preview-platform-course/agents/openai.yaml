@@ -1,0 +1,4 @@
+interface:
+  display_name: "Preview Platform Course"
+  short_description: "Preview and annotate a course with the exact student renderer"
+  default_prompt: "Use $preview-platform-course to open the exact-renderer local preview, collect semantic annotations, and verify current G7 evidence."

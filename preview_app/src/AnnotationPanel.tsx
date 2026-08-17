@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { CourseDefinitionDocument } from "@mind-imprint/course-contract";
 import {
   loadAnnotations,
+  postPreviewEvidence,
   saveAnnotations,
   type AnnotationDocument,
   type AnnotationTarget,
@@ -12,11 +13,12 @@ interface AnnotationPanelProps {
   document: CourseDefinitionDocument;
   definitionHash: string;
   sliceIndex: number;
-  events: Array<{ type: string; sourceId: string }>;
+  events: Array<{ id: string; type: string; sourceId: string; sliceId: string | null }>;
+  visitedSliceIds: string[];
   runtimeErrors: string[];
 }
 
-export function AnnotationPanel({ document, definitionHash, sliceIndex, events, runtimeErrors }: AnnotationPanelProps) {
+export function AnnotationPanel({ document, definitionHash, sliceIndex, events, visitedSliceIds, runtimeErrors }: AnnotationPanelProps) {
   const entries = useMemo(
     () => document.course.parts.flatMap((part) => part.slices.map((slice) => ({ part, slice }))),
     [document],
@@ -99,6 +101,25 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
     setMessage("批注已保存，AI 可以按稳定目标继续修改。 ");
   };
 
+  const completeReview = async () => {
+    try {
+      await postPreviewEvidence({
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        visitedSliceIds,
+        exercisedEvents: events,
+        runtimeErrors,
+        teacherConfirmed: true,
+        completedAt: new Date().toISOString(),
+      });
+      setMessage("本轮预览审查已记录，可以继续完成 G7。 ");
+    } catch (error) {
+      setMessage(`暂时不能完成预览审查：${(error as Error).message}`);
+    }
+  };
+
+  const totalSlices = entries.length;
+  const allVisited = entries.every(({ slice }) => visitedSliceIds.includes(slice.id));
+
   return (
     <aside className="preview-panel" aria-label="课程批注">
       <header>
@@ -117,6 +138,11 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
       <section>
         <h2>当前批注</h2>
         <ol className="annotation-list">{store.annotations.map((annotation) => <li key={annotation.id}><span>{annotation.type}</span><p>{annotation.text}</p><small>{annotation.target.blockId ?? annotation.target.workflowStepId ?? annotation.target.sliceId}</small></li>)}</ol>
+      </section>
+      <section className="review-completion">
+        <h2>完成本轮审查</h2>
+        <p>已查看 {visitedSliceIds.length} / {totalSlices} 个 Slice。页面打开本身不会通过审查。</p>
+        <button type="button" onClick={() => void completeReview()} disabled={!allVisited}>确认我已完整审查</button>
       </section>
       <details>
         <summary>Runtime diagnostics</summary>

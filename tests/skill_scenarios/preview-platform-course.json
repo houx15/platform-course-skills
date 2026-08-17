@@ -1,0 +1,22 @@
+{
+  "skill": "preview-platform-course",
+  "prompts": [
+    "打开这门课的学生端预览，让我边看边写批注。",
+    "我已经看完了，检查是否真的可以通过预览审查。",
+    "重新预览修改后的课程，并验证之前的批注。"
+  ],
+  "requiredPhrases": [
+    "preview-course.py",
+    "real student renderer",
+    "127.0.0.1",
+    "course/course.json",
+    "stable semantic target",
+    "runtime errors",
+    "every Slice",
+    "teacher completion",
+    "preview-manifest.json",
+    "definition hash",
+    "cannot complete G7",
+    "complete-gate ROOT G7"
+  ]
+}

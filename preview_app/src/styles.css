@@ -58,6 +58,11 @@ button, select, textarea, input { font: inherit; }
   font-weight: 700;
   cursor: pointer;
 }
+.review-completion { margin-top: 28px; padding: 16px; border: 1px solid #b9c9bd; border-radius: 10px; background: #edf4ee; }
+.review-completion h2 { margin: 0 0 8px; }
+.review-completion p { margin: 0 0 12px; font-size: 13px; }
+.review-completion button { width: 100%; min-height: 40px; border: 0; border-radius: 8px; background: #245c3b; color: white; font-weight: 700; }
+.review-completion button:disabled { opacity: .42; }
 .annotation-form button:disabled { opacity: .42; cursor: default; }
 .panel-message { margin: 0; color: #245c3b; font-size: 13px; }
 

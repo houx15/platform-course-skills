@@ -148,7 +148,7 @@ Inputs: the exact definition hash, asset hashes, renderer version, and preview m
 
 Checks: use the same renderer implementation as the student platform; inspect layouts, media, navigation, workflow, iframe behavior, and completion events in a real browser. Collect structure-linked annotations outside the runtime definition.
 
-The student renderer, browser preview, and annotation UI are not implemented in this repository yet. Do not complete G7 from `index.md`, static validation, or an invented preview. When the integration exists, the teacher must mark the current preview review complete and required annotations must be resolved.
+Invoke `preview-platform-course` and run `python scripts/preview-course.py ROOT`. The bundled browser host mounts the exact pinned student renderer, uses local assets and in-memory session adapters, and places annotation chrome beside the renderer. The teacher must visit every Slice, inspect meaningful interactions and branches, resolve required annotations and runtime errors, then explicitly complete the review. Do not complete G7 from `index.md`, static validation, a screenshot, or the fact that the page opened.
 
 The authoring-side annotation protocol is available before the UI integration. Reconcile stable targets with:
 
@@ -176,7 +176,7 @@ python scripts/manage-annotations.py apply ROOT \
   --json
 ```
 
-Application writes Blueprint and annotations atomically, then requires reconcile, compile, G5, CourseDefinition 2.0 validation, and G6. Runtime bugs have no Blueprint operations and remain preview blockers. After application, applied annotations remain unverified until the shared renderer verifies the new definition in a later G7 preview. The local CLI refuses manual G7 completion while that adapter is absent.
+Application writes Blueprint and annotations atomically, then requires reconcile, compile, G5, CourseDefinition 2.0 validation, and G6. Runtime bugs have no Blueprint operations and remain preview blockers. After application, applied annotations remain unverified until the shared renderer verifies the new definition in a later G7 preview. The preview writes current hash-bound `.course-work/preview-manifest.json`; then `python scripts/course-workflow.py complete-gate ROOT G7 --json` independently verifies it.
 
 ### G8 — Independent final review
 

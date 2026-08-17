@@ -52,6 +52,16 @@ class PreviewServerTests(unittest.TestCase):
         with urllib.request.urlopen(request) as response:
             return response.status, response.read()
 
+    def post_json(self, path, payload):
+        request = urllib.request.Request(
+            self.base + path,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(request) as response:
+            return response.status, response.read()
+
     def test_default_bind_is_loopback_only(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
         with self.assertRaises(ValueError):
@@ -113,6 +123,13 @@ class PreviewServerTests(unittest.TestCase):
                 os.environ["OSS_ADMIN_KEY"] = previous
 
         self.assertNotIn(b"preview-secret-must-not-leak", document + annotations)
+
+    def test_preview_evidence_is_validated_instead_of_blindly_persisted(self):
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.post_json("/__course_preview/evidence", {"pageOpened": True})
+
+        self.assertEqual(caught.exception.code, 400)
+        self.assertFalse((self.root / ".course-work" / "preview-manifest.json").exists())
 
     def test_prerequisites_fail_before_serving_missing_or_invalid_runtime(self):
         with self.assertRaises(ValueError):
