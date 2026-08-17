@@ -13,52 +13,47 @@ from course_toolkit.jsonio import load_json
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / "course-contract.snapshot.json"
-VENDORED_PACKAGE = ROOT / "packages" / "course-contract"
 
 
-def file_hash(path: Path) -> str:
+def package_files(base: Path) -> list[Path]:
+    return sorted(
+        path
+        for path in base.rglob("*")
+        if path.is_file() and "node_modules" not in path.parts
+    )
+
+
+def tree_hash(base: Path) -> str:
     digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
+    for path in package_files(base):
+        relative = path.relative_to(base).as_posix().encode("utf-8")
+        digest.update(relative)
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
     return digest.hexdigest()
 
 
-def compare_tree(base: Path, expected: dict, scope: str) -> list:
-    mismatches = []
-    actual_paths = {
-        path.relative_to(base).as_posix()
-        for path in (base / "src").rglob("*.ts")
-        if path.is_file()
-    }
-    for relative_path in sorted(set(expected).union(actual_paths)):
-        path = base / relative_path
-        if relative_path not in expected:
-            mismatches.append(
-                {"scope": scope, "path": relative_path, "kind": "unexpected-file"}
-            )
-        elif not path.is_file():
-            mismatches.append(
-                {"scope": scope, "path": relative_path, "kind": "missing-file"}
-            )
-        else:
-            actual = file_hash(path)
-            if actual != expected[relative_path]:
-                mismatches.append(
-                    {
-                        "scope": scope,
-                        "path": relative_path,
-                        "kind": "hash-mismatch",
-                        "expected": expected[relative_path],
-                        "actual": actual,
-                    }
-                )
-    return mismatches
+def compare_package(base: Path, expected_hash: str, scope: str) -> list:
+    if not base.is_dir():
+        return [{"scope": scope, "path": str(base), "kind": "missing-package"}]
+    actual_hash = tree_hash(base)
+    if actual_hash == expected_hash:
+        return []
+    return [
+        {
+            "scope": scope,
+            "path": str(base),
+            "kind": "tree-hash-mismatch",
+            "expected": expected_hash,
+            "actual": actual_hash,
+        }
+    ]
 
 
-def upstream_commit(root: Path) -> str:
+def upstream_commit(root: Path, ref: str) -> str:
     completed = subprocess.run(
-        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        ["git", "-C", str(root), "rev-parse", f"{ref}^{{commit}}"],
         text=True,
         capture_output=True,
         check=False,
@@ -75,14 +70,32 @@ def main() -> int:
     args = parser.parse_args()
     try:
         manifest = load_json(MANIFEST_PATH)
-        expected = manifest["files"]
-        mismatches = compare_tree(VENDORED_PACKAGE, expected, "vendored")
+        packages = manifest["packages"]
+        mismatches = []
+        for package_name, package in sorted(packages.items()):
+            vendored_package = ROOT / package["path"]
+            mismatches.extend(
+                compare_package(
+                    vendored_package,
+                    package["treeHash"],
+                    f"vendored:{package_name}",
+                )
+            )
         current_upstream_commit = None
         if args.upstream is not None:
             upstream_root = args.upstream.resolve()
-            upstream_package = upstream_root / "packages" / "course-contract"
-            mismatches.extend(compare_tree(upstream_package, expected, "upstream"))
-            current_upstream_commit = upstream_commit(upstream_root)
+            for package_name, package in sorted(packages.items()):
+                upstream_package = upstream_root / package["path"]
+                mismatches.extend(
+                    compare_package(
+                        upstream_package,
+                        package["treeHash"],
+                        f"upstream:{package_name}",
+                    )
+                )
+            current_upstream_commit = upstream_commit(
+                upstream_root, manifest["upstreamTag"]
+            )
         payload = {
             "ok": not mismatches,
             "upstreamCommit": manifest["upstreamCommit"],

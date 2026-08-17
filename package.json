@@ -9,7 +9,9 @@
     "validate:course2": "node --import tsx scripts/validate-course-definition.ts"
   },
   "dependencies": {
-    "@mind-imprint/course-contract": "workspace:*"
+    "@mind-imprint/course-contract": "workspace:*",
+    "@mind-imprint/course-renderer": "workspace:*",
+    "@mind-imprint/course-runtime": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -1,24 +1,25 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "upstreamRepository": "mind-imprint",
-  "upstreamCommit": "df36a8ecd1b30f28c27789fcf02e898b5bee6e21",
+  "upstreamTag": "course-authoring-v1.0.0",
+  "upstreamCommit": "41652318c26985de7f8e5092abfb81755e5b83a1",
   "packageName": "@mind-imprint/course-contract",
   "packageVersion": "0.0.0",
-  "files": {
-    "src/assets.ts": "918e2b5e7a2f04a77c5374aca6b35f510767b8134afccab47bfa314f89d56c59",
-    "src/blocks.ts": "1541f984928c20b9b75a86cc5ecfc9fc80ef51d7ddc448e23e7c72fa9119c429",
-    "src/course.ts": "f218a8833dc72d04bedf1f4718fd9ab6d63863013f167392d74273171951fcc1",
-    "src/index.ts": "5776fa99bc0aaae197f3c38509873b61b58c035920e09f7d2a182d1ee8bb8805",
-    "src/layout.ts": "92708cd8af15660e612f916d04e990629db878d64ff127d9737855fe61fa91b8",
-    "src/narration.ts": "c9bced86b8d3aea95cb8876a33c2247114f2cf216c1efa153d5f231f62722a14",
-    "src/navigation.ts": "263b89c25a720713aefa544f5162aec85223d7a6b16b2d9fe1816d9b854969b3",
-    "src/primitives.ts": "9779de58a0336d46f31addaea1eb78ced4f5eea9bc3d1879b6da2776e1f8904b",
-    "src/session.ts": "02e1c0c7d91ea3f047da60555b51b94578d1db15fb34cbbd88a23bcb9687147d",
-    "src/validate/index.ts": "75d9c61c1886f0394e8bf9f76e8ea3d1aef7b949ac7cdb2c30cb7541172e2ba5",
-    "src/validate/referential.ts": "a35e0b5be6ca4b47724b77a47e0fb503a4b303bfedcaa644037f84c604fd7c7a",
-    "src/validate/types.ts": "15e898e8c8080aac4610cc5498a575461c8f39e04b1b2755b9517cd5d1893c30",
-    "src/validate/workflow.ts": "f4f2963e533129ba95c2c735ac788c34a6895909a4b2bd0f5c1d2c8e6ca6dbe7",
-    "src/videoInteraction.ts": "2da8fdd4a0d35449c03f52cf79ea9b075d8faa76cc6903d17be520baee5aacfa",
-    "src/workflow.ts": "2d73be4c3eada650cd1d3d153c0e7eaa9dc53f6dfe4eba6b471ebfa2d6f0f6a8"
+  "packages": {
+    "@mind-imprint/course-contract": {
+      "path": "packages/course-contract",
+      "packageVersion": "0.0.0",
+      "treeHash": "99bb4a7b8514677ebf12e7b9a192c8ff3dc8d4cc3d2b67f341b82f8078bda008"
+    },
+    "@mind-imprint/course-renderer": {
+      "path": "packages/course-renderer",
+      "packageVersion": "0.0.0",
+      "treeHash": "f7d828fae1852130426886732fb94a9a3715978e6642846d230ea892a8cbe6b7"
+    },
+    "@mind-imprint/course-runtime": {
+      "path": "packages/course-runtime",
+      "packageVersion": "0.0.0",
+      "treeHash": "ca885f4a3297a43c6265dd17a2148307c8efc6222565f51bf1d7220687c727b7"
+    }
   }
 }

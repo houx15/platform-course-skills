@@ -1,18 +1,22 @@
 import { CourseDefinitionDocument, type CourseDefinition } from "../course";
 import { validateReferential } from "./referential";
 import { validateSliceWorkflow } from "./workflow";
+import { validateQuality } from "./quality";
 import type { ValidationIssue } from "./types";
 
 export type ValidateResult =
-  | { ok: true; course: CourseDefinition }
+  | { ok: true; course: CourseDefinition; warnings: ValidationIssue[] }
   | { ok: false; issues: ValidationIssue[] };
 
 /**
  * The single validation entry point. Runs structural (Zod) validation first;
- * if the shape is wrong it returns those issues and stops (referential and
- * workflow layers assume a well-formed shape). Otherwise it runs referential
- * validation plus every slice's workflow-graph validation and returns the
- * combined list (ok only when it is empty).
+ * if the shape is wrong it returns those issues and stops (referential,
+ * workflow, and quality layers assume a well-formed shape). Otherwise it runs
+ * referential validation, the P2-09 quality checks, and every slice's
+ * workflow-graph validation. `ok` is false only when at least one issue is
+ * blocking (`severity` omitted or "error") — a WARN-only quality issue (a
+ * non-blocking authoring nudge) never fails an otherwise-playable course; its
+ * warnings still surface on the `ok: true` result for a host that wants them.
  */
 export function validateCourseDefinition(input: unknown): ValidateResult {
   const parsed = CourseDefinitionDocument.safeParse(input);
@@ -23,11 +27,13 @@ export function validateCourseDefinition(input: unknown): ValidateResult {
     };
   }
   const course = parsed.data.course;
-  const issues: ValidationIssue[] = [...validateReferential(course)];
+  const issues: ValidationIssue[] = [...validateReferential(course), ...validateQuality(parsed.data)];
   course.parts.forEach((part, pi) =>
     part.slices.forEach((slice, si) => issues.push(...validateSliceWorkflow(slice, `parts[${pi}].slices[${si}]`))),
   );
-  return issues.length === 0 ? { ok: true, course } : { ok: false, issues };
+  const hasBlocking = issues.some((i) => i.severity !== "warn");
+  if (hasBlocking) return { ok: false, issues };
+  return { ok: true, course, warnings: issues.filter((i) => i.severity === "warn") };
 }
 
 export * from "./types";

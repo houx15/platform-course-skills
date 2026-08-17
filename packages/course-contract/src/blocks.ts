@@ -93,6 +93,11 @@ export const InteractiveHtmlBlock = z
     protocolVersion: z.literal("1.0"),
     aspectRatio: z.enum(["1:1", "4:3"]),
     completion: z.object({ rule: z.literal("interaction-complete") }).strict().optional(),
+    // Optional, back-compat: an authored HTML interaction opts INTO audio only
+    // by declaring this capability (Slice 7 Task 2 gates `allow="autoplay"`
+    // and the media-lifecycle wiring on it). Absent → no audio capability, so
+    // existing courses authored before this field existed stay valid as-is.
+    capabilities: z.object({ audio: z.boolean().optional() }).strict().optional(),
   })
   .strict();
 
