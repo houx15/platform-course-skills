@@ -45,6 +45,12 @@ class SkillPackageTests(unittest.TestCase):
     def test_preview_platform_course(self):
         self.assert_skill("preview-platform-course")
 
+    def test_publish_platform_course(self):
+        self.assert_skill("publish-platform-course")
+
+    def test_apply_preview_feedback(self):
+        self.assert_skill("apply-preview-feedback")
+
     def test_build_platform_course_routes_all_work_through_persistent_gates(self):
         skill_path = ROOT / "skills" / "build-platform-course" / "SKILL.md"
         workflow_path = (
@@ -123,12 +129,12 @@ class SkillPackageTests(unittest.TestCase):
             "browser preview",
             "OSS",
             "real course POST",
-            "prepare-publication.py init-state",
+            "publish-course.py init-state",
             "publication-preflight.json",
-            "same remoteCourseId",
+            "stable slug",
             "no second blind create",
-            "local CLI cannot complete G9",
-            "fake adapters never complete G10",
+            "publish-course.py execute",
+            "live publication adapter",
         )
         for phrase in required:
             with self.subTest(phrase=phrase):

@@ -10,6 +10,8 @@ from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.workflow import (
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
+    G7_EVIDENCE_KEYS,
+    G8_EVIDENCE_KEYS,
     G9_EVIDENCE_KEYS,
     complete_gate,
     load_session,
@@ -156,6 +158,10 @@ class WorkflowCliTests(unittest.TestCase):
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            elif index == 7:
+                evidence = {key: "d" * 64 for key in G7_EVIDENCE_KEYS}
+            elif index == 8:
+                evidence = {key: "e" * 64 for key in G8_EVIDENCE_KEYS}
             elif index == 9:
                 evidence = {key: "c" * 64 for key in G9_EVIDENCE_KEYS}
             else:
@@ -183,6 +189,10 @@ class WorkflowCliTests(unittest.TestCase):
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
+            elif index == 7:
+                evidence = {key: "d" * 64 for key in G7_EVIDENCE_KEYS}
+            elif index == 8:
+                evidence = {key: "e" * 64 for key in G8_EVIDENCE_KEYS}
             else:
                 evidence = None
             complete_gate(
@@ -224,7 +234,7 @@ class WorkflowCliTests(unittest.TestCase):
         )
 
         self.assertEqual(completed.returncode, 2)
-        self.assertIn("real renderer preview adapter", payload["error"]["message"])
+        self.assertIn("G7 preview manifest is missing", payload["error"]["message"])
 
     def test_g5_cannot_complete_without_current_compilation_outputs(self):
         self.init()
@@ -284,9 +294,6 @@ class WorkflowCliTests(unittest.TestCase):
                 "complete-gate", self.root, f"G{index}", "--json"
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
-        audio = self.root / "assets/audio/introduce-check.mp3"
-        audio.parent.mkdir(parents=True, exist_ok=True)
-        audio.write_bytes(b"audio")
         validation = subprocess.run(
             [sys.executable, str(VALIDATOR), str(self.root), "--json"],
             cwd=REPOSITORY_ROOT,

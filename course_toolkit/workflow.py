@@ -889,7 +889,12 @@ def reconcile_artifacts(
         previous_hash = session.artifact_hashes.get(artifact_id)
         if previous_hash is None:
             continue
-        current_hash = hash_path(artifact)
+        if artifact_id == "@toolkit/course-publisher":
+            from course_toolkit.publisher import publisher_code_hash
+
+            current_hash = publisher_code_hash()
+        else:
+            current_hash = hash_path(artifact)
         if current_hash == previous_hash:
             continue
         changed_paths.append(artifact_id)

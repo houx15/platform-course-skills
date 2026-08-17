@@ -1,0 +1,25 @@
+{
+  "skill": "apply-preview-feedback",
+  "prompts": [
+    "把我刚才在预览里写的批注改掉。",
+    "这里的排版和讲解顺序要调整，请根据批注更新课程。",
+    "检查哪些批注只是改文案，哪些必须让我确认。"
+  ],
+  "requiredPhrases": [
+    "manage-annotations.py reconcile",
+    "stable semantic target",
+    "mechanical",
+    "semantic",
+    "runtime-bug",
+    "annotation-revision-plan.json",
+    "beforeHash",
+    "manage-annotations.py prepare",
+    "explicit teacher approval",
+    "manage-annotations.py apply",
+    "course-blueprint.json",
+    "never edit `course/course.json`",
+    "compile-course.py",
+    "validate-course-v2.py",
+    "new renderer preview"
+  ]
+}

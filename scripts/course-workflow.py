@@ -223,11 +223,17 @@ def execute(args: argparse.Namespace) -> tuple:
         elif args.gate_id == "G7":
             from course_toolkit.preview_evidence import verify_g7_preview
 
-            gate_evidence = verify_g7_preview(root)
+            try:
+                gate_evidence = verify_g7_preview(root)
+            except ValueError as exc:
+                raise WorkflowError(str(exc)) from exc
         elif args.gate_id == "G8":
             from course_toolkit.package_review import verify_g8_review
 
-            gate_evidence = verify_g8_review(root)
+            try:
+                gate_evidence = verify_g8_review(root)
+            except ValueError as exc:
+                raise WorkflowError(str(exc)) from exc
         else:
             gate_evidence = None
         complete_gate(

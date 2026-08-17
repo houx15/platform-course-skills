@@ -735,6 +735,7 @@ def _objective_records(document: dict, blocks: dict) -> List[dict]:
 
 
 def _v2_work_hashes(root: Path) -> dict:
+    from course_toolkit.course_compiler import canonical_json_hash
     from course_toolkit.workflow import hash_path
 
     hashes = {}
@@ -742,7 +743,18 @@ def _v2_work_hashes(root: Path) -> dict:
         path = root / relative
         if path.is_symlink() or not path.is_file():
             raise V2ReviewBlocked(f"independent review evidence is missing: {relative}")
-        hashes[relative] = hash_path(path)
+        if relative == ".course-work/decisions.json":
+            document = load_json(path)
+            decisions = [
+                item
+                for item in document.get("decisions", [])
+                if isinstance(item, dict) and item.get("id") != "decision-publication-preflight"
+            ]
+            hashes[relative] = canonical_json_hash(
+                {"schemaVersion": document.get("schemaVersion"), "decisions": decisions}
+            )
+        else:
+            hashes[relative] = hash_path(path)
     return hashes
 
 

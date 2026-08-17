@@ -9,12 +9,14 @@ from tests.helpers import ROOT
 
 SCRIPT = ROOT / "scripts" / "install-skills.py"
 SKILL_NAMES = {
+    "apply-preview-feedback",
     "analyze-course-materials",
     "build-platform-course",
     "design-course-html",
     "design-course-blueprint",
     "design-video-interactions",
     "preview-platform-course",
+    "publish-platform-course",
     "review-platform-course",
 }
 
@@ -43,6 +45,7 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((runtime / "course_toolkit" / "runtime_dist" / "preview" / "index.html").is_file())
         self.assertTrue((runtime / "scripts" / "preview-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "review-course-v2.py").is_file())
+        self.assertTrue((runtime / "scripts" / "publish-course.py").is_file())
         self.assertTrue((runtime / "schemas" / "course.schema.json").is_file())
         self.assertTrue((runtime / "scripts" / "validate-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "generate-html-report.py").is_file())
@@ -102,13 +105,15 @@ class InstallerTests(unittest.TestCase):
             readme,
         )
         self.assertIn("不要把仓库根目录当作单个 Skill", readme)
-        self.assertIn("一行对应一个 Piece", readme)
-        self.assertIn("course.json 和 index.md 只包含学生最终会看到的内容", readme)
-        self.assertIn("Part 逐项 Review", readme)
-        self.assertIn("整体 Review", readme)
+        self.assertIn("一行对应一个 Slice", readme)
+        self.assertIn("CourseDefinition 2.0", readme)
+        self.assertIn("真实学生端 renderer", readme)
+        self.assertIn("apply-preview-feedback", readme)
+        self.assertIn("稳定 slug", readme)
+        self.assertIn("OSS_ADMIN_KEY", readme)
         self.assertIn("课程首尾设计表", readme)
         self.assertIn("开始学习", readme)
-        self.assertIn("courseIntroduction", readme)
+        self.assertIn("G0–G10", readme)
 
 
 if __name__ == "__main__":

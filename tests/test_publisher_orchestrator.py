@@ -144,7 +144,7 @@ class PublisherOrchestratorTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        prepare_g6(self.root)
+        prepare_g6(self.root, full=True)
         complete_through_g8(self.root)
         write_asset_manifest(
             self.root,
@@ -187,7 +187,7 @@ class PublisherOrchestratorTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(api.create_calls, 1)
         self.assertEqual(api.update_calls, 0)
-        self.assertEqual(sum(objects.calls.values()), 1)
+        self.assertEqual(sum(objects.calls.values()), 7)
         state = load_publish_state(self.root)
         self.assertEqual(state.remote_course_id, "remote-course-1")
         self.assertEqual(state.last_known_remote_revision, "revision-1")

@@ -34,8 +34,6 @@ PUBLICATION_ISSUE_CODES = frozenset(
 LOCAL_ASSET_ROOTS = (
     Path("assets"),
     Path("interactions"),
-    Path("course/assets"),
-    Path("course/interactions"),
 )
 
 
@@ -184,7 +182,7 @@ def build_asset_manifest(
         "validationReportHash": hash_path(root / VALIDATION_REPORT_RELATIVE_PATH),
         "assetSetHash": report["assetSetHash"],
         "entries": entries,
-        "localOnlyPaths": _local_only_paths(root, referenced),
+        "localOnlyPaths": _local_only_paths(root / "course", referenced),
     }
 
 

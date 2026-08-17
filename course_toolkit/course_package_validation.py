@@ -29,6 +29,9 @@ ROLE_EXTENSIONS = {
     "video-interaction": {".json"},
     "interactive-html": {".html"},
 }
+TTS_OUTPUT_ROLES = frozenset(
+    {"opening-audio", "closing-audio", "narration-audio"}
+)
 VALIDATOR_VERSION = "1.0"
 VALIDATION_REPORT_RELATIVE_PATH = Path(".course-work/course-validation-report.json")
 VALIDATION_ATTEMPT_RELATIVE_PATH = Path(".course-work/course-validation-attempt.json")
@@ -300,8 +303,19 @@ def validate_asset_references(
 ) -> AssetValidationResult:
     references = tuple(iter_asset_references(document))
     issues: List[ValidationIssue] = []
-    actual_paths = sorted({reference.source for reference in references})
-    expected_paths = sorted(set(expected_asset_paths))
+    generated_paths = {
+        reference.source
+        for reference in references
+        if reference.role in TTS_OUTPUT_ROLES
+    }
+    actual_paths = sorted(
+        {
+            reference.source
+            for reference in references
+            if reference.role not in TTS_OUTPUT_ROLES
+        }
+    )
+    expected_paths = sorted(set(expected_asset_paths).difference(generated_paths))
     for source in sorted(set(actual_paths).difference(expected_paths)):
         issues.append(
             ValidationIssue(
@@ -340,7 +354,18 @@ def validate_asset_references(
                     f"{reference.role} requires one of {sorted(allowed)}: {reference.source}",
                 )
             )
-        _, path_issue = _resolve_asset(root, reference)
+        if reference.role in TTS_OUTPUT_ROLES:
+            path_issue = (
+                ValidationIssue(
+                    reference.runtime_path,
+                    "unsafe-asset-path",
+                    f"TTS output path must be a safe relative path: {reference.source}",
+                )
+                if _unsafe_source(reference.source)
+                else None
+            )
+        else:
+            _, path_issue = _resolve_asset(root, reference)
         if path_issue:
             issues.append(path_issue)
     return AssetValidationResult(references, tuple(issues))
@@ -445,6 +470,8 @@ def _prefix(prefix: str, issues: Iterable[ValidationIssue]) -> List[ValidationIs
 def _asset_evidence(root: Path, references: Sequence[AssetReference]) -> List[dict]:
     grouped: Dict[str, List[AssetReference]] = {}
     for reference in references:
+        if reference.role in TTS_OUTPUT_ROLES:
+            continue
         grouped.setdefault(reference.source, []).append(reference)
     evidence = []
     for source in sorted(grouped):
@@ -703,24 +730,25 @@ def build_course_validation_report(root: Path) -> dict:
     from course_toolkit.workflow import verify_g5_compilation
 
     root = root.resolve()
+    delivery_root = root / "course"
     verify_g5_compilation(root)
     document = load_json(root / "course/course.json")
     compilation_report = load_json(root / ".course-work/compilation-report.json")
     asset_result = validate_asset_references(
-        root,
+        delivery_root,
         document,
         compilation_report.get("assetPaths", []),
     )
     issues = list(asset_result.issues)
     specialized_issues, warnings = _specialized_asset_findings(
-        root,
+        delivery_root,
         document,
         asset_result.references,
         asset_result.issues,
     )
     issues.extend(specialized_issues)
     warnings.extend(_completeness_findings(document))
-    assets = _asset_evidence(root, asset_result.references)
+    assets = _asset_evidence(delivery_root, asset_result.references)
     part_count = len(document["course"]["parts"])
     slices = [
         slice_data
@@ -744,7 +772,7 @@ def build_course_validation_report(root: Path) -> dict:
             "assetCount": len(assets),
         },
         "assets": assets,
-        "mediaEvidence": _media_evidence(root, document),
+        "mediaEvidence": _media_evidence(delivery_root, document),
         "issues": [issue.as_dict() for issue in issues],
         "warnings": [warning.as_dict() for warning in warnings],
         "browserCheckRequired": True,

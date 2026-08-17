@@ -139,6 +139,22 @@ class CoursePackageAssetTests(unittest.TestCase):
             item.source for item in iter_asset_references(full_asset_document())
         ])
 
+    def test_tts_output_paths_are_validated_but_not_required_as_local_assets(self):
+        data = full_asset_document()
+        delivery_assets = sorted(
+            source for source in EXPECTED if not source.startswith("assets/audio/")
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for raw in delivery_assets:
+                path = root / raw
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"asset")
+
+            result = validate_asset_references(root, data, delivery_assets)
+
+        self.assertEqual(result.issues, ())
+
     def test_missing_file_and_inventory_drift_are_distinct(self):
         data = full_asset_document()
         with tempfile.TemporaryDirectory() as temporary:
@@ -256,32 +272,24 @@ def build_full_package(root: Path):
     write_compilation_outputs_atomic(root, result)
 
     for source in (
-        "assets/audio/open.mp3",
-        "assets/audio/close.mp3",
-        "assets/audio/introduce-check.mp3",
         "assets/images/diagram.png",
         "assets/images/case-poster.jpg",
     ):
-        path = root / source
+        path = root / "course" / source
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = (
-            b"shared fallback audio"
-            if source in {"assets/audio/open.mp3", "assets/audio/close.mp3"}
-            else source.encode("utf-8")
-        )
-        path.write_bytes(payload)
-    write_test_pdf(root / "assets/pdfs/source.pdf")
-    write_test_mp4(root / "assets/videos/case.mp4")
-    captions = root / "assets/captions/case.en.vtt"
+        path.write_bytes(source.encode("utf-8"))
+    write_test_pdf(root / "course/assets/pdfs/source.pdf")
+    write_test_mp4(root / "course/assets/videos/case.mp4")
+    captions = root / "course/assets/captions/case.en.vtt"
     captions.parent.mkdir(parents=True, exist_ok=True)
     captions.write_text("WEBVTT\n\n00:00.000 --> 00:01.000\nHello\n", encoding="utf-8")
-    interaction = root / "interactions/video/case.json"
+    interaction = root / "course/interactions/video/case.json"
     interaction.parent.mkdir(parents=True, exist_ok=True)
     interaction.write_text(
         json.dumps(video_interaction_document()),
         encoding="utf-8",
     )
-    html = root / "interactions/html/simulation.html"
+    html = root / "course/interactions/html/simulation.html"
     html.parent.mkdir(parents=True, exist_ok=True)
     html.write_text(VALID_HTML_V2, encoding="utf-8")
     return result
@@ -298,9 +306,6 @@ def build_minimal_package(root: Path):
     write_json_atomic(root / ".course-work/course-blueprint.json", blueprint)
     result = compile_blueprint(blueprint)
     write_compilation_outputs_atomic(root, result)
-    audio = root / "assets/audio/introduce-check.mp3"
-    audio.parent.mkdir(parents=True, exist_ok=True)
-    audio.write_bytes(b"audio")
     return result
 
 
@@ -331,8 +336,8 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertEqual(report["summary"]["partCount"], 1)
         self.assertEqual(report["summary"]["sliceCount"], 1)
         self.assertEqual(report["summary"]["blockCount"], 6)
-        self.assertEqual(report["summary"]["assetCount"], 10)
-        self.assertEqual(len(report["assets"]), 10)
+        self.assertEqual(report["summary"]["assetCount"], 7)
+        self.assertEqual(len(report["assets"]), 7)
         video = report["mediaEvidence"]["videos"][0]
         self.assertEqual(video["cueCount"], 1)
         self.assertEqual(video["requiredCueCount"], 1)
@@ -355,8 +360,8 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertEqual(first, second)
 
     def test_pdf_signature_and_caption_header_are_required(self):
-        (self.root / "assets/pdfs/source.pdf").write_bytes(b"not pdf")
-        (self.root / "assets/captions/case.en.vtt").write_text(
+        (self.root / "course/assets/pdfs/source.pdf").write_bytes(b"not pdf")
+        (self.root / "course/assets/captions/case.en.vtt").write_text(
             "not vtt", encoding="utf-8"
         )
 
@@ -368,7 +373,7 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
 
     def test_video_profile_and_declared_duration_are_checked(self):
         write_test_mp4(
-            self.root / "assets/videos/case.mp4",
+            self.root / "course/assets/videos/case.mp4",
             video_codec=b"vp09",
             faststart=False,
         )
@@ -379,7 +384,7 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertIn("missing-faststart", codes)
 
     def test_shared_video_interaction_and_actual_timing_are_checked(self):
-        path = self.root / "interactions/video/case.json"
+        path = self.root / "course/interactions/video/case.json"
         data = load_json(path)
         duplicate = copy.deepcopy(data["video"]["cues"][0])
         duplicate["atSeconds"] = 10
@@ -416,7 +421,7 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertIn("estimated-time-drift", self.codes("warnings"))
 
     def test_legacy_html_protocol_is_blocked(self):
-        (self.root / "interactions/html/simulation.html").write_text(
+        (self.root / "course/interactions/html/simulation.html").write_text(
             VALID_HTML,
             encoding="utf-8",
         )
@@ -431,7 +436,7 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         write_current_validation_report(self.root, first)
         current_path = self.root / VALIDATION_REPORT_RELATIVE_PATH
         before = current_path.read_bytes()
-        (self.root / "assets/pdfs/source.pdf").write_bytes(b"broken")
+        (self.root / "course/assets/pdfs/source.pdf").write_bytes(b"broken")
         blocked = build_course_validation_report(self.root)
 
         write_current_validation_report(self.root, blocked)
@@ -565,7 +570,7 @@ class CourseDefinitionTwoValidationCliTests(unittest.TestCase):
         self.assertEqual(json.loads(completed.stdout)["status"], "clear")
 
     def test_blocked_exit_two(self):
-        (self.root / "assets/pdfs/source.pdf").write_bytes(b"broken")
+        (self.root / "course/assets/pdfs/source.pdf").write_bytes(b"broken")
 
         completed = self.run_cli()
 

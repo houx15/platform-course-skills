@@ -70,12 +70,12 @@ class RealCourseMigrationTests(unittest.TestCase):
                 confirmed,
             )
             write_compilation_outputs_atomic(root, first)
-            pdf = root / "assets/pdfs/source-paper-test.pdf"
+            pdf = root / "course/assets/pdfs/source-paper-test.pdf"
             pdf.parent.mkdir(parents=True, exist_ok=True)
             pdf.write_bytes(
                 (REAL_ROOT / "course/assets/pdfs/source-paper-test.pdf").read_bytes()
             )
-            html = root / "interactions/html/urban-heat-island-check.html"
+            html = root / "course/interactions/html/urban-heat-island-check.html"
             html.parent.mkdir(parents=True, exist_ok=True)
             html.write_text(VALID_HTML_V2, encoding="utf-8")
             first_validation = build_course_validation_report(root)

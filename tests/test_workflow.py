@@ -29,7 +29,7 @@ from course_toolkit.course_package_validation import (
     sync_validation_issues,
     write_current_validation_report,
 )
-from tests.test_course_package_validation import build_minimal_package
+from tests.test_course_package_validation import build_full_package
 
 
 NOW = "2026-08-16T00:00:00Z"
@@ -426,7 +426,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        build_minimal_package(self.root)
+        build_full_package(self.root)
 
     def tearDown(self):
         self.temporary.cleanup()
@@ -448,7 +448,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         self.assertIn("@toolkit/course-package-validator", session.artifact_hashes)
         self.assertIn("@course/asset-set", session.artifact_hashes)
         self.assertIn(
-            "@course/asset:assets/audio/introduce-check.mp3",
+            "@course/asset:assets/images/diagram.png",
             session.artifact_hashes,
         )
 
@@ -457,7 +457,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         session = fully_gated_through("G8")
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
-        (self.root / "assets/audio/introduce-check.mp3").write_bytes(b"changed")
+        (self.root / "course/assets/images/diagram.png").write_bytes(b"changed")
 
         result = reconcile_artifacts(self.root, session, NOW)
 

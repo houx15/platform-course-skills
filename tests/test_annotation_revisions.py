@@ -547,7 +547,7 @@ class MixedAnnotationRevisionBatchTests(unittest.TestCase):
                 )
             )
 
-            poster = root / "assets/images/case-poster-v2.jpg"
+            poster = root / "course/assets/images/case-poster-v2.jpg"
             poster.write_bytes(b"revised poster")
             compiled = compile_blueprint(revised_blueprint)
             write_compilation_outputs_atomic(root, compiled)

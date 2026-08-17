@@ -36,31 +36,32 @@ def prepare_g6(root: Path, *, full: bool = False):
 
 
 class AssetManifestTests(unittest.TestCase):
-    def test_manifest_groups_identical_bytes_and_keeps_all_consumers(self):
+    def test_manifest_excludes_server_generated_audio_and_keeps_delivery_assets(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             report = prepare_g6(root, full=True)
 
             manifest = build_asset_manifest(root, "course-local-a")
 
-        grouped = next(
-            entry
-            for entry in manifest["entries"]
-            if "assets/audio/open.mp3" in entry["sources"]
+        self.assertFalse(
+            any("narration-audio" in entry["roles"] for entry in manifest["entries"])
         )
-        self.assertGreater(len(grouped["sources"]), 1)
-        self.assertEqual(grouped["sha256"], report["assets"][0]["sha256"])
-        self.assertEqual(grouped["state"], "upload-required")
-        self.assertTrue(
-            grouped["objectKey"].startswith("courses/course-local-a/assets/")
+        self.assertEqual(
+            {entry["sha256"] for entry in manifest["entries"]},
+            {asset["sha256"] for asset in report["assets"]},
         )
-        self.assertEqual(grouped["sources"], sorted(grouped["sources"]))
-        self.assertEqual(grouped["runtimePaths"], sorted(grouped["runtimePaths"]))
+        for entry in manifest["entries"]:
+            self.assertEqual(entry["state"], "upload-required")
+            self.assertTrue(
+                entry["objectKey"].startswith("courses/course-local-a/assets/")
+            )
+            self.assertEqual(entry["sources"], sorted(entry["sources"]))
+            self.assertEqual(entry["runtimePaths"], sorted(entry["runtimePaths"]))
 
     def test_matching_verified_remote_record_is_reused(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            prepare_g6(root)
+            prepare_g6(root, full=True)
             first = build_asset_manifest(root, "course-local-a")
             prior = copy.deepcopy(first)
             entry = prior["entries"][0]
@@ -84,7 +85,7 @@ class AssetManifestTests(unittest.TestCase):
     def test_mismatched_remote_hash_is_not_reused(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            prepare_g6(root)
+            prepare_g6(root, full=True)
             prior = build_asset_manifest(root, "course-local-a")
             prior["entries"][0]["remote"] = {
                 "objectKey": prior["entries"][0]["objectKey"],
@@ -106,10 +107,10 @@ class AssetManifestTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             prepare_g6(root)
-            unused = root / "assets/images/unused.png"
+            unused = root / "course/assets/images/unused.png"
             unused.parent.mkdir(parents=True, exist_ok=True)
             unused.write_bytes(b"unused")
-            (root / "assets/archive.zip").write_bytes(b"zip")
+            (root / "course/assets/archive.zip").write_bytes(b"zip")
 
             manifest = build_asset_manifest(root, "course-local-a")
 

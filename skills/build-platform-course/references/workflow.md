@@ -188,44 +188,39 @@ Exit: the independent report is publishable for exactly the reviewed hashes.
 
 ### G9 — Publication preflight
 
-Inputs: approved definition hash, current G6 validation, renderer-backed G8 review evidence, content-addressed asset manifest, stable remote identity/publish state, and an adapter-produced remote discovery snapshot.
+Inputs: approved definition hash, current G6 validation, renderer-backed G8 review evidence, relative-path asset manifest, stable slug/publish state, and bearer readback of that slug.
 
-Initialize publish state once; this command refuses to replace a different existing identity:
+Invoke `publish-platform-course`. Initialize publish state once; this command refuses to replace a different existing identity:
 
 ```bash
-python scripts/prepare-publication.py init-state ROOT --slug SLUG --json
+python scripts/publish-course.py init-state ROOT --slug SLUG --json
 ```
 
-Build the manifest only from current successful G6 evidence:
+Prepare the exact production dry run only from current G8 evidence:
 
 ```bash
-python scripts/prepare-publication.py manifest ROOT --json
-```
-
-After the future trusted renderer/reviewer and course-API discovery adapters supply their evidence, prepare the exact dry run:
-
-```bash
-python scripts/prepare-publication.py preflight ROOT \
-  --discovery DISCOVERY_JSON \
-  --review-evidence REVIEW_EVIDENCE_JSON \
-  --intended-status preview \
-  --visibility private \
+python scripts/publish-course.py preflight ROOT \
+  --action publish \
+  --blurb "BLURB" \
+  --cover "img:3" \
   --json
 ```
 
-The deterministic `.course-work/publication-preflight.json` shows create versus update, the stable remote identity and expected revision, changed versus reused hashes, intended status/visibility, and explicit limitations that no credential was read and no remote write occurred. Existing slugs are never silently adopted. Create is allowed only after explicit `not-found`; update is allowed only when local and discovered `courseLocalId`, remoteCourseId, and revision agree.
+The deterministic `.course-work/publication-preflight.json` shows create versus update, stable slug, remote status/hash, changed versus locally proven unchanged paths, exact options, and production limitations. Existing slugs are never silently adopted. The backend has no revision, visibility option, remote asset inventory, or optimistic concurrency; the preflight states these limits directly.
 
-Present this readable summary and obtain the exact teacher decision with a real rationale through `course-workflow.py confirm-decision`. Check it with `python scripts/prepare-publication.py status ROOT --json`. A changed definition, validation/review evidence, preview/review report, manifest, discovery snapshot, identity, revision, status, or visibility makes approval non-current.
+Present this readable summary and obtain the exact teacher decision with a real rationale through `course-workflow.py confirm-decision`. Check it with `python scripts/publish-course.py status ROOT --json`. A changed definition, evidence, asset manifest, remote observation, identity, options, or API base makes approval non-current.
 
-The local CLI cannot complete G9 even when the dry run is approved. G9 completion belongs to the future live adapter handoff, which must bind the preflight, manifest, publish state, G8 evidence, discovery snapshot, and publisher code hashes. OSS and the real course POST remain outside the current implementation.
+The live execute command completes G9 immediately before its first external mutation and binds the preflight, manifest, publish state, G8 evidence, discovery, and publisher code hashes.
 
 ### G10 — Remote verification
 
-Inputs: results from the real publication adapter.
+Inputs: results from `python scripts/publish-course.py execute ROOT --json`.
 
-Checks: upload each unique changed hash once and persist every verified upload for resume; reuse verified unchanged hashes; create only in create mode; update only the same remoteCourseId under the expected revision; after an ambiguous response, discover and read before any retry, with no second blind create; read the remote course back; verify identity, revision, definition hash, asset references, status, and visibility before updating verified local state.
+Checks: upload each changed relative path and persist every successful PUT for resume; reuse only the same slug/path/SHA-256 local proof; save through the same slug-keyed PUT for create and update; after an ambiguous response, read before retry; read the remote definition back; verify slug, exact definition, remote hash, and final status before updating verified local state.
 
-The mockable orchestration core and fake adapters exercise these rules, but there is no teacher-facing publication command. Fake adapters never complete G10. G10 requires an operation explicitly recorded as using the live publication adapter. The local CLI intentionally refuses manual G10 completion. Exit only after the post-write read verifies the expected remote result.
+Fake adapters never complete G10. G10 requires an operation explicitly recorded as using the live publication adapter. Exit only after post-write bearer readback verifies the expected remote result.
+
+In operational terms, G10 requires the real publication adapter. Only it may perform the real course POST/PUT workflow and OSS upload after explicit publication approval for the current dry run.
 
 ## Issues and decisions
 

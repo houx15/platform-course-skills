@@ -93,7 +93,7 @@ class PublicationPreflightTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        prepare_g6(self.root)
+        prepare_g6(self.root, full=True)
         complete_through_g8(self.root)
         write_asset_manifest(
             self.root,

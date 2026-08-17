@@ -348,7 +348,17 @@ def _write_operation(root: Path, operation: PublicationOperation) -> None:
 
 
 def publisher_code_hash() -> str:
-    return hash_path(Path(__file__).resolve())
+    root = Path(__file__).resolve().parent
+    return canonical_json_hash(
+        {
+            path.name: hash_path(path)
+            for path in (
+                root / "publisher.py",
+                root / "live_publication.py",
+                root / "mind_imprint_api.py",
+            )
+        }
+    )
 
 
 def _operation_id(preflight_hash: str, adapter_mode: str) -> str:
@@ -610,7 +620,7 @@ def publish_course(
         if asset["sha256"] in verified_hashes:
             continue
         local_path = _safe_asset_source(
-            root,
+            root / "course",
             asset["sources"][0],
             asset["sha256"],
         )

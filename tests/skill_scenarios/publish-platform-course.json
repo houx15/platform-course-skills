@@ -1,0 +1,30 @@
+{
+  "skill": "publish-platform-course",
+  "prompts": [
+    "把这门课上传到学生端，但先让我确认 dry run。",
+    "更新之前创建的同一门课，不要创建重复课程。",
+    "刚才发布超时了，先读回状态再决定是否重试。"
+  ],
+  "requiredPhrases": [
+    "publish-course.py",
+    "OSS_ADMIN_KEY",
+    "environment",
+    "G8",
+    "stable slug",
+    "dry run",
+    "exact approval",
+    "save-preview",
+    "publish",
+    "relative path",
+    "local upload proof",
+    "published course",
+    "live bytes",
+    "last-writer-wins",
+    "TTS",
+    "production",
+    "read back",
+    "cannot publish",
+    "presigned URL",
+    "Authorization"
+  ]
+}

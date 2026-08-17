@@ -1,0 +1,4 @@
+interface:
+  display_name: "Publish Platform Course"
+  short_description: "Safely save or publish an approved course to Mind Imprint"
+  default_prompt: "Use $publish-platform-course to prepare an exact dry run, obtain approval, and safely submit this course."
