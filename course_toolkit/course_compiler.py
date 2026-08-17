@@ -20,7 +20,9 @@ from course_toolkit.jsonio import dump_json
 COMPILER_VERSION = "1.0"
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_SNAPSHOT = ROOT / "course-contract.snapshot.json"
-CONTRACT_VALIDATOR = ROOT / "scripts" / "validate-course-definition.ts"
+CONTRACT_VALIDATOR = (
+    ROOT / "course_toolkit" / "runtime_dist" / "validate-course-definition.mjs"
+)
 
 
 @dataclass(frozen=True)
@@ -107,14 +109,7 @@ def validate_with_shared_contract(document: dict) -> SharedContractResult:
         )
         try:
             completed = subprocess.run(
-                [
-                    "node",
-                    "--import",
-                    "tsx",
-                    str(CONTRACT_VALIDATOR),
-                    str(input_path),
-                    "--json",
-                ],
+                ["node", str(CONTRACT_VALIDATOR), str(input_path), "--json"],
                 cwd=ROOT,
                 text=True,
                 capture_output=True,

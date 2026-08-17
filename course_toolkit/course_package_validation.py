@@ -33,7 +33,9 @@ VALIDATOR_VERSION = "1.0"
 VALIDATION_REPORT_RELATIVE_PATH = Path(".course-work/course-validation-report.json")
 VALIDATION_ATTEMPT_RELATIVE_PATH = Path(".course-work/course-validation-attempt.json")
 ROOT = Path(__file__).resolve().parent.parent
-VIDEO_INTERACTION_VALIDATOR = ROOT / "scripts" / "validate-video-interaction.ts"
+VIDEO_INTERACTION_VALIDATOR = (
+    ROOT / "course_toolkit" / "runtime_dist" / "validate-video-interaction.mjs"
+)
 VALIDATOR_ARTIFACTS = (
     ROOT / "course_toolkit" / "course_package_validation.py",
     ROOT / "course_toolkit" / "html_validation.py",
@@ -389,8 +391,6 @@ def _video_interaction_contract_issues(document: dict, owner: dict) -> List[Vali
             completed = subprocess.run(
                 [
                     "node",
-                    "--import",
-                    "tsx",
                     str(VIDEO_INTERACTION_VALIDATOR),
                     str(document_path),
                     str(owner_path),
