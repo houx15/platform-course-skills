@@ -39,6 +39,9 @@ class SkillPackageTests(unittest.TestCase):
     def test_build_platform_course(self):
         self.assert_skill("build-platform-course")
 
+    def test_design_course_blueprint(self):
+        self.assert_skill("design-course-blueprint")
+
     def test_build_platform_course_routes_all_work_through_persistent_gates(self):
         skill_path = ROOT / "skills" / "build-platform-course" / "SKILL.md"
         workflow_path = (

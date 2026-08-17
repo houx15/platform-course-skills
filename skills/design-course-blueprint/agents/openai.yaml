@@ -1,0 +1,4 @@
+interface:
+  display_name: "Design Course Blueprint"
+  short_description: "Complete production layout and workflow for every course slice"
+  default_prompt: "Use $design-course-blueprint to complete this draft course against the pinned student runtime standard, preserving valid authored content and preparing it for teacher review."

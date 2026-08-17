@@ -1,0 +1,27 @@
+{
+  "skill": "design-course-blueprint",
+  "prompts": [
+    "把这份只有内容和素材的初版课程补齐成学生端可以运行的课程。",
+    "给每一页补好 layout、narration、workflow 和 navigation，再让我确认。",
+    "已有字段不要乱改，只补完整缺失的 runtime 设计。"
+  ],
+  "requiredPhrases": [
+    "runtime_authoring_catalog.json",
+    "complete-course-draft.py",
+    "course-completion-plan.json",
+    "每个 Slice",
+    "layout",
+    "narrations",
+    "workflow",
+    "navigation",
+    "16 种 Action",
+    "16 种 Event",
+    "不得静默覆盖",
+    "capabilities.audio",
+    "pdf.pageChanged",
+    "do-not-generate-transition",
+    "teacher confirmation",
+    "ready-for-contract-validation",
+    "shared student Zod contract"
+  ]
+}

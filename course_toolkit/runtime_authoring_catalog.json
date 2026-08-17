@@ -1,0 +1,279 @@
+{
+  "schemaVersion": "1.0",
+  "upstreamTag": "course-authoring-v1.0.0",
+  "targetContractVersion": "2.0",
+  "authority": {
+    "machine": "packages/course-contract",
+    "semantics": "docs/2026-08-15-student-course-runtime-data-and-renderer-design.md",
+    "preview": "packages/course-renderer"
+  },
+  "course": {
+    "requiredFields": [
+      "id",
+      "title",
+      "language",
+      "estimatedMinutes",
+      "objectives",
+      "opening",
+      "parts",
+      "closing"
+    ],
+    "openingSignals": [
+      "recent-course-topics",
+      "prior-objective-performance"
+    ],
+    "closingSignals": [
+      "answers",
+      "attempts",
+      "time-on-slice",
+      "interaction-results"
+    ]
+  },
+  "slice": {
+    "requiredFields": [
+      "id",
+      "title",
+      "objectiveIds",
+      "estimatedSeconds",
+      "blocks",
+      "layout",
+      "narrations",
+      "workflow",
+      "navigation"
+    ],
+    "authoringRule": "one-desktop-screen"
+  },
+  "layout": {
+    "presets": [
+      "full",
+      "split-horizontal",
+      "split-vertical",
+      "grid"
+    ],
+    "splitRatios": ["1:1", "2:1", "1:2"],
+    "canonicalSlots": {
+      "full": ["main"],
+      "split-horizontal": ["left", "right"],
+      "split-vertical": ["top", "bottom"],
+      "grid": ["cell-1", "cell-2", "cell-3", "cell-4"]
+    },
+    "ratioRequiredFor": ["split-horizontal", "split-vertical"],
+    "authoringRules": [
+      "assign-every-block-exactly-once",
+      "omit-ratio-for-full-and-grid",
+      "no-nesting",
+      "no-arbitrary-css",
+      "hidden-blocks-keep-slots"
+    ]
+  },
+  "blocks": {
+    "types": [
+      "text",
+      "images",
+      "pdf",
+      "video",
+      "interactiveHtml",
+      "fillBlank",
+      "singleChoice"
+    ],
+    "text": {
+      "requiredFields": ["id", "type", "content"],
+      "optionalFields": []
+    },
+    "images": {
+      "requiredFields": ["id", "type", "presentation", "items"],
+      "optionalFields": [],
+      "presentations": ["single", "side-by-side", "gallery"],
+      "itemRequiredFields": ["id", "source", "alt"],
+      "itemOptionalFields": ["caption"],
+      "authoringArity": {
+        "single": 1,
+        "side-by-side": 2,
+        "galleryMinimum": 2
+      }
+    },
+    "pdf": {
+      "requiredFields": ["id", "type", "title", "source"],
+      "optionalFields": ["initialPage"],
+      "completionEvidence": false
+    },
+    "video": {
+      "requiredFields": ["id", "type", "source"],
+      "optionalFields": [
+        "poster",
+        "captions",
+        "durationSeconds",
+        "interaction",
+        "completion"
+      ],
+      "completionRules": [
+        "video-ended",
+        "video-ended-and-interactions-completed"
+      ]
+    },
+    "interactiveHtml": {
+      "requiredFields": [
+        "id",
+        "type",
+        "source",
+        "protocolVersion",
+        "aspectRatio"
+      ],
+      "optionalFields": ["completion", "capabilities"],
+      "protocolVersions": ["1.0"],
+      "aspectRatios": ["1:1", "4:3"],
+      "completionRules": ["interaction-complete"],
+      "capabilities": {"audio": "boolean-optional"},
+      "frameMessageTypes": ["ready", "progress", "completed", "error"],
+      "hostMessageTypes": [
+        "activate",
+        "deactivate",
+        "enable",
+        "disable",
+        "pauseMedia",
+        "resumeMedia",
+        "stopMedia"
+      ],
+      "completedPayload": {
+        "optionalFields": ["resultId", "correct", "value"],
+        "atLeastOneOf": ["correct", "value"]
+      },
+      "errorPayload": {
+        "requiredFields": ["message"],
+        "optionalFields": ["code"],
+        "autoplayBlockedCode": "autoplay-blocked"
+      }
+    },
+    "fillBlank": {
+      "requiredFields": [
+        "id",
+        "type",
+        "prompt",
+        "assessment",
+        "completion"
+      ],
+      "optionalFields": ["placeholder"],
+      "assessmentModes": ["graded", "reflection"],
+      "completionRules": [
+        "submit-any",
+        "submit-correct",
+        "submit-correct-or-exhausted"
+      ]
+    },
+    "singleChoice": {
+      "requiredFields": [
+        "id",
+        "type",
+        "prompt",
+        "options",
+        "assessment",
+        "completion"
+      ],
+      "optionalFields": [],
+      "assessmentModes": ["graded", "survey"],
+      "completionRules": [
+        "submit-any",
+        "submit-correct",
+        "submit-correct-or-exhausted"
+      ]
+    }
+  },
+  "narration": {
+    "requiredFields": ["id", "text", "audio"],
+    "optionalFields": ["durationSeconds"],
+    "authoringRule": "prepared-text-and-audio"
+  },
+  "workflow": {
+    "version": "1.0",
+    "requiredFields": ["version", "initialStepId", "steps"],
+    "optionalFields": ["initialState"],
+    "initialStateFields": [
+      "visibleBlockIds",
+      "enabledBlockIds",
+      "focusedTarget"
+    ],
+    "stepFields": ["id", "enterActions", "transitions"],
+    "transitionFields": ["on", "to"],
+    "matcherFields": ["type", "sourceId", "interactionId", "timerId"],
+    "actions": [
+      {"type": "show", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "hide", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "focus", "requiredFields": ["target"], "optionalFields": []},
+      {"type": "clearFocus", "requiredFields": [], "optionalFields": []},
+      {"type": "enable", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "disable", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "playNarration", "requiredFields": ["narrationId"], "optionalFields": []},
+      {"type": "pauseNarration", "requiredFields": ["narrationId"], "optionalFields": []},
+      {"type": "stopNarration", "requiredFields": ["narrationId"], "optionalFields": []},
+      {"type": "playBlock", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "pauseBlock", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "resetBlock", "requiredFields": ["targetId"], "optionalFields": []},
+      {"type": "startTimer", "requiredFields": ["timerId", "durationSeconds"], "optionalFields": []},
+      {"type": "cancelTimer", "requiredFields": ["timerId"], "optionalFields": []},
+      {"type": "completeSlice", "requiredFields": [], "optionalFields": []},
+      {"type": "navigate", "requiredFields": ["target"], "optionalFields": []}
+    ],
+    "events": [
+      "narration.ended",
+      "video.started",
+      "video.paused",
+      "video.ended",
+      "video.interaction.shown",
+      "video.interaction.completed",
+      "pdf.opened",
+      "pdf.pageChanged",
+      "interaction.completed",
+      "answer.submitted",
+      "answer.correct",
+      "answer.incorrect",
+      "answer.attemptsExhausted",
+      "block.completed",
+      "student.continue",
+      "timer.elapsed"
+    ],
+    "terminalRules": [
+      "all-steps-reachable",
+      "every-branch-reaches-terminal",
+      "no-required-completion-bypass",
+      "navigate-step-has-no-transitions",
+      "no-cross-slice-transition",
+      "no-ambiguous-matchers"
+    ]
+  },
+  "navigation": {
+    "previous": ["allowed"],
+    "manualNext": ["after-completion", "allowed"],
+    "autoNext": "boolean",
+    "revisit": ["restore-completed-state"],
+    "defaults": {
+      "previous": "allowed",
+      "manualNext": "after-completion",
+      "autoNext": true,
+      "revisit": "restore-completed-state"
+    }
+  },
+  "videoInteraction": {
+    "schemaVersion": "1.1",
+    "activityTypes": ["singleChoice", "fillBlank"],
+    "cueRequiredFields": [
+      "id",
+      "atSeconds",
+      "pauseVideo",
+      "required",
+      "prompt",
+      "activity"
+    ],
+    "rules": [
+      "block-id-matches-owner",
+      "source-matches-owner",
+      "cue-ids-unique",
+      "cue-times-strictly-increasing",
+      "cue-times-within-duration"
+    ]
+  },
+  "rendererCaveats": {
+    "workflowEventsWithoutProducer": ["pdf.pageChanged"],
+    "authoringPolicy": "do-not-generate-transition",
+    "reason": "The pinned PDF renderer delegates navigation to a native iframe and cannot observe internal page changes."
+  }
+}
