@@ -14,6 +14,7 @@ from course_toolkit.live_publication import (
     live_preflight_status,
     prepare_live_preflight,
 )
+from course_toolkit.local_env import load_publication_env
 from course_toolkit.mind_imprint_api import (
     DEFAULT_API_BASE,
     MindImprintApiError,
@@ -54,6 +55,7 @@ def main() -> int:
     args = build_parser().parse_args()
     as_json = args.json
     try:
+        load_publication_env(args.root)
         if args.command == "init-state":
             state = init_live_publish_state(args.root, args.slug)
             payload = {"ok": True, "status": "initialized", "slug": state["slug"]}

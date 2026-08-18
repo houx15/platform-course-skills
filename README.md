@@ -172,7 +172,9 @@ Agent 会先展示精确 dry run。确认课程 ID、创建或更新、素材数
 
 任何课程内容、素材、远端状态或发布选项变化都会使旧批准失效。修改同一门课时始终使用相同课程 ID；未改变的素材会根据相同课程 ID、相对路径和文件哈希复用。
 
-`OSS_ADMIN_KEY` 只应存在于启动 Agent 的进程环境中。不要把它粘贴到对话、课程材料、命令参数、`.course-work` 或 Git。
+第一次需要真实提交时，老师可以把管理员提供的 `OSS_ADMIN_KEY` 交给 Agent。Agent 会把它写入课程目录的本地 `.env`，同时确认 `/.env` 已加入 `.gitignore`；老师不需要执行命令，也不需要设置系统环境变量。Git 中只保留值为空的 `.env.example`。进程环境变量优先于 `.env`，方便部署环境覆盖本地设置。
+
+Agent 不得回显凭证，也不得把它写入命令参数、课程材料、`.course-work`、日志或 Git。其他老师使用自己的 Key 时遵循完全相同的方式；每台电脑和每个课程仓库分别保管本地 `.env`。
 
 ### 继续上一次工作
 
@@ -300,7 +302,7 @@ python3 scripts/install-skills.py --target both --replace
 - published 课程的 definition PUT 会先改变线上字节，ship 会重新生成 TTS；dry run 会明确提示这两个风险。
 - 接口为 last-writer-wins，当前没有 revision/optimistic concurrency。远端状态在批准后变化会阻止执行。
 
-`OSS_ADMIN_KEY` 只能通过进程环境变量提供。工具不会把它写入参数、课程文件、`.course-work`、Git 或普通输出；Bearer 只发送给学生端管理 API，不会发送到预签名 OSS URL。构建、检查、预览或批注请求都不构成上传或发布授权。
+`OSS_ADMIN_KEY` 可以通过进程环境变量或被 Git 忽略的课程目录 `.env` 提供，且进程环境变量优先。工具不会把它写入参数、课程文件、`.course-work`、Git 或普通输出；Bearer 只发送给学生端管理 API，不会发送到预签名 OSS URL。构建、检查、预览或批注请求都不构成上传或发布授权。
 
 ## 本地目录
 

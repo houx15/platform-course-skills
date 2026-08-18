@@ -17,7 +17,7 @@ Handle the only externally mutating phase. Read [api-contract.md](references/api
    ```
 
    Never replace an existing local identity and never adopt a remote course that merely happens to use the same slug.
-3. `OSS_ADMIN_KEY` must come only from the process environment. Never ask the teacher to paste it into course files, command arguments, chat output, logs, JSON, or Git. Never print an Authorization header or presigned URL.
+3. `OSS_ADMIN_KEY` may come from the process environment or 课程目录的 `.env`; 进程环境变量优先. The publication command loads the course `.env` first and uses the toolkit checkout `.env` only as a local development fallback. If a teacher provides the key to the Agent, confirm that `/.env` is ignored, write only `OSS_ADMIN_KEY=...` to that local file, and keep `.env.example` empty. 老师不需要执行命令. 不得回显凭证 or place it in command arguments, ordinary output, generated course files, JSON evidence, or Git. Never print an Authorization header or presigned URL.
 
 ## Prepare the dry run
 

@@ -2,6 +2,10 @@
 __pycache__/
 *.pyc
 node_modules/
+/.env
+
+# Course folders may keep their own local publication credential
+**/.env
 
 # Local source materials and generated end-to-end evidence
 /course_example.zip

@@ -164,6 +164,26 @@ class SkillPackageTests(unittest.TestCase):
         self.assertIn("老师只需要用中文自然交流", readme)
         self.assertIn("不需要把批注或确认翻译成英文", readme)
 
+    def test_teacher_credentials_are_stored_without_command_line_work(self):
+        build_skill = (
+            ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        publish_skill = (
+            ROOT / "skills" / "publish-platform-course" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((build_skill, publish_skill, readme))
+
+        for phrase in (
+            "课程目录的 `.env`",
+            "老师不需要执行命令",
+            "不得回显凭证",
+            "`.env.example`",
+            "进程环境变量优先",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
     def test_pdf_rules_are_consistent_across_skill_references(self):
         required = {
             ROOT
