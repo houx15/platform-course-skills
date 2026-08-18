@@ -69,11 +69,15 @@ Follow the returned commands without skipping:
 
 ```bash
 python _course-toolkit/scripts/course-workflow.py reconcile ROOT --json
+python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G3 --json
+python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G4 --json
 python _course-toolkit/scripts/compile-course.py ROOT --json
 python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G5 --json
 python _course-toolkit/scripts/validate-course-v2.py ROOT --json
 python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G6 --json
 ```
+
+An annotation application changes the Blueprint, so reconciliation invalidates G3 and every downstream gate. Reconfirm G3 and G4 from the already approved decision context before compiling; never jump directly from reconciliation to G5.
 
 Then open a new renderer preview through `preview-platform-course`. Applied annotations remain unverified until the teacher reviews the rebuilt definition and a new renderer preview binds them to current G7 evidence. If any runtime-bug remains, do not claim G7 complete.
 

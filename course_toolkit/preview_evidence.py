@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Dict, List
 
-from course_toolkit.annotations import AnnotationStore
+from course_toolkit.annotations import AnnotationStore, reconcile_annotations
 from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.workflow import hash_path
@@ -88,9 +88,19 @@ def _validate_events(value: object, slice_ids: List[str]) -> List[dict]:
 def _load_annotations(root: Path, definition_hash: str, completed_at: str) -> tuple:
     path = root / ".course-work/annotations.json"
     store = AnnotationStore.load(path)
+    applied = [annotation for annotation in store.all() if annotation.status == "applied"]
+    blueprint_hash = None
+    if applied:
+        blueprint_path = root / ".course-work/course-blueprint.json"
+        if not blueprint_path.is_file() or blueprint_path.is_symlink():
+            raise PreviewEvidenceError("applied annotation has no current Blueprint")
+        blueprint_hash = canonical_json_hash(load_json(blueprint_path))
     changed = False
     for annotation in store.all():
-        if annotation.status == "applied" and annotation.definition_hash == definition_hash:
+        if (
+            annotation.status == "applied"
+            and annotation.applied_blueprint_hash == blueprint_hash
+        ):
             store.transition(
                 annotation.id,
                 "verified",
@@ -100,6 +110,10 @@ def _load_annotations(root: Path, definition_hash: str, completed_at: str) -> tu
             changed = True
     if changed:
         store.save()
+        source_map_path = root / ".course-work/course-runtime-source-map.json"
+        if source_map_path.is_file() and not source_map_path.is_symlink():
+            reconcile_annotations(root, completed_at)
+            store = AnnotationStore.load(path)
     unresolved = [
         annotation
         for annotation in store.all()

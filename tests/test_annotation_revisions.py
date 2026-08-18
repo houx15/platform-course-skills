@@ -333,9 +333,17 @@ class AnnotationRevisionPlanTests(unittest.TestCase):
             payload["application"]["appliedAnnotationIds"],
             ["annotation-copy-1"],
         )
-        self.assertIn(
-            "python scripts/compile-course.py ROOT --json",
+        self.assertEqual(
             payload["application"]["nextRequiredCommands"],
+            [
+                "python scripts/course-workflow.py reconcile ROOT --json",
+                "python scripts/course-workflow.py complete-gate ROOT G3 --json",
+                "python scripts/course-workflow.py complete-gate ROOT G4 --json",
+                "python scripts/compile-course.py ROOT --json",
+                "python scripts/course-workflow.py complete-gate ROOT G5 --json",
+                "python scripts/validate-course-v2.py ROOT --json",
+                "python scripts/course-workflow.py complete-gate ROOT G6 --json",
+            ],
         )
 
 

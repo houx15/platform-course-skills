@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.preview_evidence import (
     PreviewEvidenceError,
@@ -93,6 +94,46 @@ class PreviewEvidenceTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(PreviewEvidenceError, "required annotation"):
             record_preview_evidence(self.root, self.client)
+
+    def test_verifies_an_applied_annotation_against_the_rebuilt_definition(self):
+        blueprint = {"course": {"id": "evidence-comparability", "parts": []}}
+        write_json_atomic(self.root / ".course-work/course-blueprint.json", blueprint)
+        annotation = {
+            "id": "annotation-applied-one",
+            "type": "layout",
+            "status": "applied",
+            "required": True,
+            "target": {
+                "courseId": "evidence-comparability",
+                "partId": "part-check-comparability",
+                "sliceId": self.slice_ids[0],
+                "blockId": None,
+                "itemId": None,
+                "workflowStepId": None,
+            },
+            "definitionHash": "a" * 64,
+            "text": "Make the video dominant.",
+            "screenshotPath": None,
+            "createdAt": NOW,
+            "updatedAt": NOW,
+            "classification": "semantic",
+            "proposedChange": "Use a 1:2 split layout.",
+            "resolutionDecisionId": "decision-layout-one",
+            "appliedBlueprintHash": canonical_json_hash(blueprint),
+            "verifiedAgainstDefinitionHash": None,
+            "orphanReason": None,
+            "reboundFromDefinitionHash": None,
+        }
+        write_json_atomic(
+            self.root / ".course-work/annotations.json",
+            {"schemaVersion": "1.0", "annotations": [annotation]},
+        )
+
+        manifest = record_preview_evidence(self.root, self.client)
+
+        stored = load_json(self.root / ".course-work/annotations.json")["annotations"][0]
+        self.assertEqual(stored["status"], "verified")
+        self.assertEqual(stored["verifiedAgainstDefinitionHash"], manifest["definitionHash"])
 
     def test_rejects_runtime_error(self):
         client = {**self.client, "runtimeErrors": ["iframe completion protocol failed"]}
