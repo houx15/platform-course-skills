@@ -2,7 +2,11 @@ import { z } from "zod";
 import { blockIdSchema } from "./primitives";
 
 export const LayoutPreset = z.enum(["full", "split-horizontal", "split-vertical", "grid"]);
-export const SplitRatio = z.enum(["1:1", "2:1", "1:2"]);
+// Split weights for the two tracks of a split-horizontal/-vertical layout.
+// Symmetric set: balanced (1:1), gently weighted (3:2 / 2:3), weighted
+// (2:1 / 1:2), and strongly weighted (3:1 / 1:3). Bounded on purpose — the
+// most lopsided is 3:1, so neither side is ever thinner than a quarter.
+export const SplitRatio = z.enum(["1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"]);
 
 export const LayoutSlot = z.object({ id: z.string().min(1), blockIds: z.array(blockIdSchema) }).strict();
 

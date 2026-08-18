@@ -4223,7 +4223,7 @@ function validateVideoInteraction(doc, video) {
 
 // packages/course-contract/src/layout.ts
 var LayoutPreset = external_exports.enum(["full", "split-horizontal", "split-vertical", "grid"]);
-var SplitRatio = external_exports.enum(["1:1", "2:1", "1:2"]);
+var SplitRatio = external_exports.enum(["1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"]);
 var LayoutSlot = external_exports.object({ id: external_exports.string().min(1), blockIds: external_exports.array(blockIdSchema) }).strict();
 var GRID_CELL_IDS = ["cell-1", "cell-2", "cell-3", "cell-4"];
 var LayoutDefinition = external_exports.object({ preset: LayoutPreset, ratio: SplitRatio.optional(), slots: external_exports.array(LayoutSlot).min(1) }).strict().superRefine((layout, ctx) => {

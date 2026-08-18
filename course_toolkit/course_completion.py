@@ -15,6 +15,7 @@ VALID_LAYOUT_SLOTS = {
     "split-horizontal": ("left", "right"),
     "split-vertical": ("top", "bottom"),
 }
+VALID_SPLIT_RATIOS = {"1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"}
 
 
 def _canonical_hash(data: object) -> str:
@@ -78,7 +79,7 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
     slots = layout.get("slots")
     if preset not in {"full", "split-horizontal", "split-vertical", "grid"}:
         issues.append(_issue(f"{base}.layout.preset", "invalid-layout-preset", "Use one of the four runtime layout presets."))
-    if preset in {"split-horizontal", "split-vertical"} and layout.get("ratio") not in {"1:1", "2:1", "1:2"}:
+    if preset in {"split-horizontal", "split-vertical"} and layout.get("ratio") not in VALID_SPLIT_RATIOS:
         issues.append(_issue(f"{base}.layout.ratio", "missing-layout-ratio", "Split layouts require an explicit supported ratio."))
     if not isinstance(slots, list):
         issues.append(_issue(f"{base}.layout.slots", "missing-layout-slots", "Layout slots must explicitly assign every Slice block."))
@@ -101,6 +102,77 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
             assigned.extend(slot["blockIds"])
     if sorted(assigned) != sorted(block_ids) or len(assigned) != len(set(assigned)):
         issues.append(_issue(f"{base}.layout.slots", "invalid-layout-assignment", "Every Slice block must appear in exactly one layout slot."))
+
+    # Teacher-side composition policy is deliberately narrower than the
+    # student contract. The renderer keeps accepting split-vertical for
+    # backward compatibility, but new courses must not turn text/assessment
+    # into shallow horizontal strips.
+    if preset == "split-vertical":
+        issues.append(
+            _issue(
+                f"{base}.layout.preset",
+                "split-vertical-discouraged",
+                "Do not author split-vertical by default. Use a horizontal split or split the content into separate Slices.",
+            )
+        )
+
+    if preset == "full" and len(block_ids) > 1:
+        issues.append(
+            _issue(
+                f"{base}.layout.slots",
+                "full-layout-stacks-blocks",
+                "A full layout may contain one focused Block only; use split-horizontal/grid or split the Slice instead of stacking Blocks.",
+            )
+        )
+
+    # Wide video and portrait PDF both need the larger column when paired.
+    # Equal or narrower allocation makes video shallow and PDF text too small.
+    if preset == "split-horizontal" and isinstance(blocks, list) and isinstance(slots, list):
+        block_types = {
+            block.get("id"): block.get("type")
+            for block in blocks
+            if isinstance(block, dict)
+        }
+        def slots_containing(block_type: str) -> set:
+            return {
+                slot.get("id")
+                for slot in slots
+                if isinstance(slot, dict)
+                and isinstance(slot.get("blockIds"), list)
+                and any(block_types.get(block_id) == block_type for block_id in slot["blockIds"])
+            }
+
+        if layout.get("ratio") in VALID_SPLIT_RATIOS:
+            left_weight, right_weight = (int(value) for value in layout["ratio"].split(":"))
+            for block_type, code, message in (
+                (
+                    "video",
+                    "video-slot-too-narrow",
+                    "A video paired with another region must own the larger horizontal split weight (for example 2:1 or 1:2).",
+                ),
+                (
+                    "pdf",
+                    "pdf-slot-too-narrow",
+                    "A portrait PDF paired with another region must own the larger horizontal split weight (for example 1:2 or 1:3 when it is on the right).",
+                ),
+            ):
+                media_slots = slots_containing(block_type)
+                if len(media_slots) != 1:
+                    continue
+                media_slot = next(iter(media_slots))
+                media_is_wider = (
+                    media_slot == "left" and left_weight > right_weight
+                ) or (
+                    media_slot == "right" and right_weight > left_weight
+                )
+                if not media_is_wider:
+                    issues.append(
+                        _issue(
+                            f"{base}.layout.ratio",
+                            code,
+                            message,
+                        )
+                    )
     return issues
 
 

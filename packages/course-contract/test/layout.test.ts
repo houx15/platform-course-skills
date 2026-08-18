@@ -15,6 +15,13 @@ describe("LayoutDefinition", () => {
     const { ratio, ...noRatio } = splitH;
     expect(LayoutDefinition.safeParse(noRatio).success).toBe(false);
   });
+  it("accepts the weighted ratios (3:2, 2:3, 3:1, 1:3) and rejects an out-of-set ratio", () => {
+    for (const ratio of ["1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"]) {
+      expect(LayoutDefinition.safeParse({ ...splitH, ratio }).success).toBe(true);
+    }
+    expect(LayoutDefinition.safeParse({ ...splitH, ratio: "5:1" }).success).toBe(false);
+    expect(LayoutDefinition.safeParse({ ...splitH, ratio: "3" }).success).toBe(false);
+  });
   it("rejects split-horizontal with wrong slot ids", () => {
     const bad = { ...splitH, slots: [ { id: "top", blockIds: ["v"] }, { id: "bottom", blockIds: ["q"] } ] };
     expect(LayoutDefinition.safeParse(bad).success).toBe(false);

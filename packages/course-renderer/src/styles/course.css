@@ -168,6 +168,29 @@
   gap: 8px;
 }
 
+/* ---------- Slot-block wrapper: repair the flex-height chain ----------
+ * SlicePlayer wraps every block in a FocusTarget div (`.course-slot-block`)
+ * that sits BETWEEN the flex slot and the block. Left unstyled it is a plain
+ * `display:block` flex-item that collapses to content height — which severs
+ * every "fill the slot" intent below it: a PDF/video's `flex:1 1 auto` and a
+ * media element's `max-height:100%` all resolve against a wrapper that already
+ * shrank to nothing, so content pins to the TOP of the slot and PDFs squash to
+ * a flat band. Making the wrapper a shrinkable flex column re-connects the
+ * chain; only wrappers that HOLD a fill-block grow, so a text intro stacked
+ * above a PDF keeps its natural height while the PDF below fills the rest. */
+.course-slot-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.course-slot-block:has(> .course-block--pdf),
+.course-slot-block:has(> .course-block--video),
+.course-slot-block:has(> .course-block--images),
+.course-slot-block:has(> .course-block--interactive-html) {
+  flex: 1 1 auto;
+}
+
 /* ---------- Media containment: video/pdf/image stay inside their slot ---------- */
 
 .course-block--video .course-video__player {
@@ -186,14 +209,20 @@
   object-fit: contain;
 }
 
-/* The PDF block is a flex column (header + viewport) that stretches to fill
- * its slot, so the browser-native viewer gets real, non-zero height instead
- * of collapsing to its content (P1-07). */
+/* The PDF block is a flex column (header + viewport) that fills its slot's
+ * height (P1-07). A PDF PAGE is portrait, so the viewport honors a page
+ * aspect and is centered as a document column rather than stretched to the
+ * slot's full width — the same "fit, don't distort" intent that object-fit
+ * gives video/images. In a wide `full` slot this reads as a centered page
+ * with side gutters (a document reader), not a short wide band; in a tall
+ * split column it fills naturally. (A PDF wants a TALL slot — see the layout
+ * guidance; a 1fr split side or grid cell is simply too short for a page.) */
 .course-block--pdf {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   gap: 8px;
+  align-items: center;
 }
 
 .course-pdf__header {
@@ -202,14 +231,20 @@
   justify-content: space-between;
   gap: 12px;
   flex: 0 0 auto;
+  width: 100%;
 }
 
 .course-pdf__viewport {
   position: relative;
-  width: 100%;
   flex: 1 1 auto;
-  min-height: 480px;
+  height: 100%;
+  /* portrait page: width follows the filled height, capped to the slot */
+  aspect-ratio: 1 / 1.3;
+  width: auto;
   max-width: 100%;
+  /* anti-collapse floor for an unusually short slot / a browser without the
+   * repaired flex chain — NOT the target height, flex-grow is. */
+  min-height: 200px;
   overflow: auto;
   border: 1px solid var(--course-border, #efe7dd);
   border-radius: var(--course-radius, 10px);
@@ -239,10 +274,28 @@
 
 .course-block--video,
 .course-block--pdf,
-.course-block--images {
+.course-block--images,
+.course-block--interactive-html {
   min-height: 0;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Interactive-HTML sizing (P?-fit): the block carries its own aspect ratio
+ * inline (1:1 or 4:3). Without a height bound it sized purely from its width
+ * — a 1:1 block in a wide slot became as TALL as the slot was wide and
+ * overflowed (the "stuck", scroll-to-see interaction). Now it fits its slot
+ * like the other media: fill the height, derive width from the aspect, cap to
+ * the slot width, and center — never stretch, never overflow. `align-self:
+ * center` stops the flex column from stretching it to full width (which would
+ * re-inflate the height through the aspect ratio). */
+.course-block--interactive-html {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  align-self: center;
+  margin-inline: auto;
 }
 
 /* ---------- Hidden-block stability (P1-06) ----------
@@ -544,12 +597,34 @@
   margin-right: auto;
 }
 
-/* ---------- Text / prose block ---------- */
+/* ---------- Text / prose block ----------
+ * A text block is a reading card, not a naked paragraph flush to the slot's
+ * top-left corner. It gets a surface, border, radius, and real padding; the
+ * measure is capped at ~66ch for readability and centered horizontally so it
+ * never sprawls the full 1280px+ of a `full` slot. Vertical centering is the
+ * slot's job (see the text-only-slot rule below) so a short card floats in the
+ * middle of its space instead of clinging to the top. */
 .course-block--text.prose {
-  font-size: 15px;
-  line-height: 1.75;
+  font-size: 16px;
+  line-height: 1.72;
   color: var(--course-ink);
-  max-width: 72ch;
+  max-width: 66ch;
+  margin-inline: auto;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--course-surface);
+  border: 1px solid var(--course-border);
+  border-radius: var(--course-radius-lg);
+  box-shadow: var(--course-shadow-sm);
+  padding: 26px 30px;
+}
+
+/* A slot whose ONLY content is a text card centers it vertically. `safe`
+ * keeps a card taller than the slot pinned to the top (and scrollable via the
+ * slot's overflow:auto) instead of clipping its first lines. Multi-block slots
+ * (e.g. text intro + PDF) are untouched — they stay top-aligned and stacked. */
+.course-layout__slot:has(> .course-slot-block:only-child > .course-block--text) {
+  justify-content: safe center;
 }
 .course-block--text.prose h1,
 .course-block--text.prose h2,
@@ -571,12 +646,20 @@
 .course-block--text.prose a { color: var(--course-accent); text-underline-offset: 2px; }
 
 /* ---------- Images block ---------- */
+/* The images block fills its (now-growing) slot-block and centers its figures
+ * in the available space rather than pinning them to the top. */
+.course-block--images {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
 .course-images__side-by-side,
 .course-images__single,
 .course-images__gallery {
   display: flex;
   gap: 16px;
-  align-items: flex-start;
+  align-items: center;
+  justify-content: center;
   flex-wrap: wrap;
   min-height: 0;
 }

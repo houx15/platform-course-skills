@@ -16,12 +16,15 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
     def test_catalog_covers_every_closed_runtime_choice(self):
         catalog = self.load_catalog()
 
-        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.0.0")
+        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.2.0")
         self.assertEqual(
             catalog["layout"]["presets"],
             ["full", "split-horizontal", "split-vertical", "grid"],
         )
-        self.assertEqual(catalog["layout"]["splitRatios"], ["1:1", "2:1", "1:2"])
+        self.assertEqual(
+            catalog["layout"]["splitRatios"],
+            ["1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"],
+        )
         self.assertEqual(
             catalog["blocks"]["types"],
             [
@@ -68,6 +71,20 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
         self.assertEqual(
             html["completedPayload"]["atLeastOneOf"],
             ["correct", "value"],
+        )
+
+    def test_catalog_exposes_media_aware_authoring_policy(self):
+        layout = self.load_catalog()["layout"]
+
+        self.assertIn("do-not-author-split-vertical-by-default", layout["authoringRules"])
+        self.assertIn("full-layout-has-one-block", layout["authoringRules"])
+        self.assertEqual(
+            layout["mediaComposition"],
+            {
+                "pdf": "portrait-column; never stretch into a wide shallow band",
+                "video": "wide-region; when paired, the video slot must have the larger split weight",
+                "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
+            },
         )
 
     def test_catalog_marks_events_without_a_real_renderer_producer(self):

@@ -10,7 +10,11 @@ class RuntimePinTests(unittest.TestCase):
             (ROOT / "course-contract.snapshot.json").read_text(encoding="utf-8")
         )
 
-        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.0.0")
+        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.2.0")
+        self.assertEqual(
+            manifest["upstreamCommit"],
+            "3329e96ed632d40ca30b3f190294c1bf935c5ffa",
+        )
         self.assertEqual(
             set(manifest["packages"]),
             {
@@ -18,6 +22,17 @@ class RuntimePinTests(unittest.TestCase):
                 "@mind-imprint/course-runtime",
                 "@mind-imprint/course-renderer",
             },
+        )
+        renderer = manifest["packages"]["@mind-imprint/course-renderer"]
+        self.assertNotEqual(renderer["treeHash"], renderer["upstreamTreeHash"])
+        self.assertEqual(
+            renderer["localPatches"],
+            [
+                {
+                    "path": "src/layout/LayoutRenderer.tsx",
+                    "reason": "Preserve v1.2.0 behavior while satisfying noUncheckedIndexedAccess.",
+                }
+            ],
         )
 
 

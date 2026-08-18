@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -80,6 +81,20 @@ class RuntimeBundleTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(json.loads(result.stdout)["ok"])
+
+    def test_installed_preview_contains_the_pinned_renderer_stylesheet(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime = self.install_runtime(Path(tmp))
+            css_files = list((runtime / "preview" / "assets").glob("*.css"))
+
+            self.assertEqual(len(css_files), 1)
+            stylesheet = css_files[0].read_text(encoding="utf-8")
+            compact_stylesheet = re.sub(r"\s+", "", stylesheet)
+
+        self.assertIn(".course-slot-block", stylesheet)
+        self.assertIn("aspect-ratio:1/1.3", compact_stylesheet)
+        self.assertIn(".course-block--interactive-html", stylesheet)
+        self.assertIn("max-width:66ch", stylesheet)
 
 
 if __name__ == "__main__":

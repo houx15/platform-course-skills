@@ -11,22 +11,20 @@ export interface LayoutRendererProps {
 }
 
 /**
- * `2:1` → `minmax(0, 2fr) minmax(0, 1fr)` etc. Split ratios only ever have two
- * tracks. §Slice5 / P1-06 — every track is wrapped in `minmax(0, …)` (not a
- * bare `Nfr`) so a track can actually shrink below its content's intrinsic
- * size; a bare `fr` track floors at its content size and blows out the
- * one-screen Slice contract the moment a slot's content is tall/wide.
+ * `2:1` → `minmax(0, 2fr) minmax(0, 1fr)`, `3:2` → `minmax(0, 3fr) minmax(0,
+ * 2fr)`, etc. A split ratio is always an `"a:b"` pair of positive integer
+ * weights (the contract's `SplitRatio` enum bounds the set); parsing it
+ * generically means new ratios need no renderer change. §Slice5 / P1-06 —
+ * every track is wrapped in `minmax(0, …)` (not a bare `Nfr`) so a track can
+ * actually shrink below its content's intrinsic size; a bare `fr` track floors
+ * at its content size and blows out the one-screen Slice contract the moment a
+ * slot's content is tall/wide. Falls back to 1:1 for a missing/malformed ratio.
  */
 function ratioTracks(ratio: SplitRatio | undefined): string {
-  switch (ratio) {
-    case "2:1":
-      return "minmax(0, 2fr) minmax(0, 1fr)";
-    case "1:2":
-      return "minmax(0, 1fr) minmax(0, 2fr)";
-    case "1:1":
-    default:
-      return "minmax(0, 1fr) minmax(0, 1fr)";
-  }
+  const [a, b] = (ratio ?? "1:1").split(":").map((n) => Number.parseInt(n, 10));
+  const left = a !== undefined && Number.isFinite(a) && a > 0 ? a : 1;
+  const right = b !== undefined && Number.isFinite(b) && b > 0 ? b : 1;
+  return `minmax(0, ${left}fr) minmax(0, ${right}fr)`;
 }
 
 /**

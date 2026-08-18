@@ -2,7 +2,7 @@
 
 ## Authority order
 
-1. `packages/course-contract` pinned at `course-authoring-v1.0.0` decides which JSON is accepted.
+1. `packages/course-contract` pinned at `course-authoring-v1.2.0` decides which JSON is accepted.
 2. `packages/course-runtime` and `packages/course-renderer` decide which accepted behavior is actually produced and rendered.
 3. `2026-08-15-student-course-runtime-data-and-renderer-design.md` explains product meaning.
 4. Golden examples demonstrate coverage; they never limit the available options.
@@ -20,7 +20,18 @@ Every Slice needs:
 - an explicit deterministic Workflow;
 - explicit navigation.
 
-Use `full`, `split-horizontal`, `split-vertical`, or `grid`. Split layouts require `1:1`, `2:1`, or `1:2`. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
+The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple Blocks in `full`. Use `split-horizontal` or `grid`, or split crowded material into another Slice. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
+
+### Media-aware composition
+
+Choose the layout from the material's natural aspect rather than distributing space evenly by habit:
+
+- **PDF is portrait.** Render it as a centred portrait page column, never as a stretched wide shallow band. Beside explanatory text, put the PDF in the larger column (`1:2`/`1:3` when the PDF is on the right; reverse the ratio when it is on the left).
+- **Video is wide.** Use `full` for a focused video or give it the larger side of a horizontal split (`3:2`, `2:1`, or `3:1`; reverse when video is on the right). A paired video must not receive an equal or smaller column.
+- **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
+- **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side; let the renderer's reading card constrain line length.
+
+These are authoring decisions. The renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
 
 ## Workflow completeness
 

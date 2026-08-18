@@ -31,6 +31,34 @@ describe("LayoutRenderer", () => {
     expect(ids).toEqual(["left", "right"]);
   });
 
+  it("split-horizontal 3:2 → weighted columns (60/40) via generic ratio parsing", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-horizontal",
+      ratio: "3:2",
+      slots: [
+        { id: "left", blockIds: ["a"] },
+        { id: "right", blockIds: ["b"] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateColumns).toBe("minmax(0, 3fr) minmax(0, 2fr)");
+  });
+
+  it("split-vertical 1:3 → strongly weighted rows (25/75)", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-vertical",
+      ratio: "1:3",
+      slots: [
+        { id: "top", blockIds: ["a"] },
+        { id: "bottom", blockIds: ["b"] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateRows).toBe("minmax(0, 1fr) minmax(0, 3fr)");
+  });
+
   it("split-vertical 1:2 → top/bottom regions with shrinkable minmax(0, …) rows (§Slice5 / P1-06)", () => {
     const layout: LayoutDefinition = {
       preset: "split-vertical",

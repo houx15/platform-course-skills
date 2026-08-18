@@ -135,6 +135,76 @@ class CourseCompletionTests(unittest.TestCase):
         self.assertEqual(audio_issue["category"], "teacher-decision")
         self.assertEqual(plan["slices"][0]["status"], "needs-teacher-decision")
 
+    def test_new_split_ratios_are_ready_for_contract_validation(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        blueprint["course"]["parts"][0]["slices"][0]["layout"]["ratio"] = "3:2"
+
+        plan = audit_course_draft(blueprint)
+
+        self.assertTrue(plan["summary"]["ready"])
+        self.assertEqual(plan["slices"][0]["issues"], [])
+
+    def test_split_vertical_is_rejected_by_teacher_authoring_policy(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        layout = blueprint["course"]["parts"][0]["slices"][0]["layout"]
+        layout["preset"] = "split-vertical"
+        layout["slots"] = [
+            {"id": "top", "blockIds": ["claim-text"]},
+            {"id": "bottom", "blockIds": ["evidence-question"]},
+        ]
+
+        plan = audit_course_draft(blueprint)
+
+        issues = plan["slices"][0]["issues"]
+        self.assertIn("split-vertical-discouraged", {issue["code"] for issue in issues})
+        self.assertFalse(plan["summary"]["ready"])
+
+    def test_full_layout_cannot_stack_multiple_blocks(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        layout = blueprint["course"]["parts"][0]["slices"][0]["layout"]
+        layout["preset"] = "full"
+        layout.pop("ratio", None)
+        layout["slots"] = [
+            {"id": "main", "blockIds": ["claim-text", "evidence-question"]},
+        ]
+
+        plan = audit_course_draft(blueprint)
+
+        issues = plan["slices"][0]["issues"]
+        self.assertIn("full-layout-stacks-blocks", {issue["code"] for issue in issues})
+        self.assertFalse(plan["summary"]["ready"])
+
+    def test_video_must_own_the_wider_horizontal_slot(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        slice_data = blueprint["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"][0] = {
+            "id": "claim-text",
+            "type": "video",
+            "source": "assets/videos/claim.mp4",
+        }
+        slice_data["layout"]["ratio"] = "1:2"
+
+        plan = audit_course_draft(blueprint)
+
+        issues = plan["slices"][0]["issues"]
+        self.assertIn("video-slot-too-narrow", {issue["code"] for issue in issues})
+
+    def test_pdf_must_own_the_wider_horizontal_slot(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        slice_data = blueprint["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"][1] = {
+            "id": "evidence-question",
+            "type": "pdf",
+            "source": "assets/pdfs/evidence.pdf",
+            "title": "Evidence",
+        }
+        slice_data["layout"]["ratio"] = "2:1"
+
+        plan = audit_course_draft(blueprint)
+
+        issues = plan["slices"][0]["issues"]
+        self.assertIn("pdf-slot-too-narrow", {issue["code"] for issue in issues})
+
     def test_plan_persists_as_the_single_completion_record(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -27,7 +27,7 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
    In a repository checkout, use `python scripts/complete-course-draft.py ROOT --json`.
 
 2. Read `.course-work/course-completion-plan.json`. Work through every Slice record; do not stop after fixing the first invalid Slice.
-3. Read the complete `runtime_authoring_catalog.json`. It exposes all four layouts, all seven Block types, all 16 种 Action, all 16 种 Event, matcher fields, navigation options, video cues, and HTML protocol fields. Common patterns are examples only and must never become a smaller closed schema.
+3. Read the complete `runtime_authoring_catalog.json`. It exposes all four contract layouts, all seven split weights, all seven Block types, all 16 种 Action, all 16 种 Event, matcher fields, navigation options, video cues, HTML protocol fields, and the narrower teacher-side media-composition policy. Contract support does not mean every layout is a good default: do not generate `split-vertical` by default or stack multiple Blocks in `full`.
 4. Preserve every valid authored field. 不得静默覆盖 teacher-confirmed wording, objectives, answers, rubrics, feedback, source paths, media timing, or prior production decisions. If a valid authored choice must change, record the exact before/after proposal and require teacher confirmation.
 5. For 每个 Slice, draft the complete production design:
 
@@ -38,7 +38,7 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
    - a deterministic `workflow` with explicit initial state, Steps, ordered actions, typed transitions, all meaningful answer branches, and a reachable terminal path;
    - complete `navigation`.
 
-6. Keep one Slice visually bounded to one desktop screen. Split the Slice when its learning action, materials, or Blocks cannot fit without crowding. A Slot may contain multiple ordered Blocks, but density is still a review constraint.
+6. Keep one Slice visually bounded to one desktop screen. Split the Slice when its learning action, materials, or Blocks cannot fit without crowding. Compose by natural media aspect: PDF is a portrait column, video owns a wide region, and HTML preserves its declared `1:1`/`4:3` ratio without stretching. Text and assessments need constrained reading width. A Slot may contain multiple ordered Blocks, but density is still a review constraint.
 7. For interactive HTML, inspect the actual file and explicitly decide whether it uses audio. When it does, author `capabilities.audio: true` and require the host lifecycle protocol. A valid completion message must carry `correct` or `value`; an empty completion payload is invalid.
 8. Do not generate a Workflow transition on `pdf.pageChanged`. It exists in the contract vocabulary but the pinned renderer has no producer for it; the catalog marks it `do-not-generate-transition`. PDF evidence must come from a separate interaction or assessment.
 9. Store proposed runtime choices in each Slice's `productionDecisions` inside `course-completion-plan.json`, with source IDs, decision IDs, rationale, and status `ai-proposed`. Present one review row per Slice:

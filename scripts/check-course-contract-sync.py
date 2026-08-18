@@ -89,7 +89,7 @@ def main() -> int:
                 mismatches.extend(
                     compare_package(
                         upstream_package,
-                        package["treeHash"],
+                        package.get("upstreamTreeHash", package["treeHash"]),
                         f"upstream:{package_name}",
                     )
                 )
