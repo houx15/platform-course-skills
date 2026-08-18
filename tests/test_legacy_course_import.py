@@ -138,6 +138,17 @@ class LegacyCourseImportTests(unittest.TestCase):
             workflow["steps"][1]["transitions"][0]["on"]["type"],
             "interaction.completed",
         )
+        self.assertEqual(
+            workflow["initialState"]["enabledBlockIds"],
+            ["legacy-text", "legacy-images", "legacy-pdf", "legacy-video"],
+        )
+        self.assertEqual(
+            workflow["steps"][1]["enterActions"],
+            [
+                {"type": "enable", "targetId": "legacy-html"},
+                {"type": "focus", "target": {"blockId": "legacy-html"}},
+            ],
+        )
 
     def test_identical_inputs_produce_byte_identical_blueprints(self):
         first = import_legacy_course(legacy_course(), legacy_storyboard())

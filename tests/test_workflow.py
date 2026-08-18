@@ -253,6 +253,26 @@ class ArtifactReconciliationTests(unittest.TestCase):
         self.assertEqual(session.phase, "course-design")
         self.assertEqual(result.earliest_invalidated_gate_id, "G3")
 
+    def test_revalidated_artifact_resolves_prior_change_warning(self):
+        blueprint = self.root / ".course-work" / "course-blueprint.json"
+        write_json_atomic(blueprint, {"title": "new"})
+        session = fully_gated_through("G8")
+        session.artifact_hashes[".course-work/course-blueprint.json"] = "old"
+
+        first = reconcile_artifacts(self.root, session, NOW)
+        second = reconcile_artifacts(self.root, session, NOW)
+
+        self.assertTrue(
+            any(issue.code == "workflow-artifact-changed" for issue in first.active_issues)
+        )
+        self.assertFalse(
+            any(
+                issue.code == "workflow-artifact-changed"
+                and issue.target == {"path": ".course-work/course-blueprint.json"}
+                for issue in second.active_issues
+            )
+        )
+
     def test_renderer_version_change_invalidates_preview_not_compilation(self):
         manifest = self.root / ".course-work" / "preview-manifest.json"
         write_json_atomic(manifest, {"rendererVersion": "1"})
@@ -466,6 +486,36 @@ class PackageValidationEvidenceTests(unittest.TestCase):
             ["G0", "G1", "G2", "G3", "G4", "G5"],
         )
         self.assertEqual(result.earliest_invalidated_gate_id, "G6")
+
+    def test_revalidated_asset_resolves_prior_change_warning(self):
+        self.validate()
+        session = fully_gated_through("G8")
+        session.artifact_hashes.update(verify_g5_compilation(self.root))
+        session.artifact_hashes.update(verify_g6_validation(self.root))
+        asset = self.root / "course/assets/images/diagram.png"
+        asset.write_bytes(b"changed")
+
+        first = reconcile_artifacts(self.root, session, NOW)
+        second = reconcile_artifacts(self.root, session, NOW)
+
+        target = {"path": "assets/images/diagram.png"}
+        self.assertTrue(any(issue.target == target for issue in first.active_issues))
+        self.assertFalse(any(issue.target == target for issue in second.active_issues))
+
+    def test_unchanged_course_asset_does_not_invalidate_g6(self):
+        self.validate()
+        session = fully_gated_through("G8")
+        session.artifact_hashes.update(verify_g5_compilation(self.root))
+        session.artifact_hashes.update(verify_g6_validation(self.root))
+
+        result = reconcile_artifacts(self.root, session, NOW)
+
+        self.assertNotIn(
+            "@course/asset:assets/images/diagram.png",
+            result.changed_paths,
+        )
+        self.assertNotEqual(result.earliest_invalidated_gate_id, "G6")
+        self.assertIn("G6", session.completed_gate_ids)
 
     def test_validator_hash_change_invalidates_g6(self):
         self.validate()

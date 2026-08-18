@@ -26,6 +26,7 @@ from course_toolkit.workflow import (
     complete_gate,
     load_session,
     new_session,
+    reconcile_artifacts,
     save_session,
     verify_g5_compilation,
     verify_g6_validation,
@@ -177,6 +178,23 @@ class LivePublicationTests(unittest.TestCase):
             result["reusedPaths"],
             sorted(asset["relativePath"] for asset in preflight["assets"]["upload"]),
         )
+
+    def test_repeated_publish_refreshes_gate_evidence_without_false_invalidation(self):
+        prepare_live_preflight(
+            self.root, self.api, action="publish", blurb="First", card_ids=[], cover="", now=NOW
+        )
+        self.approve_preflight()
+        execute_live_publication(self.root, self.api, now=NOW)
+
+        prepare_live_preflight(
+            self.root, self.api, action="publish", blurb="Second", card_ids=[], cover="", now=NOW
+        )
+        self.approve_preflight()
+        second = execute_live_publication(self.root, self.api, now=NOW)
+        reconciled = reconcile_artifacts(self.root, load_session(self.root), NOW)
+
+        self.assertEqual(second["uploadedPaths"], [])
+        self.assertIsNone(reconciled.earliest_invalidated_gate_id)
 
 
 if __name__ == "__main__":

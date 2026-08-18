@@ -13,7 +13,13 @@ from course_toolkit.mind_imprint_api import (
     RemoteCourse,
 )
 from course_toolkit.package_review import verify_g8_review
-from course_toolkit.workflow import complete_gate, hash_path, load_session, save_session
+from course_toolkit.workflow import (
+    complete_gate,
+    hash_path,
+    invalidate_from_gate,
+    load_session,
+    save_session,
+)
 
 
 LIVE_SCHEMA_VERSION = "2.0"
@@ -346,6 +352,8 @@ def _complete_trusted_gate(root: Path, gate_id: str, evidence: dict, now: str) -
     decisions = DecisionStore.load(root / ".course-work/decisions.json")
     active = [issue for issue in issues.all() if issue.status == "active"]
     pending = [decision.id for decision in decisions.all() if decision.status in {"pending", "invalidated"}]
+    if gate_id in session.completed_gate_ids:
+        invalidate_from_gate(session, gate_id, now)
     complete_gate(
         session,
         gate_id,

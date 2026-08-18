@@ -51,20 +51,20 @@ window.addEventListener("message", (event) => {
       message.version !== VERSION ||
       !message.sessionToken) return;
   sessionToken = message.sessionToken;
-  send("ready", { interactionId: "stable-interaction-id" });
+  send("ready", {});
 });
 
 send("completed", {
-  interactionId: "stable-interaction-id",
-  evidence: {
+  resultId: "stable-attempt-id",
+  value: {
     answer: "option-id",
-    isCorrect: true,
     attempts: 1
-  }
+  },
+  correct: true
 });
 ```
 
-The frame may send `ready`, `progress`, `completed`, or `error`. Every message echoes the current host-issued token. A completed payload always contains a stable `interactionId` and JSON-compatible `evidence`; include correctness only for objectively graded interactions. The authoring validator checks these fields, but browser/runtime persistence remains a separate platform verification.
+The frame may send `ready`, `progress`, `completed`, or `error`. Every message echoes the current host-issued token. A completed payload must contain `correct` and/or JSON-compatible `value` learning evidence. `resultId` is an optional stable identity for duplicate completion detection. The host always stamps the Block ID as `interactionId`; the frame must not invent or rely on that identity. Include `correct` only for objectively graded interactions. The authoring validator checks these fields, but browser/runtime persistence remains a separate platform verification.
 
 Do not use `fetch`, XMLHttpRequest, WebSocket, EventSource, beacon APIs, browser storage, cookies, opener/top access, or `parent.document`. The file is self-contained and communicates only through the message protocol.
 

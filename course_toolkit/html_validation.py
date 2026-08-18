@@ -496,9 +496,9 @@ def _completion_window(text: str) -> str:
 def validate_interactive_html_v2(path: Path) -> List[ValidationIssue]:
     """Validate the CourseDefinition 2.0 iframe handshake and authoring policy.
 
-    The student renderer currently validates the envelope and treats payload as
-    unknown. This authoring-side check deliberately requires completion identity
-    and evidence without claiming the runtime already persists those fields.
+    Match the pinned student contract: the host owns the Block interaction ID,
+    while the frame may send a resultId and must send correct and/or value as
+    learning evidence.
     """
     issues = [
         issue
@@ -573,15 +573,15 @@ def validate_interactive_html_v2(path: Path) -> List[ValidationIssue]:
         )
 
     completion = _completion_window(text)
-    if not completion or not all(
-        re.search(rf"\b{field}\b", completion)
-        for field in ("interactionId", "evidence")
-    ):
+    if not completion or re.search(
+        r"\b(?:correct|value)\s*(?::|,|\})",
+        completion,
+    ) is None:
         issues.append(
             ValidationIssue(
                 str(path),
                 "missing-completion-evidence",
-                "completed payload must include a stable interactionId and learning evidence",
+                "completed payload must include correct and/or value learning evidence; the host owns interactionId",
             )
         )
 

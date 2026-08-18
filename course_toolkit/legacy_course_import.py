@@ -185,9 +185,14 @@ def _workflow(blocks: Sequence[dict], legacy_blocks: Sequence[dict]) -> dict:
     blocking = [
         block for block in legacy_blocks if block.get("blocking") is True
     ]
+    blocking_ids = [block["id"] for block in blocking]
     initial_state = {
         "visibleBlockIds": block_ids,
-        "enabledBlockIds": block_ids,
+        "enabledBlockIds": [
+            block_id
+            for block_id in block_ids
+            if block_id not in blocking_ids[1:]
+        ],
     }
     if not blocking:
         return {
@@ -224,7 +229,10 @@ def _workflow(blocks: Sequence[dict], legacy_blocks: Sequence[dict]) -> dict:
         steps.append(
             {
                 "id": f"wait-{block_id}",
-                "enterActions": [{"type": "focus", "target": {"blockId": block_id}}],
+                "enterActions": [
+                    {"type": "enable", "targetId": block_id},
+                    {"type": "focus", "target": {"blockId": block_id}},
+                ],
                 "transitions": [
                     {
                         "on": {"type": event_type, "sourceId": block_id},

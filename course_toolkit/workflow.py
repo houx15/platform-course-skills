@@ -838,26 +838,27 @@ def reconcile_artifacts(
         artifact = _safe_course_path(root, rule.path.rstrip("/"))
         previous_hash = session.artifact_hashes.get(rule.path)
         current_hash = hash_path(artifact) if artifact.exists() else None
+        change_issue = make_registered_issue(
+            code="workflow-artifact-changed",
+            source="workflow",
+            message=f"Tracked course artifact changed: {rule.path}",
+            gate_id=rule.gate_id,
+            seen_at=now,
+            target={"path": rule.path},
+            remediation=f"Re-run workflow checks from {rule.gate_id}.",
+        )
         if previous_hash is None:
             if current_hash is not None:
                 session.artifact_hashes[rule.path] = current_hash
+                _resolve_recurring_issue(issue_store, change_issue, now)
             continue
         if current_hash == previous_hash:
+            _resolve_recurring_issue(issue_store, change_issue, now)
             continue
 
         changed_paths.append(rule.path)
         changed_gate_ids.append(rule.gate_id)
-        issue_store.upsert(
-            make_registered_issue(
-                code="workflow-artifact-changed",
-                source="workflow",
-                message=f"Tracked course artifact changed: {rule.path}",
-                gate_id=rule.gate_id,
-                seen_at=now,
-                target={"path": rule.path},
-                remediation=f"Re-run workflow checks from {rule.gate_id}.",
-            )
-        )
+        issue_store.upsert(change_issue)
         if current_hash is None:
             session.artifact_hashes.pop(rule.path, None)
         else:
@@ -868,21 +869,21 @@ def reconcile_artifacts(
         if previous_hash is None:
             continue
         current_hash = hash_path(artifact)
+        change_issue = make_registered_issue(
+            code="workflow-artifact-changed",
+            source="workflow",
+            message=f"Tracked course artifact changed: {artifact_id}",
+            gate_id="G5",
+            seen_at=now,
+            target={"path": artifact_id},
+            remediation="Recompile the CourseDefinition and re-run G5 checks.",
+        )
         if current_hash == previous_hash:
+            _resolve_recurring_issue(issue_store, change_issue, now)
             continue
         changed_paths.append(artifact_id)
         changed_gate_ids.append("G5")
-        issue_store.upsert(
-            make_registered_issue(
-                code="workflow-artifact-changed",
-                source="workflow",
-                message=f"Tracked course artifact changed: {artifact_id}",
-                gate_id="G5",
-                seen_at=now,
-                target={"path": artifact_id},
-                remediation="Recompile the CourseDefinition and re-run G5 checks.",
-            )
-        )
+        issue_store.upsert(change_issue)
         session.artifact_hashes[artifact_id] = current_hash
 
     for artifact_id, artifact in TOOLKIT_G9_ARTIFACTS.items():
@@ -895,21 +896,21 @@ def reconcile_artifacts(
             current_hash = publisher_code_hash()
         else:
             current_hash = hash_path(artifact)
+        change_issue = make_registered_issue(
+            code="workflow-artifact-changed",
+            source="workflow",
+            message=f"Tracked course artifact changed: {artifact_id}",
+            gate_id="G9",
+            seen_at=now,
+            target={"path": artifact_id},
+            remediation="Prepare and approve a new publication dry run.",
+        )
         if current_hash == previous_hash:
+            _resolve_recurring_issue(issue_store, change_issue, now)
             continue
         changed_paths.append(artifact_id)
         changed_gate_ids.append("G9")
-        issue_store.upsert(
-            make_registered_issue(
-                code="workflow-artifact-changed",
-                source="workflow",
-                message=f"Tracked course artifact changed: {artifact_id}",
-                gate_id="G9",
-                seen_at=now,
-                target={"path": artifact_id},
-                remediation="Prepare and approve a new publication dry run.",
-            )
-        )
+        issue_store.upsert(change_issue)
         session.artifact_hashes[artifact_id] = current_hash
 
     validator_id = "@toolkit/course-package-validator"
@@ -918,28 +919,29 @@ def reconcile_artifacts(
         from course_toolkit.course_package_validation import validator_code_hash
 
         current_validator_hash = validator_code_hash()
+        change_issue = make_registered_issue(
+            code="workflow-artifact-changed",
+            source="workflow",
+            message=f"Tracked course artifact changed: {validator_id}",
+            gate_id="G6",
+            seen_at=now,
+            target={"path": validator_id},
+            remediation="Re-run CourseDefinition 2.0 validation and G6.",
+        )
         if current_validator_hash != previous_validator_hash:
             changed_paths.append(validator_id)
             changed_gate_ids.append("G6")
-            issue_store.upsert(
-                make_registered_issue(
-                    code="workflow-artifact-changed",
-                    source="workflow",
-                    message=f"Tracked course artifact changed: {validator_id}",
-                    gate_id="G6",
-                    seen_at=now,
-                    target={"path": validator_id},
-                    remediation="Re-run CourseDefinition 2.0 validation and G6.",
-                )
-            )
+            issue_store.upsert(change_issue)
             session.artifact_hashes[validator_id] = current_validator_hash
+        else:
+            _resolve_recurring_issue(issue_store, change_issue, now)
 
     for artifact_id, previous_hash in list(session.artifact_hashes.items()):
         if not artifact_id.startswith(G6_ASSET_EVIDENCE_PREFIX):
             continue
         source = artifact_id.removeprefix(G6_ASSET_EVIDENCE_PREFIX)
         try:
-            asset = _safe_course_path(root, source)
+            asset = _safe_course_path(root / "course", source)
         except WorkflowError:
             current_hash = None
         else:
@@ -948,21 +950,21 @@ def reconcile_artifacts(
                 if asset.is_file() and not asset.is_symlink()
                 else None
             )
+        change_issue = make_registered_issue(
+            code="workflow-artifact-changed",
+            source="workflow",
+            message=f"Tracked course asset changed: {source}",
+            gate_id="G6",
+            seen_at=now,
+            target={"path": source},
+            remediation="Re-run CourseDefinition 2.0 validation and G6.",
+        )
         if current_hash == previous_hash:
+            _resolve_recurring_issue(issue_store, change_issue, now)
             continue
         changed_paths.append(artifact_id)
         changed_gate_ids.append("G6")
-        issue_store.upsert(
-            make_registered_issue(
-                code="workflow-artifact-changed",
-                source="workflow",
-                message=f"Tracked course asset changed: {source}",
-                gate_id="G6",
-                seen_at=now,
-                target={"path": source},
-                remediation="Re-run CourseDefinition 2.0 validation and G6.",
-            )
-        )
+        issue_store.upsert(change_issue)
         if current_hash is None:
             session.artifact_hashes.pop(artifact_id, None)
         else:

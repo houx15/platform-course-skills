@@ -55,7 +55,7 @@ button, input, select, textarea { font-size: inherit; }
 <script>
 const PROTOCOL = "mind-course-interaction";
 const VERSION = "1.0";
-const interactionId = "evidence-check";
+const resultId = "evidence-check-attempt-1";
 let sessionToken = null;
 let selectedAnswer = "source-and-method";
 
@@ -74,13 +74,13 @@ window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.protocol !== PROTOCOL || message.version !== VERSION || !message.sessionToken) return;
   sessionToken = message.sessionToken;
-  send("ready", { interactionId });
+  send("ready", {});
 });
 
 function finish() {
   send("completed", {
-    interactionId,
-    evidence: { answer: selectedAnswer, attempts: 1 }
+    resultId,
+    value: { answer: selectedAnswer, attempts: 1 }
   });
 }
 document.getElementById("complete").addEventListener("click", finish);
@@ -331,12 +331,20 @@ class HtmlV2ValidationTests(unittest.TestCase):
         )
         self.assertIn("missing-session-token-echo", self.codes(text))
 
-    def test_completed_payload_requires_identity_and_learning_evidence(self):
-        no_identity = VALID_HTML_V2.replace("interactionId,\n    evidence", "resultId: 1,\n    evidence")
-        no_evidence = VALID_HTML_V2.replace("evidence: { answer: selectedAnswer, attempts: 1 }", "status: 'done'")
+    def test_completed_payload_accepts_optional_result_id_but_requires_learning_evidence(self):
+        no_result_id = VALID_HTML_V2.replace("    resultId,\n", "")
+        no_evidence = VALID_HTML_V2.replace("value: { answer: selectedAnswer, attempts: 1 }", "status: 'done'")
 
-        self.assertIn("missing-completion-evidence", self.codes(no_identity))
+        self.assertNotIn("missing-completion-evidence", self.codes(no_result_id))
         self.assertIn("missing-completion-evidence", self.codes(no_evidence))
+
+    def test_completed_payload_accepts_correct_as_the_only_evidence(self):
+        correct_only = VALID_HTML_V2.replace(
+            "value: { answer: selectedAnswer, attempts: 1 }",
+            "correct: true",
+        )
+
+        self.assertNotIn("missing-completion-evidence", self.codes(correct_only))
 
     def test_network_and_host_storage_apis_are_prohibited(self):
         snippets = (
