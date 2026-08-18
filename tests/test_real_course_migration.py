@@ -17,18 +17,18 @@ from course_toolkit.decisions import DecisionStore
 from course_toolkit.jsonio import dump_json, load_json, write_json_atomic
 from course_toolkit.legacy_course_import import import_legacy_course
 from course_toolkit.workflow import verify_g6_validation
-from tests.helpers import ROOT
+from tests.helpers import ROOT, write_test_mp4, write_test_pdf
 from tests.test_html_validation import VALID_HTML_V2
 
 
-REAL_ROOT = ROOT / "e2e" / "for-test-course"
-LEGACY_COURSE = REAL_ROOT / "course" / "course.json"
-STORYBOARD = REAL_ROOT / ".course-work" / "course-storyboard.json"
+FIXTURE_ROOT = ROOT / "tests" / "fixtures" / "course-blueprint"
+LEGACY_COURSE = FIXTURE_ROOT / "legacy-course.json"
+STORYBOARD = FIXTURE_ROOT / "legacy-storyboard.json"
 DECIDED_AT = "2026-08-16T00:00:00Z"
 
 
-class RealCourseMigrationTests(unittest.TestCase):
-    def test_real_legacy_course_migrates_after_explicit_assumption_decision(self):
+class CommittedCourseMigrationTests(unittest.TestCase):
+    def test_committed_legacy_course_migrates_after_explicit_assumption_decision(self):
         legacy = load_json(LEGACY_COURSE)
         storyboard = load_json(STORYBOARD)
         blueprint = import_legacy_course(legacy, storyboard)
@@ -70,12 +70,25 @@ class RealCourseMigrationTests(unittest.TestCase):
                 confirmed,
             )
             write_compilation_outputs_atomic(root, first)
-            pdf = root / "course/assets/pdfs/source-paper-test.pdf"
-            pdf.parent.mkdir(parents=True, exist_ok=True)
-            pdf.write_bytes(
-                (REAL_ROOT / "course/assets/pdfs/source-paper-test.pdf").read_bytes()
+            for source in ("assets/images/a.png", "assets/images/b.png"):
+                image = root / "course" / source
+                image.parent.mkdir(parents=True, exist_ok=True)
+                image.write_bytes(source.encode("utf-8"))
+            write_test_pdf(root / "course/assets/pdfs/source.pdf")
+            write_test_mp4(root / "course/assets/videos/case.mp4")
+            write_json_atomic(
+                root / "course/interactions/video/case.json",
+                {
+                    "schemaVersion": "1.1",
+                    "video": {
+                        "blockId": "legacy-video",
+                        "source": "assets/videos/case.mp4",
+                        "durationSeconds": 32.533333,
+                        "cues": [],
+                    },
+                },
             )
-            html = root / "course/interactions/html/urban-heat-island-check.html"
+            html = root / "course/interactions/html/check.html"
             html.parent.mkdir(parents=True, exist_ok=True)
             html.write_text(VALID_HTML_V2, encoding="utf-8")
             first_validation = build_course_validation_report(root)
@@ -85,31 +98,34 @@ class RealCourseMigrationTests(unittest.TestCase):
             g6_evidence = verify_g6_validation(root)
 
         course = first.document["course"]
-        self.assertEqual(len(course["parts"]), 6)
-        self.assertEqual(sum(len(part["slices"]) for part in course["parts"]), 13)
+        self.assertEqual(len(course["parts"]), 1)
+        self.assertEqual(sum(len(part["slices"]) for part in course["parts"]), 1)
         self.assertEqual(
             sum(
                 len(slice_data["blocks"])
                 for part in course["parts"]
                 for slice_data in part["slices"]
             ),
-            27,
+            7,
         )
         self.assertEqual(dump_json(first.document), dump_json(second.document))
         self.assertEqual(dump_json(first.source_map), dump_json(second.source_map))
         self.assertEqual(first.report["status"], "compiled")
         self.assertEqual(first.report["issues"], [])
         self.assertEqual(first_validation, second_validation)
-        self.assertEqual(first_validation["status"], "clear")
+        self.assertEqual(first_validation["status"], "warnings")
         self.assertEqual(first_validation["issues"], [])
-        self.assertEqual(first_validation["warnings"], [])
+        self.assertEqual(
+            [warning["code"] for warning in first_validation["warnings"]],
+            ["dense-slice"],
+        )
         self.assertEqual(
             first_validation["summary"],
             {
-                "partCount": 6,
-                "sliceCount": 13,
-                "blockCount": 27,
-                "assetCount": 2,
+                "partCount": 1,
+                "sliceCount": 1,
+                "blockCount": 7,
+                "assetCount": 6,
             },
         )
         self.assertEqual(
