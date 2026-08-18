@@ -7,6 +7,7 @@ import { AnnotationPanel } from "./AnnotationPanel";
 import { createPreviewAdapters, loadVideoInteraction, SilentPreviewAudioEngine } from "./previewAdapters";
 
 export function PreviewCoursePlayer({ document, definitionHash }: { document: CourseDefinitionDocument; definitionHash: string }) {
+  const [annotationsOpen, setAnnotationsOpen] = useState(false);
   const [progress, setProgress] = useState<CourseProgress>({ phase: "loading", sliceIndex: 0, sliceCount: 0 });
   const [events, setEvents] = useState<Array<{ id: string; type: string; sourceId: string; sliceId: string | null }>>([]);
   const [visitedSliceIds, setVisitedSliceIds] = useState<string[]>([]);
@@ -63,7 +64,25 @@ export function PreviewCoursePlayer({ document, definitionHash }: { document: Co
           </AudioEngineProvider>
         </InteractionLoaderProvider>
       </section>
-      <AnnotationPanel document={document} definitionHash={definitionHash} sliceIndex={progress.sliceIndex} events={events} visitedSliceIds={visitedSliceIds} runtimeErrors={runtimeErrors} />
+      <div
+        className={`annotation-sidebar ${annotationsOpen ? "annotation-sidebar--expanded" : "annotation-sidebar--collapsed"}`}
+        style={{ width: annotationsOpen ? 330 : 46 }}
+      >
+        <button
+          type="button"
+          className="annotation-toggle"
+          aria-controls="course-annotation-drawer"
+          aria-expanded={annotationsOpen}
+          onClick={() => setAnnotationsOpen((open) => !open)}
+        >
+          {annotationsOpen ? "关闭课程批注" : "打开课程批注"}
+        </button>
+        {annotationsOpen ? (
+          <div id="course-annotation-drawer" className="annotation-drawer">
+            <AnnotationPanel document={document} definitionHash={definitionHash} sliceIndex={progress.sliceIndex} events={events} visitedSliceIds={visitedSliceIds} runtimeErrors={runtimeErrors} />
+          </div>
+        ) : <span className="annotation-rail-label" aria-hidden="true">课程批注</span>}
+      </div>
     </main>
   );
 }
