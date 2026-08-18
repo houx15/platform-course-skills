@@ -146,6 +146,24 @@ class SkillPackageTests(unittest.TestCase):
         )
         self.assertNotIn("still being added", combined)
 
+    def test_build_platform_course_follows_the_teachers_language(self):
+        skill_path = ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        skill = skill_path.read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        required = (
+            "跟随老师当前使用的语言",
+            "老师使用中文时",
+            "澄清问题、设计表、批注处理、检查结果和发布计划",
+            "内部字段名、稳定 ID、文件路径和命令",
+        )
+        for phrase in required:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, skill)
+
+        self.assertIn("老师只需要用中文自然交流", readme)
+        self.assertIn("不需要把批注或确认翻译成英文", readme)
+
     def test_pdf_rules_are_consistent_across_skill_references(self):
         required = {
             ROOT
