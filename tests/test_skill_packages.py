@@ -72,7 +72,7 @@ class SkillPackageTests(unittest.TestCase):
             "G0–G10",
             "cannot be skipped",
             "earliest incomplete or invalidated gate",
-            "semantic changes require teacher confirmation",
+            "teacher-authored preview annotation is an explicit change instruction",
             "CourseDefinition 2.0",
             "current implementation boundary",
             "annotations invalidate G8 and G9",
@@ -117,7 +117,6 @@ class SkillPackageTests(unittest.TestCase):
             "current compilation hashes",
             "validate-course-v2.py",
             "complete-gate ROOT G6",
-            "accept-warning",
             "course-validation-report.json",
             "manage-annotations.py reconcile",
             "annotation-revision-plan.json",
@@ -163,6 +162,81 @@ class SkillPackageTests(unittest.TestCase):
 
         self.assertIn("老师只需要用中文自然交流", readme)
         self.assertIn("不需要把批注或确认翻译成英文", readme)
+
+    def test_build_platform_course_defaults_to_auto_preview_first_authoring(self):
+        skill = (
+            ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        workflow = (
+            ROOT
+            / "skills"
+            / "build-platform-course"
+            / "references"
+            / "workflow.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((skill, workflow, readme))
+
+        for phrase in (
+            "默认连续工作到首次完整预览",
+            "Auto 模式",
+            "预览优先",
+            "AI 初稿",
+            "真正阻塞项",
+            "第一次主要人工介入",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+        self.assertNotIn("等待教师确认 both tables as one complete design gate", skill)
+        self.assertNotIn("confirm the material summary", skill.lower())
+
+    def test_apply_preview_feedback_treats_exact_annotation_as_instruction(self):
+        skill = (
+            ROOT / "skills" / "apply-preview-feedback" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("annotation itself is the explicit teacher instruction", skill)
+        self.assertIn("do not request duplicate approval", skill)
+        self.assertIn("use the annotation text as the decision rationale", skill)
+        self.assertNotIn(
+            "Never infer approval from the original annotation",
+            skill,
+        )
+
+    def test_blueprint_completion_does_not_pause_before_preview(self):
+        skill = (
+            ROOT / "skills" / "design-course-blueprint" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("source-backed AI draft", skill)
+        self.assertIn("continue directly to compilation", skill)
+        self.assertIn("teacher reviews these choices in the renderer preview", skill)
+        self.assertNotIn("Batch related semantic decisions for teacher confirmation", skill)
+
+    def test_material_analysis_returns_ai_draft_without_group_confirmation(self):
+        skill = (
+            ROOT / "skills" / "analyze-course-materials" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("teacherConfirmed: false", skill)
+        self.assertIn("return the AI-draft classification without pausing", skill)
+        self.assertIn("record that none was detected", skill)
+        self.assertNotIn("Ask for one 分组确认", skill)
+
+    def test_media_specialists_generate_source_backed_drafts_before_preview(self):
+        html = (
+            ROOT / "skills" / "design-course-html" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        video = (
+            ROOT / "skills" / "design-video-interactions" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        for text in (html, video):
+            self.assertIn("source-backed AI draft", text)
+            self.assertIn("true blocker", text)
+        self.assertNotIn("wait for 教师确认", html)
+        self.assertNotIn("obtain 教师确认", video)
 
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (

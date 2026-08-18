@@ -1,6 +1,6 @@
 ---
 name: apply-preview-feedback
-description: Use when a teacher has left course preview annotations and wants the approved content, layout, workflow, media, or interaction changes applied safely.
+description: Use when a teacher has left course preview annotations and wants content, layout, workflow, media, or interaction changes applied safely.
 ---
 
 # Apply Preview Feedback
@@ -40,9 +40,9 @@ python _course-toolkit/scripts/manage-annotations.py prepare ROOT \
 
 Preparation verifies target binding, hashes, operation boundaries, and decision context. If anything is stale, rebuild the plan from current evidence rather than bypassing the check.
 
-## Obtain decisions and apply
+## Record instructions and apply
 
-Present each semantic proposal in teacher language: current behavior, requested behavior, affected Slice/Block/Step, and learning consequence. Apply it only after explicit teacher approval and rationale for that exact decision:
+When an annotation requests an exact semantic change, the annotation itself is the explicit teacher instruction. Record its decision context and use the annotation text as the decision rationale; do not request duplicate approval for the same change:
 
 ```bash
 python _course-toolkit/scripts/course-workflow.py confirm-decision ROOT DECISION_ID \
@@ -51,7 +51,7 @@ python _course-toolkit/scripts/course-workflow.py confirm-decision ROOT DECISION
   --json
 ```
 
-Mechanical corrections do not need semantic approval, but must still appear in the plan and audit trail. Never infer approval from the original annotation when the requested change is semantic.
+Mechanical corrections do not need a semantic decision, but must still appear in the plan and audit trail. Ask the teacher only when the annotation is ambiguous, conflicts with another instruction, or the proposed implementation is materially broader than the requested result.
 
 Apply only the prepared plan:
 
@@ -77,7 +77,7 @@ python _course-toolkit/scripts/validate-course-v2.py ROOT --json
 python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G6 --json
 ```
 
-An annotation application changes the Blueprint, so reconciliation invalidates G3 and every downstream gate. Reconfirm G3 and G4 from the already approved decision context before compiling; never jump directly from reconciliation to G5.
+An annotation application changes the Blueprint, so reconciliation invalidates G3 and every downstream gate. Re-complete G3 and G4 from the annotation-backed decision context before compiling; never jump directly from reconciliation to G5.
 
 Then open a new renderer preview through `preview-platform-course`. Applied annotations remain unverified until the teacher reviews the rebuilt definition and a new renderer preview binds them to current G7 evidence. If any runtime-bug remains, do not claim G7 complete.
 

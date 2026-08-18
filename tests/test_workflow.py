@@ -529,7 +529,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         self.assertEqual(result.earliest_invalidated_gate_id, "G6")
         self.assertEqual(session.completed_gate_ids[-1], "G5")
 
-    def test_acknowledgement_required_warning_blocks_until_accepted(self):
+    def test_nonblocking_warning_does_not_block_g6_evidence(self):
         blueprint_path = self.root / ".course-work/course-blueprint.json"
         blueprint = load_json(blueprint_path)
         blueprint["course"]["estimatedMinutes"] = 10
@@ -542,18 +542,14 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         write_compilation_outputs_atomic(self.root, compile_blueprint(blueprint))
         self.validate()
 
-        with self.assertRaisesRegex(WorkflowError, "requires acknowledgement"):
-            verify_g6_validation(self.root)
-
         store = IssueStore.load(self.root / ".course-work/issues.json")
         warning = next(
             issue
             for issue in store.all()
             if issue.code == "course-package-estimate-warning"
         )
-        store.accept(warning.id, "The teacher confirmed this deliberate pacing.")
-        store.save()
-
+        self.assertEqual(warning.status, "active")
+        self.assertEqual(warning.warning_policy, "no-acknowledgement-required")
         self.assertIn("@course/asset-set", verify_g6_validation(self.root))
 
 if __name__ == "__main__":

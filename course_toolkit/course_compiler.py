@@ -17,7 +17,7 @@ from course_toolkit.blueprint import (
 from course_toolkit.jsonio import dump_json
 
 
-COMPILER_VERSION = "1.0"
+COMPILER_VERSION = "1.1"
 ROOT = Path(__file__).resolve().parent.parent
 CONTRACT_SNAPSHOT = ROOT / "course-contract.snapshot.json"
 CONTRACT_VALIDATOR = (
@@ -195,7 +195,10 @@ def compile_blueprint(
     data: dict,
     contract_validator: Optional[ContractValidator] = None,
 ) -> CompilationResult:
-    authoring_issues = validate_blueprint_authoring(data, require_approval=True)
+    # Compilation is also the bridge to the first renderer-backed preview.
+    # An AI-authored draft may therefore compile before the teacher has seen it;
+    # preview completion and publication approval remain separate hard gates.
+    authoring_issues = validate_blueprint_authoring(data, require_approval=False)
     if authoring_issues:
         raise CompilationBlocked([_authoring_issue(issue) for issue in authoring_issues])
 
@@ -210,6 +213,11 @@ def compile_blueprint(
     report = {
         "schemaVersion": "1.0",
         "status": "compiled",
+        "authoringApproval": (
+            "teacher-confirmed"
+            if data.get("approval", {}).get("teacherConfirmed") is True
+            else "ai-draft"
+        ),
         "compilerVersion": COMPILER_VERSION,
         "blueprintHash": source_map["blueprintHash"],
         "courseDefinitionHash": source_map["courseDefinitionHash"],

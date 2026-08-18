@@ -144,12 +144,13 @@ def _validate_course_frame(
     frame: object,
     course_data: Optional[dict],
     valid_source_ids: Optional[Set[str]],
+    require_confirmation: bool = True,
 ) -> List[ValidationIssue]:
     if not isinstance(frame, dict):
         return [_issue("courseFrame", "required", "courseFrame is required")]
 
     issues: List[ValidationIssue] = []
-    if frame.get("teacherConfirmed") is not True:
+    if require_confirmation and frame.get("teacherConfirmed") is not True:
         issues.append(
             _issue(
                 "courseFrame.teacherConfirmed",
@@ -445,6 +446,7 @@ def validate_storyboard(
     data: object,
     course_data: Optional[dict] = None,
     valid_source_ids: Optional[Set[str]] = None,
+    require_confirmation: bool = True,
 ) -> List[ValidationIssue]:
     if not isinstance(data, dict):
         return [_issue("$", "required", "course storyboard must be an object")]
@@ -453,7 +455,7 @@ def validate_storyboard(
         issues.append(
             _issue("schemaVersion", "invalid-version", "schemaVersion must be 1.0")
         )
-    if data.get("teacherConfirmed") is not True:
+    if require_confirmation and data.get("teacherConfirmed") is not True:
         issues.append(
             _issue(
                 "teacherConfirmed",
@@ -466,6 +468,7 @@ def validate_storyboard(
             data.get("courseFrame"),
             course_data,
             valid_source_ids,
+            require_confirmation,
         )
     )
     parts = data.get("parts")

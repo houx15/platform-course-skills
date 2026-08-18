@@ -20,7 +20,8 @@
     "capabilities.audio",
     "pdf.pageChanged",
     "do-not-generate-transition",
-    "teacher confirmation",
+    "source-backed AI draft",
+    "continue directly to compilation",
     "ready-for-contract-validation",
     "shared student Zod contract"
   ]

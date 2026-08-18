@@ -13,16 +13,16 @@ Design the learning interaction before writing code. Do not treat a polished scr
 
 1. Read the source coverage and the candidate Piece. State which supplied material the interaction serves.
 2. Establish the 学习目标, what the student sees, what the student does, meaningful states, feedback, assessment, completion condition, blocking behavior, and submitted interaction data.
-3. Fill [interaction-design-template.md](assets/interaction-design-template.md). Surface only missing or outcome-changing decisions to the teacher.
-4. Present the readable design and wait for 教师确认 before generating or materially revising HTML.
+3. Fill [interaction-design-template.md](assets/interaction-design-template.md). Record supported interaction choices as a source-backed AI draft. Ask only when correctness, required learning evidence, or completion behavior is a true blocker that cannot be inferred.
+4. Persist the readable design and continue directly to HTML generation. The teacher judges the complete interaction in the renderer preview rather than approving the template first.
 5. Read [html-contract.md](references/html-contract.md), then generate a 单个 HTML 文件 with embedded CSS and JavaScript.
 6. Use a fixed `1:1` or 横向 4:3 canvas without horizontal scrolling or external runtime resources.
 7. Set the `html` or `body` base text to at least `16px`. Content and controls must remain at least `16px`. Only explicit `.auxiliary` or `[data-text-role="auxiliary"]` text may be as small as `14px`; never use visible text below `14px`. Avoid font-size expressions the static validator cannot resolve.
-8. Use a visible button labeled `完成` or `完成任务`. Enforce the confirmed completion condition before submission.
+8. Use a visible button labeled `完成` or `完成任务`. Enforce the source-backed completion condition before submission, and explain every unmet requirement visibly near the button.
 9. Implement the `mind-course-interaction` version `1.0` handshake. Receive the host's `sessionToken`, echo it with `protocol`, `version`, `type`, and `payload`, send `ready`, and submit `completed` with `correct` and/or JSON-compatible `value` learning evidence. An optional stable `resultId` supports duplicate detection; the host owns and stamps the Block `interactionId`. Do not use the legacy `INTERACTION_COMPLETE` message.
 10. Resolve the runtime relative to this skill: prefer sibling `../_course-toolkit/`, otherwise source root `../../`. Run `scripts/validate-html.py HTML_FILE --course-definition-2` on the generated file.
 11. Generate the persisted report with `scripts/generate-html-report.py HTML_FILE --block-id BLOCK_ID --source COURSE_RELATIVE_SOURCE --output-dir .course-work/html-reports/`. Both `<block-id>.json` and `<block-id>.md` must exist and match the current HTML SHA-256.
-12. Fix every blocking validation issue, regenerate the report, and rerun the validator. Return the confirmed design, HTML path, report paths, and validator result.
+12. Fix every blocking validation issue, regenerate the report, and rerun the validator. Return the AI-draft design, HTML path, report paths, and validator result for renderer review.
 
 ## Evidence boundary
 

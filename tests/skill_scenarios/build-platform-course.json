@@ -7,7 +7,9 @@
   "requiredPhrases": [
     "唯一教师入口",
     "analyze-course-materials",
-    "即使材料没有提到",
+    "默认连续工作到首次完整预览",
+    "AI 初稿",
+    "真正阻塞项",
     "design-video-interactions",
     "design-course-html",
     "design-course-blueprint",
@@ -24,8 +26,7 @@
     "不得默认使用 text",
     "authoring source of truth",
     "流程图、示意图或信息图",
-    "教师明确授权",
-    "等待教师确认",
+    "预览优先",
     ".course-work",
     "never hand edit `course/course.json`",
     "review-platform-course",
@@ -49,6 +50,6 @@
     "ffmpeg -n",
     "不得覆盖原视频",
     "subagent",
-    "教师明确授权"
+    "Auto 模式"
   ]
 }

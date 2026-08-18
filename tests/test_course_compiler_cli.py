@@ -62,7 +62,7 @@ class CourseCompilerCliTests(unittest.TestCase):
         self.assertEqual(first.returncode, 0, first.stderr)
         before = tuple(path.read_bytes() for path in self.outputs)
         blueprint = load_json(self.blueprint_path)
-        blueprint["approval"] = {"teacherConfirmed": False, "decisionIds": []}
+        blueprint["course"]["parts"][0]["slices"][0]["layout"]["slots"] = []
         write_json_atomic(self.blueprint_path, blueprint)
 
         completed = self.run_cli()
@@ -70,7 +70,7 @@ class CourseCompilerCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 2)
         payload = json.loads(completed.stdout)
         self.assertEqual(payload["error"]["code"], "compilation-blocked")
-        self.assertIn("blueprint-unconfirmed", {item["code"] for item in payload["issues"]})
+        self.assertIn("course-contract-invalid", {item["code"] for item in payload["issues"]})
         self.assertEqual(tuple(path.read_bytes() for path in self.outputs), before)
 
     def test_malformed_blueprint_is_tool_failure_without_traceback(self):

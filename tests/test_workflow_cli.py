@@ -310,7 +310,7 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(payload["completedGates"][-1], "G6")
 
-    def test_acknowledgement_required_warning_can_be_accepted_explicitly(self):
+    def test_nonblocking_warning_rejects_redundant_acknowledgement(self):
         self.init()
         store = IssueStore(self.root / ".course-work/issues.json")
         warning = store.upsert(
@@ -336,10 +336,10 @@ class WorkflowCliTests(unittest.TestCase):
             "--json",
         )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(payload["issues"], [])
+        self.assertEqual(completed.returncode, 2, completed.stderr)
+        self.assertEqual(payload["error"]["code"], "workflow-blocked")
         restored = IssueStore.load(self.root / ".course-work/issues.json")
-        self.assertEqual(restored.get(warning.id).status, "accepted")
+        self.assertEqual(restored.get(warning.id).status, "active")
 
     def test_pending_teacher_decision_is_confirmed_only_with_choice_and_rationale(self):
         self.init()

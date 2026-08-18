@@ -32,8 +32,8 @@ class IssuePolicyTests(unittest.TestCase):
         media = get_issue_policy("course-package-media-warning")
 
         self.assertEqual(density.warning_policy, "no-acknowledgement-required")
-        self.assertEqual(estimate.warning_policy, "acknowledgement-required")
-        self.assertEqual(media.warning_policy, "acknowledgement-required")
+        self.assertEqual(estimate.warning_policy, "no-acknowledgement-required")
+        self.assertEqual(media.warning_policy, "no-acknowledgement-required")
         self.assertEqual({density.default_gate_id, estimate.default_gate_id, media.default_gate_id}, {"G6"})
 
 

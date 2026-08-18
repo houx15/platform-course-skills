@@ -19,7 +19,10 @@ def main() -> int:
     args = parser.parse_args()
 
     data = load_json(args.storyboard_json)
-    issues = validate_storyboard(data)
+    # The storyboard is an authoring view as well as a final record. Rendering an
+    # AI draft must not stop the preview-first workflow; final review still uses
+    # the validator's confirmation-required default.
+    issues = validate_storyboard(data, require_confirmation=False)
     if issues:
         for issue in issues:
             print(f"[{issue.code}] {issue.path}: {issue.message}", file=sys.stderr)

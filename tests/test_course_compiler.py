@@ -115,14 +115,14 @@ class CourseCompilerTests(unittest.TestCase):
         self.assertEqual(len(result.report["compilerHash"]), 64)
         self.assertEqual(len(result.report["contractSnapshotHash"]), 64)
 
-    def test_unconfirmed_blueprint_cannot_compile(self):
+    def test_unconfirmed_ai_draft_can_compile_for_preview(self):
         data = approved_blueprint()
         data["approval"] = {"teacherConfirmed": False, "decisionIds": []}
 
-        with self.assertRaises(CompilationBlocked) as caught:
-            compile_blueprint(data)
+        result = compile_blueprint(data)
 
-        self.assertIn("blueprint-unconfirmed", {issue.code for issue in caught.exception.issues})
+        self.assertEqual(result.report["status"], "compiled")
+        self.assertEqual(result.report["authoringApproval"], "ai-draft")
 
     def test_real_shared_contract_rejection_blocks_compilation(self):
         data = approved_blueprint()

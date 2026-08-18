@@ -9,8 +9,8 @@ This reference governs the persistent process behind `build-platform-course`. Th
 - Follow the earliest incomplete or invalidated gate. G0–G10 cannot be skipped.
 - A file's existence is not evidence that a gate passed for the current hashes.
 - `.course-work/course-blueprint.json` is the authoring source of truth. Generated runtime files are never edited directly.
-- Blockers cannot be accepted or dismissed. Decisions wait for the teacher. Warnings follow the registered code policy.
-- All semantic changes require teacher confirmation. Never silently change learning purpose, source disposition, correct answers, rubrics, blocking rules, media behavior, or a substantive course structure.
+- Use a **预览优先** path and 默认连续工作到首次完整预览. Blockers cannot be accepted or dismissed. Create a pending teacher decision only for a 真正阻塞项 that cannot be resolved from explicit instructions or source evidence; record other choices as AI 初稿 provenance.
+- Initial source-backed authoring may remain an AI draft through G6. A teacher-authored preview annotation is an explicit change instruction. Never silently contradict learning purpose, source disposition, correct answers, rubrics, blocking rules, or media behavior.
 - Raw sources remain unchanged. Ignore ZIP files. Keep writes inside `course/`, `.course-work/`, and named generated views.
 - By policy, local completion never implies upload, POST, or publication.
 
@@ -80,39 +80,39 @@ Exit: the safe workspace and local identity are persisted.
 
 Inputs: original materials and extraction records.
 
-Checks: inventory every supported source; report missing, unreadable, duplicate, corrupt, or unsupported inputs; classify student-facing versus authoring-only material; invoke `analyze-course-materials` internally. Ask explicitly about video and independent HTML 即使材料没有提到 either one. Present every 完整 PDF candidate and confirm its exact file and learning purpose. A required missing document remains `blocking: true`; 不得用摘要替代全文.
+Checks: inventory every supported source; report missing, unreadable, duplicate, corrupt, or unsupported inputs; classify student-facing versus authoring-only material; invoke `analyze-course-materials` internally. Detect video and independent HTML from the supplied files, and ask only when a referenced media item is missing or its intended use is ambiguous. Infer 完整 PDF use from explicit source context; ask only when choosing among candidates changes the learner task. A required missing document remains `blocking: true`; 不得用摘要替代全文.
 
-Exit: the teacher confirms the material summary, exclusions, video/HTML intent, and complete-document PDF use.
+Exit: the inventory is technically complete, one reasonable source-backed classification is recorded, and no missing or ambiguous material blocks a usable AI draft. Do not stop merely to confirm the summary.
 
 ### G2 — Course brief
 
-Inputs: confirmed material analysis and teacher decisions.
+Inputs: material analysis, explicit teacher instructions, and recorded AI-draft assumptions.
 
 Checks: record audience, prior knowledge, course purpose, objectives, estimated time, assessment intent, tone, and constraints. Do not manufacture meaning-changing choices.
 
-Exit: the teacher approves the brief and all required decisions are confirmed.
+Exit: the source-backed brief is complete enough to generate; only genuinely unknowable meaning-changing choices remain pending.
 
 ### G3 — Course design
 
-Inputs: approved brief and source coverage.
+Inputs: source-backed brief and source coverage.
 
-Checks: design the 课程开场, Parts, Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Present the 课程首尾设计表, then one Part/Slice row per learning unit. Static text, images, or PDF alone do not prove objective attainment. Encode the approved result as `.course-work/course-blueprint.json`, including provenance and the exact decision IDs that approve it.
+Checks: design the 课程开场, Parts, Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Persist the 课程首尾设计表 and one Part/Slice row per learning unit for traceability, but do not require the teacher to review these internal views before preview. Static text, images, or PDF alone do not prove objective attainment. Encode the current result as `.course-work/course-blueprint.json` with explicit source and AI-draft provenance.
 
-Exit: the teacher confirms the complete design, including required assets and meaningful assessment behavior.
+Exit: the AI draft is internally complete, contract-shaped, and has no unresolved correctness or completion blocker.
 
 ### G4 — Media design
 
-Inputs: accepted video, HTML, PDF, image, and other asset needs.
+Inputs: detected video, HTML, PDF, image, and other asset needs.
 
-Checks: invoke `design-video-interactions` and `design-course-html` internally where required; preserve originals; confirm interaction semantics; record provisional timing or absent files as blockers.
+Checks: invoke `design-video-interactions` and `design-course-html` internally where required; preserve originals; generate source-backed interaction semantics; record unknowable correctness, provisional timing, or absent files as blockers.
 
-Exit: every complex-media design and source file is confirmed and technically checkable.
+Exit: every complex-media design and source file is technically checkable; source-backed AI draft semantics may proceed to preview.
 
 ### G5 — Compile
 
-For existing `schemaVersion: 1.1` material, use `python scripts/import-legacy-course.py LEGACY_COURSE STORYBOARD OUTPUT --json`. The import does not carry forward legacy approval. It records every CourseDefinition 2.0 assumption and remains unconfirmed until the teacher answers a new context-hashed decision.
+For existing `schemaVersion: 1.1` material, use `python scripts/import-legacy-course.py LEGACY_COURSE STORYBOARD OUTPUT --json`. The import does not carry forward legacy approval. It records every CourseDefinition 2.0 assumption as AI draft provenance for a fresh renderer review.
 
-Compile the approved Blueprint with `python scripts/compile-course.py ROOT --json`. The command deterministically emits CourseDefinition 2.0, a runtime source map, and a compilation report as one recoverable output set. The shared student Zod contract is the sole runtime schema gate. Always return changes to Blueprint and never hand edit `course/course.json`.
+Compile the complete Blueprint with `python scripts/compile-course.py ROOT --json`. An unconfirmed AI draft is intentionally compilable because compilation is required to obtain the first faithful preview; the report records its authoring approval state. The command deterministically emits CourseDefinition 2.0, a runtime source map, and a compilation report as one recoverable output set. The shared student Zod contract is the sole runtime schema gate. Always return changes to Blueprint and never hand edit `course/course.json`.
 
 Complete G5 with `python scripts/course-workflow.py complete-gate ROOT G5 --json`. G5 requires current compilation hashes for Blueprint, definition, source map, report, compiler code, and contract snapshot; it also reruns the shared contract. A stale or partial output set cannot pass.
 
@@ -124,15 +124,7 @@ Inputs: generated course definition and all referenced local assets.
 
 Run `python scripts/validate-course-v2.py ROOT --json`. It checks the current G5 set, shared contract, exact referenced asset inventory and hashes, safe paths, PDF signature/completeness, MP4 codecs/faststart/duration, interaction cues and completion consistency, WEBVTT headers, the renderer-compatible HTML protocol and completion evidence, and fixed course-completeness warnings. Static checks cannot claim real browser rendering. `review-platform-course` runs independently at G8 after real G7 preview and cannot substitute for G6 validation.
 
-Successful validation writes `.course-work/course-validation-report.json`; blocked validation writes `.course-work/course-validation-attempt.json` and preserves the previous successful report. Validation findings synchronize into `.course-work/issues.json`. `course-package-density-warning` is advisory. `course-package-estimate-warning` and `course-package-media-warning` require explicit teacher acknowledgement and a real rationale:
-
-```bash
-python scripts/course-workflow.py accept-warning ROOT ISSUE_ID \
-  --rationale "TEACHER_RATIONALE" \
-  --json
-```
-
-Never invent acknowledgement. Complete the gate only through:
+Successful validation writes `.course-work/course-validation-report.json`; blocked validation writes `.course-work/course-validation-attempt.json` and preserves the previous successful report. Validation findings synchronize into `.course-work/issues.json`. Density, estimate, and media warnings are visible, non-blocking authoring evidence. Fix deterministic problems automatically; carry remaining warnings into the preview handoff instead of stopping for acknowledgement. Complete the gate only through:
 
 ```bash
 python scripts/course-workflow.py complete-gate ROOT G6 --json
@@ -140,7 +132,7 @@ python scripts/course-workflow.py complete-gate ROOT G6 --json
 
 This rebuilds validation and verifies the exact definition, report, validator-code, asset-set, and per-asset hashes. Any changed delivery asset or validator invalidates G6 and downstream work, including assets stored outside `course/assets/`.
 
-Exit: the deterministic report is current, no blocker remains, every required warning is explicitly accepted, and G6 evidence hashes are recorded.
+Exit: the deterministic report is current, no blocker remains, and G6 evidence hashes are recorded.
 
 ### G7 — Preview review
 
@@ -164,7 +156,7 @@ python scripts/manage-annotations.py prepare ROOT \
   --json
 ```
 
-Mechanical copy changes may proceed. Semantic layout, workflow, media, correctness, completion, or source changes require the exact pending decision to be presented to the teacher. After explicit approval and rationale:
+Mechanical copy changes may proceed. When a teacher-authored annotation requests an exact semantic layout, workflow, media, correctness, completion, or source change, that annotation is the explicit instruction and its text is the rationale; do not request duplicate approval. Ask only if the implementation would materially differ from the request. Record the annotation-backed decision before applying:
 
 ```bash
 python scripts/course-workflow.py confirm-decision ROOT DECISION_ID \
@@ -247,7 +239,7 @@ All tools use `.course-work/issues.json` and one versioned issue-code registry:
 - Changed asset manifest, remote identity, publish state, renderer-backed review evidence, discovery snapshot, publication preflight, or publisher code invalidates G9.
 - Changed verified publication operation or its read-back state invalidates G10.
 
-For preview comments, classify each annotation as mechanical, semantic, or runtime bug. Mechanical changes may be applied with an audit record. Semantic changes require teacher confirmation. Runtime bugs remain blockers and must not be hidden by changing course content. After any applied comment, regenerate from authoring truth, validate, rebuild preview evidence, and rerun the independent review.
+For preview comments, classify each annotation as mechanical, semantic, or runtime bug. Mechanical changes may be applied with an audit record. An exact teacher-authored semantic request is already confirmed by that annotation; ask again only when the implementation is ambiguous, conflicting, or materially broader. Runtime bugs remain blockers and must not be hidden by changing course content. After any applied comment, regenerate from authoring truth, validate, rebuild preview evidence, and rerun the independent review.
 
 ## Teacher-facing reporting
 

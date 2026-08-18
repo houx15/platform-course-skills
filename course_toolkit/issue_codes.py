@@ -58,13 +58,13 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
         "course-package-estimate-warning",
         "warning",
         "G6",
-        "acknowledgement-required",
+        "no-acknowledgement-required",
     ),
     "course-package-media-warning": IssuePolicy(
         "course-package-media-warning",
         "warning",
         "G6",
-        "acknowledgement-required",
+        "no-acknowledgement-required",
     ),
     "preview-required-annotation": IssuePolicy(
         "preview-required-annotation", "blocker", "G7"

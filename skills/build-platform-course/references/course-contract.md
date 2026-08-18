@@ -84,7 +84,7 @@ Use stable lowercase hyphenated IDs, course-root-relative safe paths, non-empty 
 
 ## PDF Block
 
-Use a `pdf` Block only for a complete teacher-confirmed learner document:
+Use a `pdf` Block only for a complete learner document whose student-facing purpose is explicit in the sources or teacher instructions:
 
 ```json
 {

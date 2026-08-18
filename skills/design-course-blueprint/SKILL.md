@@ -5,7 +5,7 @@ description: Use when a teacher course draft has its learning content and materi
 
 # Design Course Blueprint
 
-Complete the production experience for every Slice while preserving confirmed content. The pinned shared student Zod contract defines valid data; the runtime catalog makes every supported choice available to the authoring agent.
+Complete the production experience for every Slice while preserving valid authored content. The pinned shared student Zod contract defines valid data; the runtime catalog makes every supported choice available to the authoring agent.
 
 ## Required inputs
 
@@ -28,7 +28,7 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
 
 2. Read `.course-work/course-completion-plan.json`. Work through every Slice record; do not stop after fixing the first invalid Slice.
 3. Read the complete `runtime_authoring_catalog.json`. It exposes all four contract layouts, all seven split weights, all seven Block types, all 16 种 Action, all 16 种 Event, matcher fields, navigation options, video cues, HTML protocol fields, and the narrower teacher-side media-composition policy. Contract support does not mean every layout is a good default: do not generate `split-vertical` by default or stack multiple Blocks in `full`.
-4. Preserve every valid authored field. 不得静默覆盖 teacher-confirmed wording, objectives, answers, rubrics, feedback, source paths, media timing, or prior production decisions. If a valid authored choice must change, record the exact before/after proposal and require teacher confirmation.
+4. Preserve every valid authored field. 不得静默覆盖 explicit teacher wording, source-backed objectives, answers, rubrics, feedback, source paths, media timing, or prior production decisions. When runtime completion requires a new choice that can be safely inferred, record the exact before/after value and rationale as a source-backed AI draft. Pause only when changing an explicit instruction or when correctness cannot be inferred.
 5. For 每个 Slice, draft the complete production design:
 
    - `objectiveIds` and `estimatedSeconds`;
@@ -41,12 +41,12 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
 6. Keep one Slice visually bounded to one desktop screen. Split the Slice when its learning action, materials, or Blocks cannot fit without crowding. Compose by natural media aspect: PDF is a portrait column, video owns a wide region, and HTML preserves its declared `1:1`/`4:3` ratio without stretching. Text and assessments need constrained reading width. A Slot may contain multiple ordered Blocks, but density is still a review constraint.
 7. For interactive HTML, inspect the actual file and explicitly decide whether it uses audio. When it does, author `capabilities.audio: true` and require the host lifecycle protocol. A valid completion message must carry `correct` or `value`; an empty completion payload is invalid.
 8. Do not generate a Workflow transition on `pdf.pageChanged`. It exists in the contract vocabulary but the pinned renderer has no producer for it; the catalog marks it `do-not-generate-transition`. PDF evidence must come from a separate interaction or assessment.
-9. Store proposed runtime choices in each Slice's `productionDecisions` inside `course-completion-plan.json`, with source IDs, decision IDs, rationale, and status `ai-proposed`. Present one review row per Slice:
+9. Store proposed runtime choices in each Slice's `productionDecisions` inside `course-completion-plan.json`, with source IDs, decision IDs, rationale, and status `ai-proposed`. Persist one traceability row per Slice without interrupting the first-preview path:
 
    | Slice | Layout | Initial view | Narration and sequence | Student action | Branches and completion | Navigation | Needs confirmation |
    | --- | --- | --- | --- | --- | --- | --- | --- |
 
-10. Batch related semantic decisions for teacher confirmation. After teacher confirmation, update `.course-work/course-blueprint.json`, its provenance, and approval decision identity. Never edit generated `course/course.json` directly.
+10. Apply source-backed production decisions to `.course-work/course-blueprint.json`, keep `approval.teacherConfirmed: false`, update provenance, and continue directly to compilation. The teacher reviews these choices in the renderer preview. Ask one batched question only for true blockers. Never edit generated `course/course.json` directly.
 11. Rerun `complete-course-draft.py`. Continue until every Slice is `ready-for-contract-validation` and course-level issues are empty.
 12. Compile and validate through the shared student Zod contract:
 
@@ -63,7 +63,7 @@ Report this Skill complete only when:
 
 - every Slice is `ready-for-contract-validation`;
 - the completion-plan draft hash matches the current Blueprint;
-- teacher confirmation covers every meaning-changing production decision;
+- every meaning-changing production decision is source-backed or remains a plainly reported blocker;
 - compilation passes the shared student Zod contract;
 - missing assets remain plainly reported rather than hidden with fake files.
 

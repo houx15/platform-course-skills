@@ -499,7 +499,7 @@ class ValidationIssueSynchronizationTests(unittest.TestCase):
         self.assertEqual(validator_issue.status, "resolved")
         self.assertEqual(restored.get(unrelated.id).status, "active")
 
-    def test_acknowledged_warning_is_not_reactivated_by_identical_validation(self):
+    def test_nonblocking_warning_remains_current_without_acknowledgement(self):
         report = build_course_validation_report(self.root)
         report["warnings"] = [
             {
@@ -511,12 +511,12 @@ class ValidationIssueSynchronizationTests(unittest.TestCase):
         sync_validation_issues(self.root, report, "2026-08-16T00:00:00Z")
         store = self.store()
         issue = store.all()[0]
-        store.accept(issue.id, "Teacher reviewed the estimate")
-        store.save()
 
         sync_validation_issues(self.root, report, "2026-08-16T01:00:00Z")
 
-        self.assertEqual(self.store().get(issue.id).status, "accepted")
+        restored = self.store().get(issue.id)
+        self.assertEqual(restored.status, "active")
+        self.assertEqual(restored.warning_policy, "no-acknowledgement-required")
 
 
 class CourseDefinitionTwoValidationCliTests(unittest.TestCase):

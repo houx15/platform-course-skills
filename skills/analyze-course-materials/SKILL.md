@@ -23,7 +23,7 @@ Resolve paths relative to this `SKILL.md` directory:
 2. Run `scripts/extract-materials.py` against DOCX, HTML, Markdown, and text inputs. Persist the exact result at `.course-work/materials-extracted.json`.
 3. Use available document-reading capabilities for PDF and presentations. If reliable extraction is unavailable, report the exact file and request DOCX, HTML, Markdown, or text. 不得静默跳过任何输入文件。
 4. Summarize evidence with source file, stable source ID, and original location. Preserve DOCX table row/cell structure. Separate concepts, facts, examples, evidence, activities, questions, answers, media notes, teacher notes, and system rules.
-5. Identify duplicate claims, conflicts, unsupported claims, and missing information that would change the learning goal, correct answer, feedback, or media behavior. Specifically extract any teacher-provided `课程目标`, `课程总结`, and `学生收获`. Preserve their source IDs and 区分教师意图与学生措辞: the former is authoring evidence, while the latter must later be rewritten as concise learner-facing prose and bullets. If any of the three is absent or too vague to guide design, record the gap and ask the teacher for the missing intent; do not invent a confirmed goal.
+5. Identify duplicate claims, conflicts, unsupported claims, and missing information that would change the learning goal, correct answer, feedback, or media behavior. Specifically extract any teacher-provided `课程目标`, `课程总结`, and `学生收获`. Preserve their source IDs and 区分教师意图与学生措辞: the former is authoring evidence, while the latter must later be rewritten as concise learner-facing prose and bullets. If one is absent but a reasonable version follows from the content, record it as AI-proposed rather than confirmed. Ask only when no reliable learning purpose or correctness can be inferred.
 6. Create `.course-work/source-coverage.json` using [source-coverage.md](references/source-coverage.md). It must contain exactly one entry for every extracted item.
 7. Create `.course-work/audience-classification.json`. Classify every source ID exactly once into:
 
@@ -34,11 +34,11 @@ Resolve paths relative to this `SKILL.md` directory:
    - `reference`: provenance or background material that supports authoring but should not be copied into the course;
    - `proposed-exclusion`: redundant, obsolete, contradictory, or unsuitable content proposed for omission.
 
-8. Present a concise grouped summary. Ask for one 分组确认 covering `teacher-design`, `ai-system`, `reference`, and `proposed-exclusion`; do not burden the teacher with one question per source item. Record `teacherConfirmed: true` only after the teacher approves the grouped classification.
-9. For every PDF, distinguish two separate intents: `构建输入`, where its content is extracted and reorganized, and `学生完整材料`, where learners must receive the unchanged complete file. The same PDF may serve both intents, but record them separately. If the material says 论文原文、原始报告、完整政策文件、附件供学生阅读, or asks learners to return to a primary source, identify a 完整 PDF candidate and 主动建议 `pdf` Block. Confirm the exact file; do not infer that a summary or screenshot satisfies the request.
-10. If a PDF cannot be read reliably, state that limitation. It can still be recorded as a teacher-confirmed complete delivery asset, but do not claim its subject content was understood or use it to invent explanations, answers, or citations.
+8. Persist a concise grouped summary with `teacherConfirmed: false` and return the AI-draft classification without pausing. Ask only when an exclusion or audience choice would irreversibly omit required learner content and the sources conflict.
+9. For every PDF, distinguish two separate intents: `构建输入`, where its content is extracted and reorganized, and `学生完整材料`, where learners must receive the unchanged complete file. The same PDF may serve both intents, but record them separately. If the material says 论文原文、原始报告、完整政策文件、附件供学生阅读, or asks learners to return to a primary source, identify a 完整 PDF candidate and 主动建议 `pdf` Block. Infer the exact file when source context is clear; ask only when multiple candidates imply different learner tasks. Do not infer that a summary or screenshot satisfies a complete-document request.
+10. If a PDF cannot be read reliably, state that limitation. It can still be recorded as a complete delivery asset when its student-facing purpose is explicit, but do not claim its subject content was understood or use it to invent explanations, answers, or citations.
 11. Scan the student material for 长视频, MP4, timed pauses, video questions, simulations, experiments, drag, match, exploration, clicks, webpages, and HTML 交互. For every supplied video, inventory the filename, 文件大小, declared or measurable duration, 封装格式, 视频编码, 音频编码, and whether `faststart` can be verified. Record unknown properties explicitly; do not infer compliance from a `.mp4` suffix.
-12. Report detected video and HTML candidates with source evidence. 即使材料没有提到长视频或 HTML 交互, require the caller to ask explicitly whether either element is planned.
+12. Report detected video and HTML candidates with source evidence. If the supplied materials contain neither, record that none was detected and continue; ask only when the materials refer to a missing or ambiguous media item.
 13. Return the extracted goal, summary, and gains as authoring evidence, not ready-to-publish learner copy. Flag contradictions such as a stated objective that no student activity or source content can support.
 
 ## Audience record
@@ -48,7 +48,7 @@ Use this shape:
 ```json
 {
   "schemaVersion": "1.0",
-  "teacherConfirmed": true,
+  "teacherConfirmed": false,
   "groups": [
     {
       "audience": "student-core",
@@ -64,4 +64,4 @@ Use this shape:
 
 ## Return to the caller
 
-Return a teacher-readable material summary, grouped audience classification, course-goal/summary/gains evidence and gaps, conflicts and missing information, complete-PDF candidates, detected video/HTML candidates, and explicit media-intent questions. Do not propose the final Part/Piece structure here. The caller must obtain the classification and media-intent confirmations first.
+Return a teacher-readable material summary, grouped audience classification, course-goal/summary/gains evidence and gaps, conflicts and missing information, complete-PDF candidates, detected video/HTML candidates, and only genuinely blocking questions. Do not propose the final Part/Piece structure here; the caller continues automatically when no blocker remains.

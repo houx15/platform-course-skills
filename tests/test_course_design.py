@@ -447,6 +447,19 @@ class RenderingCliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("课程设计确认表", rendered)
 
+    def test_storyboard_renderer_cli_accepts_unconfirmed_ai_draft(self):
+        storyboard = valid_storyboard()
+        storyboard["teacherConfirmed"] = False
+        storyboard["courseFrame"]["teacherConfirmed"] = False
+        result, rendered = self.run_script(
+            "render-course-storyboard.py",
+            storyboard,
+            "course-storyboard.md",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("课程设计确认表", rendered)
+
     def test_review_renderer_cli(self):
         result, rendered = self.run_script(
             "render-review-report.py",

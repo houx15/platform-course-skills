@@ -1,4 +1,4 @@
 interface:
   display_name: "Apply Preview Feedback"
   short_description: "Safely turn preview annotations into reviewed course revisions"
-  default_prompt: "Use $apply-preview-feedback to classify my preview annotations, obtain any semantic approvals, and rebuild the course safely."
+  default_prompt: "Use $apply-preview-feedback to classify and apply my explicit preview annotations, ask only about ambiguity or conflict, and rebuild the course safely."
