@@ -46,10 +46,12 @@
     "H.264",
     "AAC",
     "faststart",
-    "新会话",
     "ffmpeg -n",
-    "不得覆盖原视频",
-    "subagent",
+    "do not force a separate session",
+    ".course-work/video-backups/",
+    ".course-work/video-candidates/",
+    "explicitly confirm the processed candidate",
+    "semantic anchor rather than scaling timestamps",
     "Auto 模式"
   ]
 }

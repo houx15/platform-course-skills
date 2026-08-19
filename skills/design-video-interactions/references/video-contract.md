@@ -44,3 +44,13 @@ Rules:
 - An unverified container/codec profile, unsupported video codec, unsupported audio codec, or missing faststart blocks upload.
 - Duration above 600 seconds emits `long-video`. A gap above 600 seconds between the beginning, confirmed interaction points, and the end also emits `sparse-video-interactions`; review whether to 增加交互点 for a learning reason.
 - Size above `500 MiB` emits `large-video`. These three warnings require teacher-facing notice but do not by themselves block upload.
+
+Safe candidate processing rules:
+
+- An incompatible profile or large file may trigger an offer to process it with `ffmpeg`; file size alone does not force conversion.
+- Obtain approval for the exact source path, candidate path, output profile, and tradeoff before running media tools.
+- Preserve the original bytes and path. Store every attempt in an append-only `.course-work/video-backups/<BLOCK_ID>-<SOURCE_SHA256>-<CANDIDATE_ID>.json` manifest; create the candidate under `.course-work/video-candidates/<BLOCK_ID>/` with `ffmpeg -n`.
+- Recheck the source hash immediately before conversion. Probe and compare the candidate after processing.
+- Do not update the Blueprint, final asset, or interaction document until the teacher has played and confirmed the exact candidate hash and the decision is persisted under `.course-work/video-processing-decisions/`.
+- Adopt with a no-clobber copy. Reuse an identical final hash or choose a new path when a different file already occupies the intended path.
+- After adoption, relocate every timed event from its semantic anchor in the confirmed video and record old time, anchor, new time, and verification evidence. Never derive new times by proportional duration scaling.

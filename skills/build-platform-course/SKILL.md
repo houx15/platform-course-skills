@@ -25,40 +25,9 @@ Act as the 唯一教师入口 and course director. This Skill is the only teache
 6. Use a `pdf` Block when learners need the 论文原文、完整报告、政策文件或其他一手材料. Infer the exact source and learning purpose when `index.md` or the surrounding material makes them clear. Ask only when choosing among complete-PDF candidates would change what students must read. If a required file is absent, add an open `.course-work/unresolved.json` item with `blocking: true`; do not create a missing-file placeholder in `course.json` and 不得用摘要替代全文.
 7. For detected video work, invoke `design-video-interactions`. For detected HTML work, invoke `design-course-html`. Generate source-backed interaction timing, prompts, feedback, completion, and learning-data behavior as AI draft content. When existing HTML uses `INTERACTION_COMPLETE`, omits the host handshake or `sessionToken`, drops pre-handshake messages, or submits no learning evidence, repair the HTML directly through that Skill; do not send protocol work to the teacher. Preserve the teacher source and the activity's questions, answers, scoring, completion threshold, DOM, and CSS, then revalidate and preview the delivery copy. Ask only when correctness or required completion semantics cannot be determined from the materials. A final video is uploadable only when validation proves MP4 container, H.264 video, AAC audio when audio exists, and `faststart`.
 
-   If a supplied video is incompatible, do not silently repair it and 不得覆盖原视频. Recommend opening a 新会话 so media conversion stays isolated from course-authoring context. Give the teacher this ready-to-use prompt:
+   If a supplied video is incompatible or unusually large, invoke the safe processing workflow in `design-video-interactions`. Tell the teacher the concrete problem and that the Agent can use `ffmpeg` to help. Obtain approval for the exact input, distinct candidate output, profile, and tradeoff before processing; do not force a separate session. Keep the original immutable as the rollback source, record its hash and probe facts under `.course-work/video-backups/`, and use `ffmpeg -n` to create a candidate under `.course-work/video-candidates/`. If tooling, storage, or permissions block the approved operation, report the exact blocker.
 
-   ```text
-   请帮我把视频处理成课程平台兼容格式。
-
-   输入文件：
-   <原视频绝对路径>
-
-   输出目录：
-   <输出目录绝对路径>
-
-   要求：
-   1. 先使用 ffprobe 检查输入文件，报告容器、视频编码、音频编码、时长和文件大小。
-   2. 不得覆盖或修改原文件。
-   3. 输出文件命名为“原文件名-platform.mp4”。
-   4. 输出采用 MP4、H.264、yuv420p、AAC；原视频无音轨时保持静音；开启 faststart。
-   5. 不剪辑内容，不改变视频顺序，不添加字幕、水印或片头片尾。
-   6. 默认保留原始分辨率和帧率，使用 CRF 23、preset medium；不要擅自降低分辨率。
-   7. 使用不会覆盖已有文件的 ffmpeg 参数。
-   8. 完成后重新用 ffprobe 检查输出路径、容器、视频编码、音频编码、时长、大小、faststart 和与原视频的时长差异。
-   9. 如果输出仍超过 500 MiB，只提出进一步压缩方案，先不要继续处理。
-   ```
-
-   The safe reference command is:
-
-   ```bash
-   ffmpeg -n -i input-video \
-     -map 0:v:0 -map 0:a? \
-     -c:v libx264 -pix_fmt yuv420p -preset medium -crf 23 \
-     -c:a aac -b:a 128k -movflags +faststart \
-     output-video-platform.mp4
-   ```
-
-   `ffmpeg -n` is mandatory because it refuses overwriting. If ffmpeg is unavailable, disk space is insufficient, or the output directory is not writable, stop and report the exact blocker. If the current host supports a `subagent`, offer that as an option, but invoke it only after 教师明确授权 to convert the exact named input into the exact named new output. The subagent must not edit, crop, shorten, replace, delete, or overwrite the original, and must not edit `.course-work/course-blueprint.json` or generated `course/course.json`. Regardless of who converts it, rerun the course validator on the new final asset. Only after the new file passes may the main agent update the Blueprint, realign every interaction time against the new MP4, regenerate the interaction document, recompile, and rerun full Review.
+   Conversion success does not authorize adoption. The teacher must play and explicitly confirm the processed candidate before the Agent updates `.course-work/course-blueprint.json`, copies the file into the course asset tree, or changes video interactions. After confirmation, bind the decision to the candidate hash, update the Blueprint, re-check every interaction against its semantic anchor rather than scaling timestamps by duration, regenerate the interaction files, recompile, rerun G6, and verify playback, pauses, modal interactions, and completion in the real G7 preview.
 8. Establish the working course intent before dividing Parts. Use explicit teacher intent and source evidence to draft the overview, objectives, and key points below; keep the summary, takeaways, and transfer applications provisional until the complete learning path exists:
 
    - one concise course overview;

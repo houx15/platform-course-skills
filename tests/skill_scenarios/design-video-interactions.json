@@ -2,10 +2,10 @@
   "skill": "design-video-interactions",
   "prompts": [
     "为已有 MP4 设计暂停互动。",
-    "视频还没制作完成，先设计交互位置。"
+    "视频还没制作完成，先设计交互位置。",
+    "这个 MOV/HEVC 视频太大了。请帮我转成平台格式，保留原件；处理后先让我确认，再放进课程。"
   ],
   "requiredPhrases": [
-    "不得生成、剪辑、转码或修改 MP4",
     "实际时长",
     "语义锚点",
     "needs-timing",
@@ -18,6 +18,16 @@
     "500 MiB",
     "H.264",
     "AAC",
-    "faststart"
+    "faststart",
+    "可以使用 `ffmpeg` 帮忙处理",
+    "do not force a separate session",
+    "ffmpeg -n",
+    "原视频保持不变并作为回滚备份",
+    ".course-work/video-backups/",
+    "候选视频",
+    "teacher confirms the processed video",
+    "before updating the Blueprint",
+    "语义锚点逐个重新核对",
+    "不得按时长比例机械缩放"
   ]
 }

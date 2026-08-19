@@ -272,6 +272,39 @@ class SkillPackageTests(unittest.TestCase):
         self.assertNotIn("if (!sessionToken) return;", contract)
         self.assertNotIn('\nsend("completed", {', contract)
 
+    def test_video_skill_offers_safe_ffmpeg_processing_and_waits_for_confirmation(self):
+        skill = (
+            ROOT / "skills" / "design-video-interactions" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        director = (
+            ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((skill, director, readme))
+
+        for phrase in (
+            "可以使用 `ffmpeg` 帮忙处理",
+            "do not force a separate session",
+            "ffmpeg -n",
+            "原视频保持不变并作为回滚备份",
+            ".course-work/video-backups/",
+            "候选视频",
+            "teacher confirms the processed video",
+            "before updating the Blueprint",
+            "语义锚点逐个重新核对",
+            "不得按时长比例机械缩放",
+            "source SHA-256 immediately before ffmpeg",
+            "append-only processing manifest",
+            ".course-work/video-processing-decisions/",
+            "no-clobber copy",
+            "old time, semantic anchor, new time",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+        self.assertNotIn("Recommend opening a 新会话", director)
+        self.assertNotIn("不得生成、剪辑、转码或修改 MP4", skill)
+
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"
