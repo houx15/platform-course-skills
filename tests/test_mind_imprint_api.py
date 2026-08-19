@@ -1,5 +1,6 @@
 import json
 import os
+import inspect
 import tempfile
 import threading
 import unittest
@@ -98,9 +99,27 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
             with mock.patch.object(Path, "read_bytes", side_effect=AssertionError("upload must stream")):
                 self.assertEqual(self.api.upload_asset(plan["putUrl"], path, plan["requiredContentType"]), "etag-1")
         definition = {"schemaVersion": "2.0", "course": {"id": "demo"}}
-        self.api.save_definition("demo", definition, blurb="Demo", card_ids=[])
+        introduction = {
+            "hook": "A hook",
+            "whatYouDo": "Investigate evidence",
+            "takeaways": ["Check the source"],
+            "alignment": {"ib": ["TOK"], "otherIntl": [], "domestic": []},
+            "keywords": ["evidence"],
+        }
+        save_parameters = inspect.signature(self.api.save_definition).parameters
+        self.assertIn("category", save_parameters)
+        self.assertIn("introduction", save_parameters)
+        self.api.save_definition(
+            "demo",
+            definition,
+            blurb="Demo",
+            card_ids=["craap"],
+            category="source-check",
+            introduction=introduction,
+        )
         self.assertEqual(self.api.get_course("demo").definition, definition)
-        self.api.ship("demo", cover="img:3")
+        self.api.supports_generated_course_cover = True
+        self.api.ship("demo", cover="", cover_asset_path="cover/course-cover.webp")
         self.assertEqual(self.api.get_course("demo").status, "published")
 
         api_records = [record for record in FakeAuthoringHandler.records if not record[1].startswith("/oss/")]
@@ -108,6 +127,21 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         oss_record = next(record for record in FakeAuthoringHandler.records if record[1].startswith("/oss/"))
         self.assertIsNone(oss_record[2])
         self.assertEqual(oss_record[3], b"{}\n")
+        definition_write = next(
+            json.loads(record[3])
+            for record in FakeAuthoringHandler.records
+            if record[0] == "PUT" and record[1].endswith("/definition")
+        )
+        self.assertEqual(definition_write["category"], "source-check")
+        self.assertEqual(definition_write["introduction"], introduction)
+        self.assertNotIn("featured_rank", definition_write)
+        ship_write = next(
+            json.loads(record[3])
+            for record in FakeAuthoringHandler.records
+            if record[0] == "POST" and record[1].endswith("/ship")
+        )
+        self.assertEqual(ship_write["cover"], "")
+        self.assertEqual(ship_write["coverAssetPath"], "cover/course-cover.webp")
 
     def test_environment_factory_requires_key_without_echoing_it(self):
         previous = os.environ.pop("OSS_ADMIN_KEY", None)

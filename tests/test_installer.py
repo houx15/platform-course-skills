@@ -42,6 +42,11 @@ class InstallerTests(unittest.TestCase):
             self.assertTrue((parent / name / "SKILL.md").is_file())
         runtime = parent / "_course-toolkit"
         self.assertTrue((runtime / "course_toolkit" / "package_review.py").is_file())
+        self.assertTrue((runtime / "course_toolkit" / "course_catalog.json").is_file())
+        self.assertTrue((runtime / "course_toolkit" / "course_catalog.py").is_file())
+        self.assertTrue((runtime / "course_toolkit" / "course_cover.py").is_file())
+        self.assertTrue((runtime / "scripts" / "manage-course-catalog.py").is_file())
+        self.assertTrue((runtime / "scripts" / "manage-course-cover.py").is_file())
         self.assertTrue((runtime / "course_toolkit" / "runtime_dist" / "preview" / "index.html").is_file())
         self.assertTrue((runtime / "scripts" / "preview-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "review-course-v2.py").is_file())

@@ -37,8 +37,6 @@ def build_parser() -> argparse.ArgumentParser:
     preflight.add_argument("root", type=Path)
     preflight.add_argument("--action", choices=("save-preview", "publish"), required=True)
     preflight.add_argument("--blurb", default="")
-    preflight.add_argument("--card-id", action="append", default=[])
-    preflight.add_argument("--cover", default="")
     preflight.add_argument("--api-base", default=DEFAULT_API_BASE)
     preflight.add_argument("--json", action="store_true")
     status = commands.add_parser("status")
@@ -68,8 +66,6 @@ def main() -> int:
                 api,
                 action=args.action,
                 blurb=args.blurb,
-                card_ids=args.card_id,
-                cover=args.cover,
                 now=utc_now(),
             )
             payload = {

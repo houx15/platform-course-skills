@@ -11,6 +11,15 @@ from typing import Optional
 
 DEFAULT_API_BASE = "https://mind-api.uni-robot.cn"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+VALID_CATEGORIES = {
+    "stance-value",
+    "source-check",
+    "media-literacy",
+    "self-knowledge",
+    "data-literacy",
+    "research-process",
+    "argument-writing",
+}
 
 
 class MindImprintApiError(RuntimeError):
@@ -33,6 +42,9 @@ class RemoteCourse:
 
 
 class MindImprintAuthoringApi:
+    # course-authoring-v1.3.0 ship.cover only documents stock img:* ids.
+    supports_generated_course_cover = False
+
     def __init__(self, api_base: str, admin_key: str, *, timeout: float = 30.0):
         parsed = urllib.parse.urlsplit(api_base)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
@@ -186,22 +198,49 @@ class MindImprintAuthoringApi:
         finally:
             connection.close()
 
-    def save_definition(self, slug: str, definition: dict, *, blurb: str, card_ids: list[str]) -> dict:
+    def save_definition(
+        self,
+        slug: str,
+        definition: dict,
+        *,
+        blurb: str,
+        card_ids: list[str],
+        category: str,
+        introduction: dict,
+    ) -> dict:
+        if category not in VALID_CATEGORIES:
+            raise MindImprintApiError("category is not one of the seven supported course categories")
+        expected_introduction_keys = {"hook", "whatYouDo", "takeaways", "alignment", "keywords"}
+        if not isinstance(introduction, dict) or set(introduction) != expected_introduction_keys:
+            raise MindImprintApiError("introduction does not match the student authoring v1.3.0 contract")
         payload = self._api_request(
             "PUT",
             f"/api/v1/admin/courses/{urllib.parse.quote(slug, safe='')}/definition",
-            {"definition": definition, "blurb": blurb, "cardIds": card_ids},
+            {
+                "definition": definition,
+                "blurb": blurb,
+                "cardIds": card_ids,
+                "category": category,
+                "introduction": introduction,
+            },
             write=True,
         )
         if payload is None or payload.get("slug") != slug or payload.get("status") not in {"preview", "published"}:
             raise MindImprintApiError("definition write response is invalid")
         return payload
 
-    def ship(self, slug: str, *, cover: str) -> dict:
+    def ship(self, slug: str, *, cover: str, cover_asset_path: Optional[str] = None) -> dict:
+        if cover_asset_path and not self.supports_generated_course_cover:
+            raise MindImprintApiError(
+                "the pinned student authoring API cannot bind a generated course cover"
+            )
+        body = {"cover": cover}
+        if cover_asset_path:
+            body["coverAssetPath"] = cover_asset_path
         payload = self._api_request(
             "POST",
             f"/api/v1/admin/courses/{urllib.parse.quote(slug, safe='')}/ship",
-            {"cover": cover},
+            body,
             write=True,
         )
         if payload is None or payload.get("slug") != slug or payload.get("status") != "published":

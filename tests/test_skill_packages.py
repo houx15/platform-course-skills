@@ -305,6 +305,35 @@ class SkillPackageTests(unittest.TestCase):
         self.assertNotIn("Recommend opening a 新会话", director)
         self.assertNotIn("不得生成、剪辑、转码或修改 MP4", skill)
 
+    def test_course_catalog_and_generated_cover_are_teacher_confirmed_and_hash_bound(self):
+        director = (ROOT / "skills/build-platform-course/SKILL.md").read_text(encoding="utf-8")
+        publisher = (ROOT / "skills/publish-platform-course/SKILL.md").read_text(encoding="utf-8")
+        api_contract = (
+            ROOT / "skills/publish-platform-course/references/api-contract.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((director, publisher, api_contract, readme))
+
+        for phrase in (
+            "33-course catalog",
+            "manage-course-catalog.py propose",
+            "teacher-confirmed catalog binding",
+            "course-authoring-v1.3.0",
+            "structured `introduction`",
+            "`cardIds`",
+            "featured_rank",
+            "separate subagent",
+            "imagegen2",
+            "16:9",
+            "quality-100 WebP",
+            "manage-course-cover.py confirm",
+            ".course-work/cover-delivery/course-cover.webp",
+            "stock cover catalog",
+            "does not make it visible",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"
