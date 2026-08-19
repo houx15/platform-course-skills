@@ -238,6 +238,40 @@ class SkillPackageTests(unittest.TestCase):
         self.assertNotIn("wait for 教师确认", html)
         self.assertNotIn("obtain 教师确认", video)
 
+    def test_html_skill_repairs_legacy_protocol_without_teacher_code_work(self):
+        skill = (
+            ROOT / "skills" / "design-course-html" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        contract = (
+            ROOT
+            / "skills"
+            / "design-course-html"
+            / "references"
+            / "html-contract.md"
+        ).read_text(encoding="utf-8")
+        director = (
+            ROOT / "skills" / "build-platform-course" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+
+        for phrase in (
+            "directly edit the delivery copy",
+            "do not ask the teacher to modify code",
+            ".course-work/html-backups/",
+            "original SHA-256",
+            "preserve the existing questions, answers, scoring, feedback, completion threshold, DOM, and CSS",
+            "legacy payload",
+            "recompile the course",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, skill)
+
+        self.assertIn("repair the HTML directly", director)
+        self.assertIn("pendingFrameMessages", contract)
+        self.assertIn("let completionSent = false", contract)
+        self.assertIn("function completeInteraction", contract)
+        self.assertNotIn("if (!sessionToken) return;", contract)
+        self.assertNotIn('\nsend("completed", {', contract)
+
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"

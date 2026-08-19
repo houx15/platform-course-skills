@@ -33,9 +33,10 @@
 const PROTOCOL = "mind-course-interaction";
 const VERSION = "1.0";
 let sessionToken = null;
+const pendingFrameMessages = [];
+let completionSent = false;
 
-function send(type, payload) {
-  if (!sessionToken) return;
+function postFrameMessage(type, payload) {
   window.parent.postMessage({
     protocol: PROTOCOL,
     version: VERSION,
@@ -45,26 +46,50 @@ function send(type, payload) {
   }, "*");
 }
 
+function send(type, payload) {
+  if (!sessionToken) {
+    pendingFrameMessages.push({ type, payload });
+    return;
+  }
+  postFrameMessage(type, payload);
+}
+
 window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.protocol !== PROTOCOL ||
       message.version !== VERSION ||
       !message.sessionToken) return;
+  const isNewSession = sessionToken !== message.sessionToken;
   sessionToken = message.sessionToken;
-  send("ready", {});
+  if (!isNewSession) return;
+  postFrameMessage("ready", {});
+  while (pendingFrameMessages.length) {
+    const pending = pendingFrameMessages.shift();
+    postFrameMessage(pending.type, pending.payload);
+  }
 });
 
-send("completed", {
-  resultId: "stable-attempt-id",
-  value: {
-    answer: "option-id",
-    attempts: 1
-  },
-  correct: true
-});
+function completeInteraction() {
+  if (completionSent) return;
+  completionSent = true;
+  send("completed", {
+    resultId: "stable-attempt-id",
+    value: {
+      answer: "option-id",
+      attempts: 1
+    },
+    correct: true
+  });
+}
+
+// Call completeInteraction() only from the activity's real completion exit.
 ```
 
-The frame may send `ready`, `progress`, `completed`, or `error`. Every message echoes the current host-issued token. A completed payload must contain `correct` and/or JSON-compatible `value` learning evidence. `resultId` is an optional stable identity for duplicate completion detection. The host always stamps the Block ID as `interactionId`; the frame must not invent or rely on that identity. Include `correct` only for objectively graded interactions. The authoring validator checks these fields, but browser/runtime persistence remains a separate platform verification.
+The frame may send `ready`, `progress`, `completed`, or `error`. Every message echoes the current host-issued token. Messages created before the handshake are queued and flushed only after `ready`; a silent `if (!sessionToken) return` loses valid student actions and is rejected. A completed payload must contain `correct` and/or JSON-compatible `value` learning evidence. `resultId` is an optional stable identity for duplicate completion detection. The host always stamps the Block ID as `interactionId`; the frame must not invent or rely on that identity. Include `correct` only for objectively graded interactions. The authoring validator checks these fields, but browser/runtime persistence remains a separate platform verification.
+
+## Repairing an existing interaction
+
+Protocol repair changes the message adapter, not the activity. Preserve DOM/CSS, learner copy, answers, scoring, feedback, state transitions, completion thresholds, and blocking behavior. Remove legacy `INTERACTION_COMPLETE` only after every original completion exit reaches the new `completed` message. Keep the teacher's source untouched, repair a delivery copy, and always retain or reuse a SHA-named rollback copy under `.course-work/html-backups/`, including the first imported delivery copy.
 
 Do not use `fetch`, XMLHttpRequest, WebSocket, EventSource, beacon APIs, browser storage, cookies, opener/top access, or `parent.document`. The file is self-contained and communicates only through the message protocol.
 

@@ -552,6 +552,20 @@ def validate_interactive_html_v2(path: Path) -> List[ValidationIssue]:
             )
         )
 
+    silent_pre_handshake_drop = re.search(
+        r"if\s*\(\s*!\s*sessionToken\s*\)\s*(?:\{\s*)?return\b",
+        text,
+        re.I,
+    )
+    if silent_pre_handshake_drop is not None:
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "missing-pre-handshake-queue",
+                "frame messages created before the host handshake must be queued, not silently dropped",
+            )
+        )
+
     envelope_fields = all(
         re.search(rf"\b{field}\s*(?::|,|\}})", text)
         for field in ("protocol", "version", "sessionToken", "type", "payload")

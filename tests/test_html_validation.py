@@ -58,9 +58,9 @@ const VERSION = "1.0";
 const resultId = "evidence-check-attempt-1";
 let sessionToken = null;
 let selectedAnswer = "source-and-method";
+const pendingFrameMessages = [];
 
-function send(type, payload) {
-  if (!sessionToken) return;
+function postFrameMessage(type, payload) {
   window.parent.postMessage({
     protocol: PROTOCOL,
     version: VERSION,
@@ -70,11 +70,25 @@ function send(type, payload) {
   }, "*");
 }
 
+function send(type, payload) {
+  if (!sessionToken) {
+    pendingFrameMessages.push({ type, payload });
+    return;
+  }
+  postFrameMessage(type, payload);
+}
+
 window.addEventListener("message", (event) => {
   const message = event.data;
   if (message.protocol !== PROTOCOL || message.version !== VERSION || !message.sessionToken) return;
+  const isNewSession = sessionToken !== message.sessionToken;
   sessionToken = message.sessionToken;
-  send("ready", {});
+  if (!isNewSession) return;
+  postFrameMessage("ready", {});
+  while (pendingFrameMessages.length) {
+    const pending = pendingFrameMessages.shift();
+    postFrameMessage(pending.type, pending.payload);
+  }
 });
 
 function finish() {
@@ -330,6 +344,14 @@ class HtmlV2ValidationTests(unittest.TestCase):
             "// token was not accepted",
         )
         self.assertIn("missing-session-token-echo", self.codes(text))
+
+    def test_silently_dropping_messages_before_handshake_is_rejected(self):
+        text = VALID_HTML_V2.replace(
+            "if (!sessionToken) {\n    pendingFrameMessages.push({ type, payload });\n    return;\n  }",
+            "if (!sessionToken) return;",
+        )
+
+        self.assertIn("missing-pre-handshake-queue", self.codes(text))
 
     def test_completed_payload_accepts_optional_result_id_but_requires_learning_evidence(self):
         no_result_id = VALID_HTML_V2.replace("    resultId,\n", "")

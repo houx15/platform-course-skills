@@ -18,7 +18,7 @@ def main() -> int:
     parser.add_argument(
         "--course-definition-2",
         action="store_true",
-        help="Validate the mind-course-interaction 1.0 renderer handshake",
+        help="Validate the mind-course-interaction 1.0 handshake used by CourseDefinition 2.0",
     )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()

@@ -330,6 +330,7 @@ python3 scripts/install-skills.py --target both --replace
 - `pdf` Block 必须保留来源明确的原始 PDF 字节，并检查扩展名、文件头、EOF、路径安全与真实 renderer 行为。
 - 视频必须是 MP4、H.264、`yuv420p`、faststart；存在音轨时使用 AAC。交互文件会检查时间范围、自动暂停、必做题和完成规则。
 - HTML 在 iframe 中遵守 renderer 支持的消息协议。完成时必须提交规定的学生学习数据；自动播放音乐仍受浏览器 autoplay 策略约束，并需要在真实预览中验证。
+- 旧 HTML 若使用 `INTERACTION_COMPLETE`、缺少握手或 `sessionToken`、在握手前静默丢弃消息，Agent 会备份原件并直接修复课程交付副本，不要求老师理解或修改协议代码；题目、答案、评分、完成门槛、DOM 和 CSS 必须保持不变。
 - WEBVTT、JSON、HTML、图片、PDF 与视频均按课程内相对路径管理。
 
 不兼容视频不得覆盖原文件。应在独立会话中用 `ffmpeg -n` 生成新副本，再重新对齐时间点并验证。

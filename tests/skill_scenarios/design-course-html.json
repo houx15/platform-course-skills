@@ -2,7 +2,8 @@
   "skill": "design-course-html",
   "prompts": [
     "把这个课堂模拟做成 HTML 交互。",
-    "检查现有 HTML 是否符合平台 iframe 协议。"
+    "检查现有 HTML 是否符合平台 iframe 协议。",
+    "这个旧 HTML 还在发送 INTERACTION_COMPLETE。我不懂协议，请直接修到可以预览，不要让我改代码，也不要改变题目和样式。"
   ],
   "requiredPhrases": [
     "学习目标",
@@ -23,6 +24,12 @@
     "14px",
     ".course-work/html-reports/",
     "generate-html-report.py",
-    "真实 iframe"
+    "真实 iframe",
+    "directly edit the delivery copy",
+    "do not ask the teacher to modify code",
+    ".course-work/html-backups/",
+    "original SHA-256",
+    "legacy payload",
+    "recompile the course"
   ]
 }
