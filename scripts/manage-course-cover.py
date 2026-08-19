@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from course_toolkit.course_cover import (  # noqa: E402
     CourseCoverError,
+    build_cover_prompt,
     confirm_cover_candidate,
     load_confirmed_cover,
     prepare_cover_candidate,
@@ -26,6 +27,9 @@ def utc_now() -> str:
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="Manage a generated 16:9 course cover")
     commands = root.add_subparsers(dest="command", required=True)
+    prompt = commands.add_parser("prompt")
+    prompt.add_argument("root", type=Path)
+    prompt.add_argument("--json", action="store_true")
     prepare = commands.add_parser("prepare")
     prepare.add_argument("root", type=Path)
     prepare.add_argument("source", type=Path)
@@ -47,7 +51,10 @@ def parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = parser().parse_args()
     try:
-        if args.command == "prepare":
+        if args.command == "prompt":
+            rendered = build_cover_prompt(args.root)
+            payload = {"ok": True, "status": "prompt-ready", "prompt": rendered}
+        elif args.command == "prepare":
             record = prepare_cover_candidate(
                 args.root,
                 args.source,
@@ -68,6 +75,8 @@ def main() -> int:
             payload = {"ok": True, "status": "confirmed", "cover": record}
         if args.json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))
+        elif args.command == "prompt":
+            print(payload["prompt"])
         else:
             print(f"Course cover: {payload['status']}")
         return 0

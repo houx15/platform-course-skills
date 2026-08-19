@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest import mock
 
 from course_toolkit.course_catalog import confirm_course_selection
-from course_toolkit.course_cover import confirm_cover_candidate, register_cover_candidate
+from course_toolkit.course_cover import build_cover_prompt, confirm_cover_candidate, register_cover_candidate
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.jsonio import load_json
 from course_toolkit.live_publication import (
@@ -142,7 +142,7 @@ class LivePublicationTests(unittest.TestCase):
             register_cover_candidate(
                 self.root,
                 candidate,
-                prompt="Evidence paths meeting in a balanced field",
+                prompt=build_cover_prompt(self.root),
                 generator="imagegen2-subagent",
                 quality=100,
                 created_at=NOW,

@@ -1,3 +1,4 @@
+import hashlib
 import tempfile
 import unittest
 from pathlib import Path
@@ -7,11 +8,13 @@ from unittest import mock
 from course_toolkit.course_catalog import confirm_course_selection
 from course_toolkit.course_cover import (
     CourseCoverError,
+    build_cover_prompt,
     confirm_cover_candidate,
     load_confirmed_cover,
     prepare_cover_candidate,
     register_cover_candidate,
 )
+from course_toolkit.jsonio import load_json, write_json_atomic
 
 
 NOW = "2026-08-20T00:00:00Z"
@@ -31,6 +34,9 @@ class CourseCoverTests(unittest.TestCase):
             confirmed_at=NOW,
         )
 
+    def expected_prompt(self):
+        return build_cover_prompt(self.root)
+
     def tearDown(self):
         self.temporary.cleanup()
 
@@ -39,7 +45,7 @@ class CourseCoverTests(unittest.TestCase):
         candidate = register_cover_candidate(
             self.root,
             self.candidate,
-            prompt="A visual metaphor for evidence comparison",
+            prompt=self.expected_prompt(),
             generator="imagegen2-subagent",
             quality=100,
             created_at=NOW,
@@ -72,7 +78,7 @@ class CourseCoverTests(unittest.TestCase):
             register_cover_candidate(
                 self.root,
                 self.candidate,
-                prompt="Prompt",
+                prompt=self.expected_prompt(),
                 generator="imagegen2-subagent",
                 quality=100,
                 created_at=NOW,
@@ -83,7 +89,7 @@ class CourseCoverTests(unittest.TestCase):
         register_cover_candidate(
             self.root,
             self.candidate,
-            prompt="Prompt",
+            prompt=self.expected_prompt(),
             generator="imagegen2-subagent",
             quality=100,
             created_at=NOW,
@@ -92,6 +98,25 @@ class CourseCoverTests(unittest.TestCase):
         (self.root / ".course-work/cover-delivery/course-cover.webp").write_bytes(b"changed")
 
         with self.assertRaisesRegex(CourseCoverError, "changed"):
+            load_confirmed_cover(self.root)
+
+    @mock.patch("course_toolkit.course_cover._probe_webp", return_value={"width": 1600, "height": 900})
+    def test_changed_prompt_invalidates_confirmation(self, _probe):
+        register_cover_candidate(
+            self.root,
+            self.candidate,
+            prompt=self.expected_prompt(),
+            generator="imagegen2-subagent",
+            quality=100,
+            created_at=NOW,
+        )
+        confirm_cover_candidate(self.root, teacher_response="确认", confirmed_at=NOW)
+        record_path = self.root / ".course-work/course-cover.json"
+        record = load_json(record_path)
+        record["prompt"] = "rewritten"
+        write_json_atomic(record_path, record)
+
+        with self.assertRaisesRegex(CourseCoverError, "pinned course-cover prompt"):
             load_confirmed_cover(self.root)
 
     @mock.patch("course_toolkit.course_cover._probe_image_dimensions", return_value={"width": 1600, "height": 900})
@@ -114,7 +139,7 @@ class CourseCoverTests(unittest.TestCase):
                 self.root,
                 source,
                 candidate,
-                prompt="Prompt",
+                prompt=self.expected_prompt(),
                 created_at=NOW,
             )
 
@@ -125,7 +150,7 @@ class CourseCoverTests(unittest.TestCase):
                 self.root,
                 source,
                 candidate,
-                prompt="Prompt",
+                prompt=self.expected_prompt(),
                 created_at=NOW,
             )
 
@@ -149,7 +174,7 @@ class CourseCoverTests(unittest.TestCase):
                 self.root,
                 source,
                 candidate,
-                prompt="Prompt",
+                prompt=self.expected_prompt(),
                 created_at=NOW,
             )
 
@@ -171,7 +196,7 @@ class CourseCoverTests(unittest.TestCase):
                     self.root,
                     source,
                     candidate,
-                    prompt="Prompt",
+                    prompt=self.expected_prompt(),
                     created_at=NOW,
                 )
 
@@ -196,11 +221,43 @@ class CourseCoverTests(unittest.TestCase):
                     self.root,
                     source,
                     candidate,
-                    prompt="Prompt",
+                    prompt=self.expected_prompt(),
                     created_at=NOW,
                 )
 
         self.assertEqual(source.read_bytes(), b"source-image-bytes")
+        self.assertFalse(candidate.exists())
+
+    def test_prompt_is_the_pinned_teacher_template_with_confirmed_course_title(self):
+        prompt = build_cover_prompt(self.root)
+
+        self.assertIn('Course title: “把争议放回证据里：立场光谱与视角对照矩阵”', prompt)
+        self.assertIn("Create a 16:9 conceptual course cover for high-school students.", prompt)
+        self.assertIn("Use a dark navy or charcoal background, not pure black.", prompt)
+        self.assertIn("Do not include readable text, logos, or watermarks.", prompt)
+        self.assertEqual(
+            hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "51dbf02afcef498f97413fd159a05a923652f204ef2bc765edddd7956c03d7d0",
+        )
+
+    @mock.patch("course_toolkit.course_cover._probe_image_dimensions", return_value={"width": 1600, "height": 900})
+    def test_prepare_rejects_an_agent_rewritten_prompt(self, _probe_source):
+        source = self.root / ".course-work/cover-sources/imagegen-output.png"
+        source.parent.mkdir(parents=True)
+        source.write_bytes(b"source-image-bytes")
+        candidate = self.root / ".course-work/cover-candidates/rewritten.webp"
+
+        with mock.patch("course_toolkit.course_cover.subprocess.run") as run:
+            with self.assertRaisesRegex(CourseCoverError, "pinned course-cover prompt"):
+                prepare_cover_candidate(
+                    self.root,
+                    source,
+                    candidate,
+                    prompt="Make a futuristic education cover",
+                    created_at=NOW,
+                )
+
+        run.assert_not_called()
         self.assertFalse(candidate.exists())
 
 
