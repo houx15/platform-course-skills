@@ -50,7 +50,7 @@ class PreviewEvidenceTests(unittest.TestCase):
         manifest = record_preview_evidence(self.root, self.client)
 
         self.assertEqual(manifest["schemaVersion"], "1.0")
-        self.assertEqual(manifest["renderer"]["upstreamTag"], "course-authoring-v1.2.0")
+        self.assertEqual(manifest["renderer"]["upstreamTag"], "course-authoring-v1.5.2")
         self.assertEqual(manifest["visitedSliceIds"], self.slice_ids)
         evidence = verify_g7_preview(self.root)
         self.assertIn(".course-work/preview-manifest.json", evidence)

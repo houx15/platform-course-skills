@@ -1,8 +1,8 @@
 {
   "schemaVersion": "2.0",
   "upstreamRepository": "mind-imprint",
-  "upstreamTag": "course-authoring-v1.2.0",
-  "upstreamCommit": "3329e96ed632d40ca30b3f190294c1bf935c5ffa",
+  "upstreamTag": "course-authoring-v1.5.2",
+  "upstreamCommit": "222fb2f28844dc5fc0851d4e5e8fc27f7399f0b9",
   "packageName": "@mind-imprint/course-contract",
   "packageVersion": "0.0.0",
   "packages": {
@@ -14,14 +14,8 @@
     "@mind-imprint/course-renderer": {
       "path": "packages/course-renderer",
       "packageVersion": "0.0.0",
-      "treeHash": "b75e6b6213176ae549924c78788432e338660dd6712eb190b033aa319b50c939",
-      "upstreamTreeHash": "d6a6ee3a2f0537fd80d73214d197a85fc29d73b54752eb78c13a02f013a302f6",
-      "localPatches": [
-        {
-          "path": "src/layout/LayoutRenderer.tsx",
-          "reason": "Preserve v1.2.0 behavior while satisfying noUncheckedIndexedAccess."
-        }
-      ]
+      "treeHash": "4175029641a05745bdc8730d69e2eea77aade608e41d6ab6afd2bdda67b3f895",
+      "upstreamTreeHash": "4175029641a05745bdc8730d69e2eea77aade608e41d6ab6afd2bdda67b3f895"
     },
     "@mind-imprint/course-runtime": {
       "path": "packages/course-runtime",

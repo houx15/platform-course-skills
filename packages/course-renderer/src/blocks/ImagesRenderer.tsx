@@ -1,14 +1,17 @@
 import { useState } from "react";
+import { ImageLightbox } from "./media/ImageLightbox";
 import type { BlockRenderer, BlockRendererProps, ImageItem, ImagesBlock } from "./types";
 
 function Figure({
   item,
-  assetResolver,
+  src,
   focused,
+  onZoom,
 }: {
   item: ImageItem;
-  assetResolver: BlockRendererProps<ImagesBlock>["assetResolver"];
+  src: string;
   focused: boolean;
+  onZoom: () => void;
 }) {
   return (
     <figure
@@ -16,7 +19,9 @@ function Figure({
       data-focused={focused ? "true" : undefined}
       className={`course-images__item${focused ? " is-focused" : ""}`}
     >
-      <img src={assetResolver.resolve(item.source)} alt={item.alt} />
+      <button type="button" className="course-images__zoom" onClick={onZoom} aria-label={`放大图片：${item.alt || item.caption || ""}`.trim()}>
+        <img src={src} alt={item.alt} />
+      </button>
       {item.caption ? <figcaption>{item.caption}</figcaption> : null}
     </figure>
   );
@@ -34,7 +39,18 @@ function Figure({
  */
 export const ImagesRenderer: BlockRenderer<ImagesBlock> = ({ block, assetResolver, visible, focusedItemId, emit }) => {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [zoomedId, setZoomedId] = useState<string | null>(null);
   const items = block.items;
+
+  const zoomed = zoomedId ? (items.find((i) => i.id === zoomedId) ?? null) : null;
+  const lightbox = zoomed ? (
+    <ImageLightbox
+      src={assetResolver.resolve(zoomed.source)}
+      alt={zoomed.alt}
+      caption={zoomed.caption}
+      onClose={() => setZoomedId(null)}
+    />
+  ) : null;
 
   const wrapperProps = {
     "data-block-id": block.id,
@@ -56,7 +72,12 @@ export const ImagesRenderer: BlockRenderer<ImagesBlock> = ({ block, assetResolve
     return (
       <div {...wrapperProps}>
         <div className="course-images__gallery" role="group" aria-label="图片画廊">
-          <Figure item={active} assetResolver={assetResolver} focused={active.id === focusedItemId} />
+          <Figure
+            item={active}
+            src={assetResolver.resolve(active.source)}
+            focused={active.id === focusedItemId}
+            onZoom={() => setZoomedId(active.id)}
+          />
           <div className="course-images__nav">
             <button type="button" data-nav="prev" aria-label="上一张" onClick={() => goTo(safeIndex - 1)}>
               上一张
@@ -69,6 +90,7 @@ export const ImagesRenderer: BlockRenderer<ImagesBlock> = ({ block, assetResolve
             </button>
           </div>
         </div>
+        {lightbox}
       </div>
     );
   }
@@ -78,9 +100,16 @@ export const ImagesRenderer: BlockRenderer<ImagesBlock> = ({ block, assetResolve
     <div {...wrapperProps}>
       <div className={`course-images__${block.presentation}`}>
         {shown.map((item) => (
-          <Figure key={item.id} item={item} assetResolver={assetResolver} focused={item.id === focusedItemId} />
+          <Figure
+            key={item.id}
+            item={item}
+            src={assetResolver.resolve(item.source)}
+            focused={item.id === focusedItemId}
+            onZoom={() => setZoomedId(item.id)}
+          />
         ))}
       </div>
+      {lightbox}
     </div>
   );
 };

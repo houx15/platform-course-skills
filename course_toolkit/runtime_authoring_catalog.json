@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "upstreamTag": "course-authoring-v1.2.0",
+  "upstreamTag": "course-authoring-v1.5.2",
   "targetContractVersion": "2.0",
   "authority": {
     "machine": "packages/course-contract",

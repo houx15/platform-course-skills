@@ -1,5 +1,19 @@
 import { useEffect, useRef, useState } from "react";
+import { PdfModal } from "./PdfModal";
 import type { BlockRenderer, PdfBlock } from "../types";
+
+// Inline "expand / read in popup" glyph — the renderer stays self-contained
+// (no icon-library dependency; see package.json deps).
+function ExpandIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M15 3h6v6" />
+      <path d="M9 21H3v-6" />
+      <path d="M21 3l-7 7" />
+      <path d="M3 21l7-7" />
+    </svg>
+  );
+}
 
 /** Load lifecycle of the embedded browser PDF viewer. */
 type PdfViewState = "loading" | "loaded" | "error";
@@ -13,7 +27,15 @@ type PdfViewState = "loading" | "loaded" | "error";
  * render, never captured mount-only, so a refreshed URL is always picked up:
  * P1-11), honor `initialPage` via the `#page=` fragment, show loading/error
  * states around the iframe's own `onLoad`/`onError`, and offer an explicit
- * open-in-new-tab/download fallback for a browser that can't inline-render.
+ * open-in-new-tab fallback for a browser that can't inline-render.
+ *
+ * The open links are `target="_blank" rel="noopener noreferrer"` and carry NO
+ * `download` attribute: the source is a cross-origin signed CDN URL, for which
+ * the browser IGNORES `download` and — worse — drops `target="_blank"`,
+ * navigating the CURRENT tab. Since the app has no URL routing, that strands
+ * the learner (a "back" click leaves the course for the homepage). A plain
+ * new-tab link keeps the course tab intact; the browser's own PDF viewer in
+ * the new tab still offers download.
  *
  * It NEVER emits `block.completed`: opening or downloading a PDF is not
  * evidence of reading or understanding (§9.3). Learning evidence comes from a
@@ -27,6 +49,7 @@ export const PdfRenderer: BlockRenderer<PdfBlock> = ({ block, assetResolver, vis
   const iframeSrc = `${url}#page=${initialPage}`;
 
   const [viewState, setViewState] = useState<PdfViewState>("loading");
+  const [expanded, setExpanded] = useState(false);
   const frameRef = useRef<HTMLIFrameElement | null>(null);
 
   // Mount-once open Event — block identity is stable for a mounted PdfRenderer.
@@ -61,16 +84,26 @@ export const PdfRenderer: BlockRenderer<PdfBlock> = ({ block, assetResolver, vis
     >
       <div className="course-pdf__header">
         <span className="course-pdf__title">{block.title}</span>
-        <a
-          className="course-pdf__download"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          download
-          onClick={() => emitRef.current(block.id, "pdf.downloaded", {})}
-        >
-          在新标签打开 / 下载
-        </a>
+        <div className="course-pdf__header-actions">
+          <button
+            type="button"
+            className="course-pdf__expand"
+            aria-label={`放大阅读：${block.title}`}
+            onClick={() => setExpanded(true)}
+          >
+            <ExpandIcon />
+            放大阅读
+          </button>
+          <a
+            className="course-pdf__download"
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => emitRef.current(block.id, "pdf.downloaded", {})}
+          >
+            在新标签打开
+          </a>
+        </div>
       </div>
       <div className="course-pdf__viewport" data-pdf-state={viewState}>
         {viewState === "loading" ? (
@@ -81,8 +114,8 @@ export const PdfRenderer: BlockRenderer<PdfBlock> = ({ block, assetResolver, vis
         {viewState === "error" ? (
           <div className="course-pdf__error" role="alert">
             <p>PDF 加载失败，你的浏览器可能无法内嵌预览这份文件。</p>
-            <a className="course-pdf__fallback" href={url} target="_blank" rel="noreferrer">
-              在新标签打开 / 下载
+            <a className="course-pdf__fallback" href={url} target="_blank" rel="noopener noreferrer">
+              在新标签打开
             </a>
           </div>
         ) : (
@@ -96,6 +129,7 @@ export const PdfRenderer: BlockRenderer<PdfBlock> = ({ block, assetResolver, vis
           />
         )}
       </div>
+      {expanded ? <PdfModal src={iframeSrc} title={block.title} onClose={() => setExpanded(false)} /> : null}
     </div>
   );
 };

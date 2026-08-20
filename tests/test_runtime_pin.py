@@ -10,10 +10,10 @@ class RuntimePinTests(unittest.TestCase):
             (ROOT / "course-contract.snapshot.json").read_text(encoding="utf-8")
         )
 
-        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.2.0")
+        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.5.2")
         self.assertEqual(
             manifest["upstreamCommit"],
-            "3329e96ed632d40ca30b3f190294c1bf935c5ffa",
+            "222fb2f28844dc5fc0851d4e5e8fc27f7399f0b9",
         )
         self.assertEqual(
             set(manifest["packages"]),
@@ -24,15 +24,10 @@ class RuntimePinTests(unittest.TestCase):
             },
         )
         renderer = manifest["packages"]["@mind-imprint/course-renderer"]
-        self.assertNotEqual(renderer["treeHash"], renderer["upstreamTreeHash"])
-        self.assertEqual(
-            renderer["localPatches"],
-            [
-                {
-                    "path": "src/layout/LayoutRenderer.tsx",
-                    "reason": "Preserve v1.2.0 behavior while satisfying noUncheckedIndexedAccess.",
-                }
-            ],
+        self.assertEqual(renderer["treeHash"], renderer["upstreamTreeHash"])
+        self.assertNotIn("localPatches", renderer)
+        self.assertTrue(
+            (ROOT / "packages/course-renderer/src/blocks/media/PdfModal.tsx").is_file()
         )
 
 

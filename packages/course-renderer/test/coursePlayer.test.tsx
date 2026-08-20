@@ -98,6 +98,28 @@ function buildSeededAdapters(seed: CourseSession) {
 }
 
 describe("CoursePlayer end-to-end", () => {
+  it("shows a visible loading surface (spinner + label) on first entry, not an empty white box", () => {
+    const { adapters } = buildAdapters();
+    const { container } = render(
+      <AudioEngineProvider value={new FakeAudioEngine()}>
+        <CoursePlayer
+          document={staticCourseDocument}
+          adapters={adapters}
+          studentId="student-1"
+          idFactory={makeIdFactory("ev")}
+          clock={clock}
+        />
+      </AudioEngineProvider>,
+    );
+    // Synchronously after mount the async init hasn't resolved — the loading
+    // phase must render a real spinner + label, never a blank div.
+    const loading = container.querySelector(".course-loading");
+    expect(loading).not.toBeNull();
+    expect(loading!.querySelector(".course-loading__spinner")).not.toBeNull();
+    expect(loading!.textContent).toContain("正在加载课程");
+  });
+
+
   it("plays Opening → Slices → Closing driven by the workflow; Closing is visible and the session stays 'closing' until the learner dismisses it, only then firing onComplete (P1-03)", async () => {
     const { sessionAdapter, adapters } = buildAdapters();
     const engine = new FakeAudioEngine();

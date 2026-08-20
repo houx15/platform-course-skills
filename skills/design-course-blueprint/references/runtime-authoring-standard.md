@@ -2,7 +2,7 @@
 
 ## Authority order
 
-1. `packages/course-contract` pinned at `course-authoring-v1.2.0` decides which JSON is accepted.
+1. The three shared packages pinned at `course-authoring-v1.5.2` decide which JSON is accepted and how it is rendered. This tag keeps the v1.4.0 layout contract intact; it includes the v1.5.1 course-end visual fixes and the v1.5.2 PDF new-tab navigation fix.
 2. `packages/course-runtime` and `packages/course-renderer` decide which accepted behavior is actually produced and rendered.
 3. `2026-08-15-student-course-runtime-data-and-renderer-design.md` explains product meaning.
 4. Golden examples demonstrate coverage; they never limit the available options.
@@ -26,7 +26,7 @@ The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. S
 
 Choose the layout from the learning action and natural media aspect while keeping `1:1` as the strong horizontal default:
 
-- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself.
+- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself. In `course-authoring-v1.5.2`, every PDF header has a **放大阅读** action that opens the browser viewer in a large near-fullscreen modal, so the learner can inspect the original without the author giving the PDF a wider Slot. If the learner uses the external-open action, it must open a new tab and leave the course tab intact.
 - **Video is wide.** Use `full` for a focused video. The one normal asymmetric split exception is a dominant large video paired with only a small amount of supporting text; the video may receive the wider side. A video paired with substantial content remains `1:1` or is split into another Slice.
 - **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
 - **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side, with the answerable Block in the right slot. Let the renderer's reading card constrain line length.

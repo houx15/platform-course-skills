@@ -45,6 +45,20 @@ describe("ClosingScene", () => {
     expect(onComplete).toHaveBeenCalledTimes(1);
   });
 
+  it("disables + relabels 完成课程 on click so it gives feedback and can't be re-fired", async () => {
+    const onComplete = vi.fn();
+    renderClosing(new FakeAudioEngine(), { onComplete });
+
+    const btn = screen.getByRole("button", { name: "完成课程" });
+    await userEvent.click(btn);
+    // relabels to a pending state and disables
+    const pending = screen.getByRole("button", { name: "正在生成报告…" });
+    expect(pending).toBeDisabled();
+    // a second click does nothing — onComplete stays at exactly one call
+    await userEvent.click(pending);
+    expect(onComplete).toHaveBeenCalledTimes(1);
+  });
+
   it("plays scene.audioUrl through the injected engine on mount, resolving a relative key via the assetResolver (P2-04)", () => {
     const engine = new FakeAudioEngine();
     renderClosing(engine, { scene: baseScene({ audioUrl: "audio/closing.mp3" }) });

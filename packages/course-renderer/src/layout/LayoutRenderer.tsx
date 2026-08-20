@@ -21,9 +21,11 @@ export interface LayoutRendererProps {
  * slot's content is tall/wide. Falls back to 1:1 for a missing/malformed ratio.
  */
 function ratioTracks(ratio: SplitRatio | undefined): string {
-  const [a, b] = (ratio ?? "1:1").split(":").map((n) => Number.parseInt(n, 10));
-  const left = a !== undefined && Number.isFinite(a) && a > 0 ? a : 1;
-  const right = b !== undefined && Number.isFinite(b) && b > 0 ? b : 1;
+  const parts = (ratio ?? "1:1").split(":");
+  const a = Number.parseInt(parts[0] ?? "1", 10);
+  const b = Number.parseInt(parts[1] ?? "1", 10);
+  const left = Number.isFinite(a) && a > 0 ? a : 1;
+  const right = Number.isFinite(b) && b > 0 ? b : 1;
   return `minmax(0, ${left}fr) minmax(0, ${right}fr)`;
 }
 

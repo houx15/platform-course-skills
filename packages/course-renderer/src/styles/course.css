@@ -26,7 +26,9 @@
    the overlay root too or every var(--course-*) inside the modal resolves to
    nothing (no card, no button chrome). Same token values, one shared rule. */
 .course-shell,
-.course-video__cue-overlay {
+.course-video__cue-overlay,
+.course-lightbox,
+.course-pdf-modal {
   --course-bg: var(--mk-paper, #fbf8f4);
   --course-surface: var(--mk-surface, #ffffff);
   --course-border: var(--mk-border, #efe7dd);
@@ -77,7 +79,13 @@
 .course-shell *::after,
 .course-video__cue-overlay *,
 .course-video__cue-overlay *::before,
-.course-video__cue-overlay *::after {
+.course-video__cue-overlay *::after,
+.course-lightbox *,
+.course-lightbox *::before,
+.course-lightbox *::after,
+.course-pdf-modal *,
+.course-pdf-modal *::before,
+.course-pdf-modal *::after {
   box-sizing: border-box;
 }
 
@@ -109,13 +117,52 @@
 
 /* ---------- course-level phases ---------- */
 
-.course-loading,
 .course-error {
   flex: 1 1 auto;
   min-height: 0;
   /* a diagnostic/loading surface may legitimately need its own scroll —
      still contained to this region, never the shell/page. */
   overflow: auto;
+}
+
+/* Loading surface — a VISIBLE spinner + label centered in the region, not an
+ * empty white box (the previous `.course-loading` had no content, so a fresh
+ * course entry / a slow scene generation showed several seconds of blank
+ * white). Shown on first entry (session create + Opening generation) and while
+ * the closing summary generates. */
+.course-loading {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  overflow: auto;
+  color: var(--course-muted);
+}
+.course-loading__spinner {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 3px solid var(--course-accent-soft);
+  border-top-color: var(--course-accent);
+  animation: course-spin 0.8s linear infinite;
+}
+.course-loading__label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--course-secondary);
+}
+@keyframes course-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .course-loading__spinner {
+    animation-duration: 2s;
+  }
 }
 
 .course-player {
@@ -165,7 +212,16 @@
   overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  /* Every slot centers its content vertically — a short reading card, a single
+   * figure, or the two stacked blocks of a split column all float in the middle
+   * of their region instead of clinging to the top. `safe` keeps content taller
+   * than the slot pinned to the top (and scrollable via overflow:auto) rather
+   * than clipping its first lines. A slot holding a fill-block (PDF/video/etc.
+   * grows to fill via `.course-slot-block { flex:1 1 auto }`), so there is no
+   * free space to distribute and centering is a no-op there — media still
+   * fills, only natural-height content is centered. */
+  justify-content: safe center;
 }
 
 /* ---------- Slot-block wrapper: repair the flex-height chain ----------
@@ -232,6 +288,49 @@
   gap: 12px;
   flex: 0 0 auto;
   width: 100%;
+}
+.course-pdf__header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.course-pdf__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--course-ink);
+}
+.course-pdf__expand {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--course-border);
+  border-radius: var(--course-radius);
+  background: var(--course-surface);
+  color: var(--course-secondary);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color var(--course-fast) var(--course-ease), color var(--course-fast) var(--course-ease);
+}
+.course-pdf__expand:hover {
+  border-color: var(--course-accent);
+  color: var(--course-accent);
+}
+.course-pdf__download {
+  font-size: 13px;
+  color: var(--course-accent);
+  text-underline-offset: 2px;
+  white-space: nowrap;
 }
 
 .course-pdf__viewport {
@@ -602,8 +701,8 @@
  * top-left corner. It gets a surface, border, radius, and real padding; the
  * measure is capped at ~66ch for readability and centered horizontally so it
  * never sprawls the full 1280px+ of a `full` slot. Vertical centering is the
- * slot's job (see the text-only-slot rule below) so a short card floats in the
- * middle of its space instead of clinging to the top. */
+ * slot's job (`.course-layout__slot { justify-content: safe center }`) so a
+ * short card floats in the middle of its space instead of clinging to the top. */
 .course-block--text.prose {
   font-size: 16px;
   line-height: 1.72;
@@ -619,13 +718,9 @@
   padding: 26px 30px;
 }
 
-/* A slot whose ONLY content is a text card centers it vertically. `safe`
- * keeps a card taller than the slot pinned to the top (and scrollable via the
- * slot's overflow:auto) instead of clipping its first lines. Multi-block slots
- * (e.g. text intro + PDF) are untouched — they stay top-aligned and stacked. */
-.course-layout__slot:has(> .course-slot-block:only-child > .course-block--text) {
-  justify-content: safe center;
-}
+/* Vertical centering is the slot's job now (see `.course-layout__slot` above —
+ * every slot `justify-content: safe center`s its content), so a short card
+ * floats in the middle of its space instead of clinging to the top. */
 .course-block--text.prose h1,
 .course-block--text.prose h2,
 .course-block--text.prose h3 {
@@ -670,6 +765,27 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+/* The figure image is a zoom trigger — a bare, full-width button (no chrome of
+ * its own) so the image reads and sizes exactly as before, but is clickable and
+ * keyboard-focusable to open the lightbox. */
+.course-images__zoom {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  color: inherit;
+  font: inherit;
+}
+.course-images__zoom:focus-visible {
+  outline: 3px solid var(--course-focus-ring-color);
+  outline-offset: 3px;
+  border-radius: var(--course-radius);
 }
 .course-images__item img {
   border: 1px solid var(--course-border);
@@ -863,4 +979,194 @@
   left: 12px;
   bottom: 12px;
   z-index: 3;
+}
+
+/* ---------- Image lightbox (click-to-enlarge) ----------
+ * Portaled to <body> like the cue modal, so it needs the same token +
+ * box-sizing setup — it carries `.course-video__cue-overlay` for that (see the
+ * shared token rule at the top). A dimmed backdrop that DOES dismiss on click
+ * (unlike the required-cue modal, an enlarged image is safe to close by a stray
+ * click), Escape closes, and the enlarged figure sits centered above it. */
+.course-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 32px;
+}
+.course-lightbox__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 20, 18, 0.78);
+  cursor: zoom-out;
+}
+.course-lightbox__figure {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
+}
+.course-lightbox__img {
+  display: block;
+  max-width: min(1200px, 100%);
+  max-height: 82vh;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  border-radius: var(--course-radius);
+  box-shadow: var(--course-shadow-lg);
+  background: var(--course-surface);
+  /* zoom/pan: transform is driven inline (translate + scale); keep it centered,
+   * un-selectable while dragging, and claim wheel/touch gestures. */
+  transform-origin: center center;
+  user-select: none;
+  -webkit-user-drag: none;
+  touch-action: none;
+  will-change: transform;
+}
+.course-lightbox__caption {
+  margin: 0;
+  max-width: 72ch;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1.55;
+  color: #fff;
+}
+.course-lightbox__hint {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  margin: 0;
+  padding: 5px 14px;
+  border-radius: var(--course-radius-full);
+  background: rgba(0, 0, 0, 0.4);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.course-lightbox__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: var(--course-radius-full);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--course-fast) var(--course-ease), border-color var(--course-fast) var(--course-ease);
+}
+.course-lightbox__close:hover {
+  background: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+.course-lightbox__close:focus-visible {
+  outline: 3px solid var(--course-focus-ring-color);
+  outline-offset: 2px;
+}
+
+/* ---------- PDF read-in-popup modal ----------
+ * A course PDF slot is often short (a split side, a grid cell); the "放大阅读"
+ * control opens the same document in a large near-fullscreen modal so a page is
+ * actually readable. Portaled to <body> like the other overlays; Escape / the ✕
+ * / a backdrop click close it. */
+.course-pdf-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+}
+.course-pdf-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(28, 20, 18, 0.72);
+  cursor: zoom-out;
+}
+.course-pdf-modal__panel {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  width: min(1000px, 100%);
+  height: 100%;
+  max-height: 100%;
+  min-height: 0;
+  background: var(--course-surface);
+  border-radius: var(--course-radius-lg);
+  box-shadow: var(--course-shadow-lg);
+  overflow: hidden;
+}
+.course-pdf-modal__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--course-border);
+}
+.course-pdf-modal__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14.5px;
+  font-weight: 700;
+  color: var(--course-ink);
+}
+.course-pdf-modal__close {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--course-border);
+  border-radius: var(--course-radius-full);
+  background: var(--course-surface);
+  color: var(--course-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color var(--course-fast) var(--course-ease), color var(--course-fast) var(--course-ease);
+}
+.course-pdf-modal__close:hover {
+  border-color: var(--course-accent);
+  color: var(--course-accent);
+}
+.course-pdf-modal__close:focus-visible {
+  outline: 3px solid var(--course-focus-ring-color);
+  outline-offset: 2px;
+}
+.course-pdf-modal__frame {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  border: 0;
+  background: var(--course-surface);
 }

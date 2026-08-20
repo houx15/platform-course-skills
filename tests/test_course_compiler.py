@@ -110,7 +110,7 @@ class CourseCompilerTests(unittest.TestCase):
         )
         self.assertEqual(
             result.report["contractSnapshot"]["upstreamCommit"],
-            "3329e96ed632d40ca30b3f190294c1bf935c5ffa",
+            "222fb2f28844dc5fc0851d4e5e8fc27f7399f0b9",
         )
         self.assertEqual(len(result.report["compilerHash"]), 64)
         self.assertEqual(len(result.report["contractSnapshotHash"]), 64)

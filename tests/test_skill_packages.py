@@ -356,6 +356,35 @@ class SkillPackageTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
 
+    def test_pdf_authoring_uses_equal_slots_and_popup_reading(self):
+        blueprint = (ROOT / "skills/design-course-blueprint/SKILL.md").read_text(encoding="utf-8")
+        runtime = (ROOT / "skills/design-course-blueprint/references/runtime-authoring-standard.md").read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((blueprint, runtime, readme))
+
+        for phrase in (
+            "course-authoring-v1.5.2",
+            "放大阅读",
+            "near-fullscreen modal",
+            "text-and-PDF split remains `1:1`",
+            "does not justify an asymmetric column",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+    def test_preview_reviews_v152_course_end_states(self):
+        preview = (ROOT / "skills/preview-platform-course/SKILL.md").read_text(encoding="utf-8")
+
+        for phrase in (
+            "放大阅读",
+            "first-entry loading",
+            "正在生成课程小结",
+            "正在生成报告",
+            "report page scrolls",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, preview)
+
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"

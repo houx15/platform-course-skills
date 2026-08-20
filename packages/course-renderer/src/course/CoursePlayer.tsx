@@ -133,6 +133,14 @@ export function CoursePlayer({ document, definitionHash, adapters, studentId, se
   const indexRef = useRef(0);
   const [bus, setBus] = useState<RuntimeEventBus | null>(null);
   const activeSessionId = useRef<string | null>(null);
+  // The label shown on the loading surface — generic on first entry, specific
+  // while the closing summary generates (so "完成/下一步" gives visible feedback
+  // instead of a silent several-second wait).
+  const [loadingLabel, setLoadingLabel] = useState("正在加载课程…");
+  // Guards `runClosing` against a double-trigger: the last Slice's "下一步"
+  // fires an async generation, and without this a second click (during that
+  // wait) would start a second generation.
+  const closingStartedRef = useRef(false);
 
   const course = validation.ok ? validation.course : null;
   const entries = useMemo(() => (course ? flattenSlices(course) : []), [course]);
@@ -361,6 +369,16 @@ export function CoursePlayer({ document, definitionHash, adapters, studentId, se
   // once the learner dismisses via handleCompleteClosing.
   const runClosing = async () => {
     if (!course) return;
+    // Idempotent — a re-click during the async generation must not start a
+    // second run. The visible loading surface (below) also removes the nav, so
+    // this is a belt-and-braces guard.
+    if (closingStartedRef.current) return;
+    closingStartedRef.current = true;
+    // Immediate feedback: swap to the loading surface with a closing-specific
+    // label while the (possibly several-second) closing scene generates, so the
+    // learner never sees a dead, re-clickable "下一步".
+    setLoadingLabel("正在生成课程小结…");
+    setPhase("loading");
     const sid = activeSessionId.current;
     if (sid) await adapters.sessionAdapter.setStatus(sid, "closing");
 
@@ -389,8 +407,15 @@ export function CoursePlayer({ document, definitionHash, adapters, studentId, se
         audioUrl: course.closing.fallback.audio ? adapters.assetResolver.resolve(course.closing.fallback.audio) : undefined,
       },
     };
-    const result = await adapters.closingGenerator.generate(input);
-    if (sid) await adapters.sessionAdapter.saveScene(sid, "closing", result);
+    let result: RuntimeSceneResult;
+    try {
+      result = await adapters.closingGenerator.generate(input);
+      if (sid) await adapters.sessionAdapter.saveScene(sid, "closing", result);
+    } catch {
+      // Never strand the learner on the loading surface: fall back to the
+      // course's own prepared closing text so Closing always renders.
+      result = { text: course.closing.fallback.text, generatedAt: clock(), usedSignalTypes: [], fallbackUsed: true };
+    }
     setClosing(result);
     setPhase("closing");
   };
@@ -435,7 +460,12 @@ export function CoursePlayer({ document, definitionHash, adapters, studentId, se
   if (phase === "error" || !course) {
     content = <ErrorSurface issues={validation.ok ? [] : validation.issues} />;
   } else if (phase === "loading" || !opening || !bus) {
-    content = <div className="course-loading" aria-busy="true" />;
+    content = (
+      <div className="course-loading" aria-busy="true" role="status">
+        <span className="course-loading__spinner" aria-hidden="true" />
+        <span className="course-loading__label">{loadingLabel}</span>
+      </div>
+    );
   } else if (phase === "opening") {
     content = (
       <OpeningScene

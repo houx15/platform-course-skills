@@ -1,3 +1,4 @@
+import { useState } from "react";
 import type { RuntimeSceneResult } from "@mind-imprint/course-contract";
 import type { AssetResolver } from "@mind-imprint/course-runtime";
 import { useAudioEngine } from "../narration/audioEngine";
@@ -36,6 +37,10 @@ export function ClosingScene({ scene, summary, takeaways, transferApplications, 
   const engine = useAudioEngine();
   const audioUrl = resolveSceneAudioUrl(assetResolver, scene.audioUrl);
   const audio = useSceneAudio(engine, audioUrl);
+  // Completing the course is async (the host marks the session completed, then
+  // generates the learning report — several seconds). Disable + relabel the
+  // control on the first click so it gives feedback and can't be re-fired.
+  const [completing, setCompleting] = useState(false);
 
   return (
     <section className="course-closing" aria-label="课程收尾" data-fallback={scene.fallbackUsed ? "true" : undefined}>
@@ -62,8 +67,18 @@ export function ClosingScene({ scene, summary, takeaways, transferApplications, 
           ))}
         </ul>
         <div className="course-closing__actions">
-          <button type="button" className="course-closing__complete" onClick={onComplete}>
-            {CLOSING_COMPLETE_LABEL}
+          <button
+            type="button"
+            className="course-closing__complete"
+            onClick={() => {
+              if (completing) return;
+              setCompleting(true);
+              onComplete();
+            }}
+            disabled={completing}
+            aria-busy={completing}
+          >
+            {completing ? "正在生成报告…" : CLOSING_COMPLETE_LABEL}
           </button>
         </div>
       </div>

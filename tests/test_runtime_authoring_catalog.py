@@ -16,7 +16,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
     def test_catalog_covers_every_closed_runtime_choice(self):
         catalog = self.load_catalog()
 
-        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.2.0")
+        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.5.2")
         self.assertEqual(
             catalog["layout"]["presets"],
             ["full", "split-horizontal", "split-vertical", "grid"],
