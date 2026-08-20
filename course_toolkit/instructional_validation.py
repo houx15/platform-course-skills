@@ -65,6 +65,17 @@ EVENT_PRODUCERS = {
     "student.continue": "none",
     "timer.elapsed": "timer",
 }
+ONE_SHOT_BLOCK_EVENTS = frozenset(
+    {
+        "answer.submitted",
+        "answer.correct",
+        "answer.incorrect",
+        "answer.attemptsExhausted",
+        "block.completed",
+        "interaction.completed",
+        "video.interaction.completed",
+    }
+)
 
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
@@ -220,7 +231,7 @@ def _block_can_emit_event(block: dict, event_type: object, visible: Set[str], en
     return block_type == "pdf" and event_type == "pdf.opened"
 
 
-def _transition_can_fire(
+def _transition_state_updates(
     transition: object,
     *,
     blocks: Mapping[str, dict],
@@ -228,26 +239,58 @@ def _transition_can_fire(
     enabled: Set[str],
     active_narrations: Set[str],
     active_timers: Set[str],
-) -> bool:
-    """Conservatively decide whether a transition event has a live producer."""
+    consumed_events: Set[Tuple[str, str]],
+) -> List[Tuple[Set[str], Set[str], Set[Tuple[str, str]]]]:
+    """Return deterministic successor producer states for a live event.
+
+    Each tuple is ``(active_narrations, active_timers, consumed_event_facts)``.
+    A matcher without a source id branches once per currently possible producer
+    rather than collapsing paths.  This preserves timers that did not fire and
+    prevents a one-shot renderer event from being reused later in the path.
+    """
     on = transition.get("on") if isinstance(transition, dict) else None
     if not isinstance(on, dict):
-        return False
+        return []
     event_type = on.get("type")
+    if not isinstance(event_type, str):
+        return []
     producer = EVENT_PRODUCERS.get(event_type)
     if producer == "none":
-        return True
+        return [(set(active_narrations), set(active_timers), set(consumed_events))]
     if producer == "unsupported" or producer is None:
-        return False
+        return []
     if producer == "narration":
         source_id = on.get("sourceId")
-        return source_id in active_narrations if isinstance(source_id, str) else bool(active_narrations)
+        candidates = [source_id] if isinstance(source_id, str) else sorted(active_narrations)
+        return [
+            (set(), set(active_timers), set(consumed_events))
+            for narration_id in candidates
+            if narration_id in active_narrations
+        ]
     if producer == "timer":
         selected_ids = {value for value in (on.get("sourceId"), on.get("timerId")) if isinstance(value, str)}
-        return next(iter(selected_ids)) in active_timers if len(selected_ids) == 1 else (not selected_ids and bool(active_timers))
+        if len(selected_ids) > 1:
+            return []
+        candidates = selected_ids if selected_ids else set(active_timers)
+        return [
+            (set(active_narrations), set(active_timers).difference({timer_id}), set(consumed_events))
+            for timer_id in sorted(candidates)
+            if timer_id in active_timers
+        ]
     source_id = on.get("sourceId")
-    candidates = [blocks.get(source_id)] if isinstance(source_id, str) else blocks.values()
-    return any(isinstance(block, dict) and _block_can_emit_event(block, event_type, visible, enabled) for block in candidates)
+    candidates = [(source_id, blocks.get(source_id))] if isinstance(source_id, str) else sorted(blocks.items())
+    updates = []
+    for block_id, block in candidates:
+        event_fact = (block_id, event_type)
+        if not isinstance(block, dict) or not _block_can_emit_event(block, event_type, visible, enabled):
+            continue
+        if event_type in ONE_SHOT_BLOCK_EVENTS and event_fact in consumed_events:
+            continue
+        next_consumed = set(consumed_events)
+        if event_type in ONE_SHOT_BLOCK_EVENTS:
+            next_consumed.add(event_fact)
+        updates.append((set(active_narrations), set(active_timers), next_consumed))
+    return updates
 
 
 def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIssue]:
@@ -528,14 +571,14 @@ def _effective_step_states(
     if initial_id not in steps:
         return {}, []
     visible, enabled = _initial_state(slice_data)
-    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), frozenset())])
-    seen: Set[Tuple[str, frozenset, frozenset, frozenset, frozenset]] = set()
+    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), frozenset(), frozenset())])
+    seen: Set[Tuple[str, frozenset, frozenset, frozenset, frozenset, frozenset]] = set()
     effective: Dict[str, List[Tuple[Set[str], Set[str]]]] = {}
     issues: List[ValidationIssue] = []
     max_states = 4096
     while pending:
-        step_id, visible_state, enabled_state, narrations_state, timers_state = pending.popleft()
-        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state)
+        step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state = pending.popleft()
+        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state)
         if state_key in seen:
             continue
         seen.add(state_key)
@@ -544,14 +587,17 @@ def _effective_step_states(
             break
         step = steps[step_id]
         visible, enabled = set(visible_state), set(enabled_state)
-        active_narrations, active_timers = set(narrations_state), set(timers_state)
+        active_narrations, active_timers, consumed_events = set(narrations_state), set(timers_state), set(consumed_state)
         for action in _items(step.get("enterActions")):
             if not isinstance(action, dict):
                 continue
             action_type = action.get("type")
             target = action.get("targetId")
             if action_type == "playNarration" and isinstance(action.get("narrationId"), str) and action["narrationId"] in narration_ids:
-                active_narrations.add(action["narrationId"])
+                # NarrationController is single-track: playing a new narration
+                # replaces the previous active track, whose ended event can no
+                # longer arrive.
+                active_narrations = {action["narrationId"]}
                 continue
             if action_type in {"pauseNarration", "stopNarration"} and isinstance(action.get("narrationId"), str):
                 active_narrations.discard(action["narrationId"])
@@ -561,6 +607,13 @@ def _effective_step_states(
                 continue
             if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
                 active_timers.discard(action["timerId"])
+                continue
+            if action_type == "resetBlock":
+                # Do not clear consumed event facts: the renderer can reset
+                # media handles but assessments own local lock/attempt state,
+                # so a generic reset is insufficient proof that every event
+                # kind can fire again.  Failing closed avoids inventing a
+                # second completion event that the real UI may never emit.
                 continue
             if not isinstance(target, str):
                 continue
@@ -574,33 +627,18 @@ def _effective_step_states(
         effective.setdefault(step_id, []).append((set(visible), set(enabled)))
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
-            if destination not in steps or not _transition_can_fire(
+            if destination not in steps:
+                continue
+            for next_narrations, next_timers, next_consumed in _transition_state_updates(
                 transition,
                 blocks=blocks,
                 visible=visible,
                 enabled=enabled,
                 active_narrations=active_narrations,
                 active_timers=active_timers,
+                consumed_events=consumed_events,
             ):
-                continue
-            on = transition.get("on") if isinstance(transition, dict) and isinstance(transition.get("on"), dict) else {}
-            next_narrations, next_timers = set(active_narrations), set(active_timers)
-            # Ended/elapsed events are one-shot producer facts.  A wildcard
-            # matcher is conservatively consumed for every active producer so
-            # a stale event cannot be reused to manufacture reachability.
-            if on.get("type") == "narration.ended":
-                source_id = on.get("sourceId")
-                if isinstance(source_id, str):
-                    next_narrations.discard(source_id)
-                else:
-                    next_narrations.clear()
-            elif on.get("type") == "timer.elapsed":
-                timer_id = on.get("sourceId") if isinstance(on.get("sourceId"), str) else on.get("timerId")
-                if isinstance(timer_id, str):
-                    next_timers.discard(timer_id)
-                else:
-                    next_timers.clear()
-            pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), frozenset(next_timers)))
+                pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), frozenset(next_timers), frozenset(next_consumed)))
     return effective, issues
 
 

@@ -355,3 +355,63 @@ class InstructionalValidationTests(unittest.TestCase):
                 (f"{PATH}/block:answer-block", "workflow-answer-unavailable"),
                 {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
             )
+
+    def test_replaced_narration_cannot_later_emit_its_ended_event(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["narrations"] = [
+            {"id": "first", "text": "第一段", "audio": "audio/first.mp3"},
+            {"id": "second", "text": "第二段", "audio": "audio/second.mp3"},
+        ]
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "play-first",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "play-first", "enterActions": [{"type": "playNarration", "narrationId": "first"}], "transitions": [{"on": {"type": "student.continue"}, "to": "replace"}]},
+                {"id": "replace", "enterActions": [{"type": "playNarration", "narrationId": "second"}], "transitions": [{"on": {"type": "narration.ended", "sourceId": "first"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn(
+            (f"{PATH}/block:answer-block", "workflow-answer-unavailable"),
+            {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
+        )
+
+    def test_one_shot_block_completion_cannot_be_reused_across_steps(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append(
+            {"id": "followup", "type": "fillBlank", "prompt": "补充说明", "assessment": {"mode": "reflection", "rubric": "说明理由"}, "completion": {"rule": "submit-any"}}
+        )
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "first-completion",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "first-completion", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "reused-completion"}]},
+                {"id": "reused-completion", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "reveal-followup"}]},
+                {"id": "reveal-followup", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn(
+            (f"{PATH}/block:followup", "workflow-answer-unavailable"),
+            {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
+        )
+
+    def test_successive_wildcard_timers_consume_one_timer_per_transition(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "start-timers",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "start-timers", "enterActions": [{"type": "startTimer", "timerId": "first", "durationSeconds": 5}, {"type": "startTimer", "timerId": "second", "durationSeconds": 10}], "transitions": [{"on": {"type": "timer.elapsed"}, "to": "after-one"}]},
+                {"id": "after-one", "enterActions": [], "transitions": [{"on": {"type": "timer.elapsed"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn(
+            (f"{PATH}/block:answer-block", "workflow-answer-unavailable"),
+            {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
+        )

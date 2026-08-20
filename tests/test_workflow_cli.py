@@ -39,6 +39,91 @@ APPROVED = (
 )
 
 
+def approved_blueprint_coverage():
+    return {
+        "schemaVersion": "2.0",
+        "items": [
+            {
+                "sourceId": "source-1",
+                "sourceFile": "materials/evidence.pdf",
+                "location": "page:1",
+                "summary": "Source-and-method evidence for the claim.",
+                "disposition": "required-evidence",
+                "bindings": [
+                    {
+                        "partId": "part-evidence-check",
+                        "sliceId": "slice-read-and-answer",
+                        "blockId": "claim-text",
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def approved_blueprint_plan():
+    return {
+        "schemaVersion": "2.0",
+        "title": "Evidence check",
+        "parts": [
+            {
+                "partId": "part-evidence-check",
+                "title": "Check the evidence",
+                "slices": [
+                    {
+                        "partId": "part-evidence-check",
+                        "sliceId": "slice-read-and-answer",
+                        "title": "Read and answer",
+                        "teachingPurpose": "Have the learner apply a source-and-method check.",
+                        "sourceUses": [
+                            {"sourceId": "source-1", "locator": "page:1", "materialRole": "claim evidence"}
+                        ],
+                        "learnerSees": "A claim and a question.",
+                        "learnerAction": {
+                            "kind": "answer",
+                            "description": "Read the claim, then choose the first evidence check.",
+                            "referencePolicy": "co-visible",
+                            "referenceSourceIds": ["source-1"],
+                            "targetId": "question:evidence-question",
+                        },
+                        "completionEvidence": {"event": "block.completed"},
+                        "layoutIntent": {"preset": "split-horizontal", "ratio": "1:1"},
+                        "coVisibleRequirements": [
+                            {
+                                "sourceId": "source-1",
+                                "targetId": "question:evidence-question",
+                                "reason": "The claim remains visible while the learner answers.",
+                            }
+                        ],
+                        "imageRelationships": [],
+                        "unresolvedBlockers": [],
+                        "proposedExclusions": [],
+                    }
+                ],
+            }
+        ],
+    }
+
+
+def approved_blueprint_extracted():
+    coverage = approved_blueprint_coverage()
+    return {
+        "schemaVersion": "1.0",
+        "items": [
+            {
+                "sourceId": "source-1",
+                "sourceFile": coverage["items"][0]["sourceFile"],
+                "location": "page:1",
+                "kind": "file",
+                "text": "Source-and-method evidence for the claim.",
+            }
+        ],
+        "ignored": [],
+        "unsupported": [],
+        "errors": [],
+    }
+
+
 class WorkflowCliTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -71,8 +156,16 @@ class WorkflowCliTests(unittest.TestCase):
             "--json",
         )
 
-    def prepare_approved_page_plan(self, *, media: bool = True) -> None:
-        write_root(self.root)
+    def prepare_approved_page_plan(self, *, media: bool = True, approved_blueprint: bool = False) -> None:
+        if approved_blueprint:
+            write_root(
+                self.root,
+                plan=approved_blueprint_plan(),
+                coverage=approved_blueprint_coverage(),
+                extracted=approved_blueprint_extracted(),
+            )
+        else:
+            write_root(self.root)
         approve_plan(
             self.root,
             decision_id="decision-plan-1",
@@ -457,7 +550,7 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g6_completes_from_current_validator_evidence(self):
         self.init()
-        self.prepare_approved_page_plan()
+        self.prepare_approved_page_plan(approved_blueprint=True)
         blueprint = self.root / ".course-work/course-blueprint.json"
         blueprint.write_bytes(APPROVED.read_bytes())
         for index in range(6):
