@@ -192,7 +192,7 @@ class InstructionalValidationTests(unittest.TestCase):
             "version": "1.0", "initialStepId": "start",
             "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": []},
             "steps": [
-                {"id": "start", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "reference-only"}, {"on": {"type": "timer.elapsed"}, "to": "answer-only"}]},
+                {"id": "start", "enterActions": [{"type": "startTimer", "timerId": "choice", "durationSeconds": 5}], "transitions": [{"on": {"type": "student.continue"}, "to": "reference-only"}, {"on": {"type": "timer.elapsed", "sourceId": "choice"}, "to": "answer-only"}]},
                 {"id": "reference-only", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "join"}]},
                 {"id": "answer-only", "enterActions": [{"type": "hide", "targetId": "source-pdf"}, {"type": "hide", "targetId": "source-image"}, {"type": "enable", "targetId": "answer-block"}], "transitions": [{"on": {"type": "student.continue"}, "to": "join"}]},
                 {"id": "join", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "complete"}]},
@@ -262,3 +262,96 @@ class InstructionalValidationTests(unittest.TestCase):
             (PATH, "layout-slot-ids-invalid"),
             {(issue.path, issue.code) for issue in validate_layout_assignment(course)},
         )
+
+    def test_hidden_answer_event_cannot_reveal_that_answer(self):
+        course = course_document()
+        answer = course["course"]["parts"][0]["slices"][0]["blocks"][3]
+        answer["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "wait",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "wait", "enterActions": [], "transitions": [{"on": {"type": "answer.correct", "sourceId": "answer-block"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        findings = {(issue.path, issue.code) for issue in validate_workflow_availability(course)}
+
+        self.assertIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), findings)
+
+    def test_covisibility_must_hold_on_every_reachable_answerable_path(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "answer-with-reference",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "answer-with-reference", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "answer-without-reference"}]},
+                {"id": "answer-without-reference", "enterActions": [{"type": "hide", "targetId": "source-pdf"}, {"type": "hide", "targetId": "source-image"}], "transitions": []},
+            ],
+        }
+
+        findings = {(issue.path, issue.code) for issue in self.correspondence(course)}
+
+        self.assertIn((f"{PATH}/block:answer-block", "workflow-covisibility-unavailable"), findings)
+
+    def test_plan_completion_event_respects_survey_and_graded_renderer_modes(self):
+        plan = plan_document()
+        plan["parts"][0]["slices"][0]["completionEvidence"] = {"event": "answer.correct"}
+        write_json_atomic(self.root / ".course-work/course-storyboard.json", plan)
+        survey = course_document()
+        survey["course"]["parts"][0]["slices"][0]["workflow"]["steps"][0]["transitions"][0]["on"]["type"] = "answer.correct"
+
+        survey_findings = {(issue.path, issue.code) for issue in self.correspondence(survey)}
+        self.assertIn((f"{PATH}/block:answer-block", "plan-completion-event-unreachable"), survey_findings)
+
+        graded = course_document()
+        graded["course"]["parts"][0]["slices"][0]["blocks"][3]["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        graded["course"]["parts"][0]["slices"][0]["workflow"]["steps"][0]["transitions"][0]["on"]["type"] = "answer.correct"
+
+        self.assertNotIn(
+            (f"{PATH}/block:answer-block", "plan-completion-event-unreachable"),
+            {(issue.path, issue.code) for issue in self.correspondence(graded)},
+        )
+
+    def test_reversed_split_slot_order_is_not_canonical(self):
+        horizontal = course_document()
+        horizontal["course"]["parts"][0]["slices"][0]["layout"]["slots"].reverse()
+        vertical = course_document()
+        layout = vertical["course"]["parts"][0]["slices"][0]["layout"]
+        layout["preset"] = "split-vertical"
+        layout["slots"][0]["id"] = "bottom"
+        layout["slots"][1]["id"] = "top"
+        full = course_document()
+        full_layout = full["course"]["parts"][0]["slices"][0]["layout"]
+        full_layout["preset"] = "full"
+        full_layout.pop("ratio")
+        full_layout["slots"] = [{"id": "content", "blockIds": ["reference-text", "source-pdf", "source-image", "answer-block"]}]
+
+        for course in (horizontal, vertical, full):
+            self.assertIn(
+                (PATH, "layout-slot-ids-invalid"),
+                {(issue.path, issue.code) for issue in validate_layout_assignment(course)},
+            )
+
+    def test_unstarted_timer_and_unplayed_narration_do_not_make_reveal_reachable(self):
+        for event, narrations in (
+            ({"type": "timer.elapsed", "sourceId": "wait"}, []),
+            ({"type": "narration.ended", "sourceId": "intro"}, [{"id": "intro", "text": "开场", "audio": "audio/intro.mp3"}]),
+        ):
+            course = course_document()
+            slice_data = course["course"]["parts"][0]["slices"][0]
+            slice_data["narrations"] = narrations
+            slice_data["workflow"] = {
+                "version": "1.0", "initialStepId": "wait",
+                "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+                "steps": [
+                    {"id": "wait", "enterActions": [], "transitions": [{"on": event, "to": "reveal"}]},
+                    {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+                ],
+            }
+
+            self.assertIn(
+                (f"{PATH}/block:answer-block", "workflow-answer-unavailable"),
+                {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
+            )

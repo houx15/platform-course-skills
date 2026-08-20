@@ -42,6 +42,30 @@ COMPLETION_EVENT_TYPES = {
     ),
 }
 
+# Mirrors packages/course-contract/src/validate/workflow.ts's EVENT_PRODUCERS,
+# with the renderer-only exception for ``pdf.pageChanged``: the pinned PDF
+# renderer cannot observe changes inside its native iframe.  This is purposely
+# a capability table, not a learner-answer simulation.  A transition is
+# explored only when a renderer could emit its event in the current state.
+EVENT_PRODUCERS = {
+    "narration.ended": "narration",
+    "video.started": "block",
+    "video.paused": "block",
+    "video.ended": "block",
+    "video.interaction.shown": "block",
+    "video.interaction.completed": "block",
+    "pdf.opened": "block",
+    "pdf.pageChanged": "unsupported",
+    "interaction.completed": "block",
+    "answer.submitted": "block",
+    "answer.correct": "block",
+    "answer.incorrect": "block",
+    "answer.attemptsExhausted": "block",
+    "block.completed": "block",
+    "student.continue": "none",
+    "timer.elapsed": "timer",
+}
+
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return ValidationIssue(path, code, message)
@@ -161,12 +185,69 @@ def _has_reference_surface(slice_data: dict, source_file: object) -> bool:
     return False
 
 
-def _source_can_complete(block: dict, visible: Set[str], enabled: Set[str]) -> bool:
-    """Whether a workflow state can actually emit this Block's completion event."""
+def _block_can_emit_event(block: dict, event_type: object, visible: Set[str], enabled: Set[str]) -> bool:
+    """Whether the pinned renderer can emit ``event_type`` for this Block now."""
     block_id = block.get("id")
     if not isinstance(block_id, str) or block_id not in visible:
         return False
-    return block.get("type") not in {"singleChoice", "fillBlank", "interactiveHtml"} or block_id in enabled
+    block_type = block.get("type")
+    if block_type in ASSESSMENT_TYPES:
+        if block_id not in enabled:
+            return False
+        assessment = block.get("assessment") if isinstance(block.get("assessment"), dict) else {}
+        mode = assessment.get("mode")
+        if event_type == "answer.submitted":
+            return mode in {"graded", "survey", "reflection"}
+        if event_type in {"answer.correct", "answer.incorrect"}:
+            return mode == "graded"
+        if event_type == "answer.attemptsExhausted":
+            completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+            return mode == "graded" and completion.get("rule") == "submit-correct-or-exhausted"
+        return event_type == "block.completed" and isinstance(block.get("completion"), dict)
+    if block_type == "interactiveHtml":
+        if block_id not in enabled:
+            return False
+        completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+        if event_type == "interaction.completed":
+            return True
+        return event_type == "block.completed" and completion.get("rule") == "interaction-complete"
+    if block_type == "video":
+        if event_type in {"video.started", "video.paused", "video.ended"}:
+            return True
+        if event_type in {"video.interaction.shown", "video.interaction.completed"}:
+            return isinstance(block.get("interaction"), dict)
+        return event_type == "block.completed" and isinstance(block.get("completion"), dict)
+    return block_type == "pdf" and event_type == "pdf.opened"
+
+
+def _transition_can_fire(
+    transition: object,
+    *,
+    blocks: Mapping[str, dict],
+    visible: Set[str],
+    enabled: Set[str],
+    active_narrations: Set[str],
+    active_timers: Set[str],
+) -> bool:
+    """Conservatively decide whether a transition event has a live producer."""
+    on = transition.get("on") if isinstance(transition, dict) else None
+    if not isinstance(on, dict):
+        return False
+    event_type = on.get("type")
+    producer = EVENT_PRODUCERS.get(event_type)
+    if producer == "none":
+        return True
+    if producer == "unsupported" or producer is None:
+        return False
+    if producer == "narration":
+        source_id = on.get("sourceId")
+        return source_id in active_narrations if isinstance(source_id, str) else bool(active_narrations)
+    if producer == "timer":
+        selected_ids = {value for value in (on.get("sourceId"), on.get("timerId")) if isinstance(value, str)}
+        return next(iter(selected_ids)) in active_timers if len(selected_ids) == 1 else (not selected_ids and bool(active_timers))
+    source_id = on.get("sourceId")
+    candidates = [blocks.get(source_id)] if isinstance(source_id, str) else blocks.values()
+    return any(isinstance(block, dict) and _block_can_emit_event(block, event_type, visible, enabled) for block in candidates)
 
 
 def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIssue]:
@@ -290,11 +371,17 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
                 and isinstance(binding.get("blockId"), str)
             }
             states, _ = _effective_step_states(actual_slice)
-            if not any(
-                source_block_ids.issubset(visible) and resolved_id in enabled
+            answerable_states = [
+                visible
                 for state_list in states.values()
                 for visible, enabled in state_list
-            ):
+                if resolved_id in visible and resolved_id in enabled
+            ]
+            # Availability (whether an answer target is ever enabled) is
+            # reported by validate_workflow_availability.  Once it can be
+            # answered, every reachable answerable path must retain every
+            # required reference; an existential good branch is insufficient.
+            if answerable_states and not all(source_block_ids.issubset(visible) for visible in answerable_states):
                 issues.append(_issue(_target_path(part_id, slice_id, resolved_id), "workflow-covisibility-unavailable", "required reference Blocks are not visible when the answer target is enabled"))
 
         action = plan_slice.get("learnerAction") if isinstance(plan_slice.get("learnerAction"), dict) else {}
@@ -315,7 +402,7 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
                 and transition["on"].get("type") == declared_event
                 for step_id in effective
                 for visible, enabled in effective[step_id]
-                if _source_can_complete(blocks[action_target][2], visible, enabled)
+                if _block_can_emit_event(blocks[action_target][2], declared_event, visible, enabled)
                 for transition in _items(steps[step_id].get("transitions"))
             )
             if not has_event:
@@ -372,7 +459,7 @@ def validate_layout_assignment(course: dict) -> List[ValidationIssue]:
             valid_slots = (
                 slot_ids == expected[:len(slot_ids)] and 2 <= len(slot_ids) <= 4
                 if preset == "grid"
-                else len(slot_ids) == len(expected) and set(slot_ids) == set(expected)
+                else slot_ids == expected
             )
             if not valid_slots:
                 issues.append(_issue(slice_path, "layout-slot-ids-invalid", "layout Slot IDs do not match the canonical preset shape"))
@@ -427,18 +514,28 @@ def _effective_step_states(
     """
     workflow = slice_data.get("workflow") if isinstance(slice_data.get("workflow"), dict) else {}
     steps = {step.get("id"): step for step in _items(workflow.get("steps")) if isinstance(step, dict) and isinstance(step.get("id"), str)}
+    blocks = {
+        block["id"]: block
+        for block in _items(slice_data.get("blocks"))
+        if isinstance(block, dict) and isinstance(block.get("id"), str)
+    }
+    narration_ids = {
+        narration["id"]
+        for narration in _items(slice_data.get("narrations"))
+        if isinstance(narration, dict) and isinstance(narration.get("id"), str)
+    }
     initial_id = workflow.get("initialStepId")
     if initial_id not in steps:
         return {}, []
     visible, enabled = _initial_state(slice_data)
-    pending = deque([(initial_id, frozenset(visible), frozenset(enabled))])
-    seen: Set[Tuple[str, frozenset, frozenset]] = set()
+    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), frozenset())])
+    seen: Set[Tuple[str, frozenset, frozenset, frozenset, frozenset]] = set()
     effective: Dict[str, List[Tuple[Set[str], Set[str]]]] = {}
     issues: List[ValidationIssue] = []
     max_states = 4096
     while pending:
-        step_id, visible_state, enabled_state = pending.popleft()
-        state_key = (step_id, visible_state, enabled_state)
+        step_id, visible_state, enabled_state, narrations_state, timers_state = pending.popleft()
+        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state)
         if state_key in seen:
             continue
         seen.add(state_key)
@@ -447,23 +544,63 @@ def _effective_step_states(
             break
         step = steps[step_id]
         visible, enabled = set(visible_state), set(enabled_state)
+        active_narrations, active_timers = set(narrations_state), set(timers_state)
         for action in _items(step.get("enterActions")):
-            if not isinstance(action, dict) or not isinstance(action.get("targetId"), str):
+            if not isinstance(action, dict):
                 continue
-            target = action["targetId"]
-            if action.get("type") == "show": visible.add(target)
-            elif action.get("type") == "hide": visible.discard(target)
-            elif action.get("type") == "enable":
+            action_type = action.get("type")
+            target = action.get("targetId")
+            if action_type == "playNarration" and isinstance(action.get("narrationId"), str) and action["narrationId"] in narration_ids:
+                active_narrations.add(action["narrationId"])
+                continue
+            if action_type in {"pauseNarration", "stopNarration"} and isinstance(action.get("narrationId"), str):
+                active_narrations.discard(action["narrationId"])
+                continue
+            if action_type == "startTimer" and isinstance(action.get("timerId"), str):
+                active_timers.add(action["timerId"])
+                continue
+            if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
+                active_timers.discard(action["timerId"])
+                continue
+            if not isinstance(target, str):
+                continue
+            if action_type == "show": visible.add(target)
+            elif action_type == "hide": visible.discard(target)
+            elif action_type == "enable":
                 if target not in visible:
                     issues.append(_issue(f"block:{target}", "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
                 enabled.add(target)
-            elif action.get("type") == "disable": enabled.discard(target)
+            elif action_type == "disable": enabled.discard(target)
         effective.setdefault(step_id, []).append((set(visible), set(enabled)))
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
-            if destination not in steps:
+            if destination not in steps or not _transition_can_fire(
+                transition,
+                blocks=blocks,
+                visible=visible,
+                enabled=enabled,
+                active_narrations=active_narrations,
+                active_timers=active_timers,
+            ):
                 continue
-            pending.append((destination, frozenset(visible), frozenset(enabled)))
+            on = transition.get("on") if isinstance(transition, dict) and isinstance(transition.get("on"), dict) else {}
+            next_narrations, next_timers = set(active_narrations), set(active_timers)
+            # Ended/elapsed events are one-shot producer facts.  A wildcard
+            # matcher is conservatively consumed for every active producer so
+            # a stale event cannot be reused to manufacture reachability.
+            if on.get("type") == "narration.ended":
+                source_id = on.get("sourceId")
+                if isinstance(source_id, str):
+                    next_narrations.discard(source_id)
+                else:
+                    next_narrations.clear()
+            elif on.get("type") == "timer.elapsed":
+                timer_id = on.get("sourceId") if isinstance(on.get("sourceId"), str) else on.get("timerId")
+                if isinstance(timer_id, str):
+                    next_timers.discard(timer_id)
+                else:
+                    next_timers.clear()
+            pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), frozenset(next_timers)))
     return effective, issues
 
 
@@ -502,10 +639,10 @@ def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
                 for step in steps
                 if step["id"] in states
                 for visible, enabled in states[step["id"]]
-                if _source_can_complete(block, visible, enabled)
                 for transition in _items(step.get("transitions"))
                 if isinstance(transition, dict) and isinstance(transition.get("on"), dict)
                 and transition["on"].get("sourceId") == block_id and transition["on"].get("type") in completion_events
+                and _block_can_emit_event(block, transition["on"].get("type"), visible, enabled)
             ]
             if not transitions:
                 issues.append(_issue(_target_path(part_id, slice_id, block_id), "workflow-completion-unreachable", "required completion Block has no reachable completion event transition"))
