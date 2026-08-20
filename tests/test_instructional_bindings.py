@@ -4,7 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.workflow import WorkflowError, verify_g5_compilation
 from tests.test_course_package_validation import build_minimal_package
 
 
@@ -185,13 +187,17 @@ class InstructionalBindingTests(unittest.TestCase):
             audit = self.api().audit_instructional_bindings(root)
 
         codes = {issue.code for issue in audit.blockers}
-        self.assertIn("source-map-stale", codes)
+        self.assertIn("source-map-derivation-mismatch", codes)
         self.assertIn("binding-source-unreferenced", codes)
 
     def test_wrong_source_map_runtime_pointer_cannot_satisfy_binding(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             write_provenance_package(root)
+            coverage_path = root / ".course-work/source-coverage.json"
+            coverage = load_json(coverage_path)
+            coverage["items"][0]["sourceId"] = "source-added-after-compile"
+            write_json_atomic(coverage_path, coverage)
             path = root / ".course-work/course-runtime-source-map.json"
             source_map = load_json(path)
             mapping = next(
@@ -205,7 +211,8 @@ class InstructionalBindingTests(unittest.TestCase):
             audit = self.api().audit_instructional_bindings(root)
 
         codes = {issue.code for issue in audit.blockers}
-        self.assertIn("source-map-pointer-mismatch", codes)
+        self.assertIn("source-map-derivation-mismatch", codes)
+        self.assertNotIn("source-map-pointer-mismatch", codes)
         self.assertIn("binding-source-unreferenced", codes)
 
     def test_changed_provenance_cannot_reuse_a_definition_matched_source_map(self):
@@ -221,11 +228,15 @@ class InstructionalBindingTests(unittest.TestCase):
             )
             mapping["sourceIds"].append("source-added-after-compile")
             write_json_atomic(path, source_map)
+            report_path = root / ".course-work/compilation-report.json"
+            report = load_json(report_path)
+            report["sourceMapHash"] = canonical_json_hash(source_map)
+            write_json_atomic(report_path, report)
 
             audit = self.api().audit_instructional_bindings(root)
 
         self.assertIn(
-            "compilation-report-source-map-mismatch",
+            "source-map-derivation-mismatch",
             {issue.code for issue in audit.blockers},
         )
 
@@ -257,7 +268,7 @@ class InstructionalBindingTests(unittest.TestCase):
             audit = self.api().audit_instructional_bindings(root)
 
         self.assertIn(
-            "compilation-report-blueprint-stale",
+            "course-definition-derivation-mismatch",
             {issue.code for issue in audit.blockers},
         )
 
@@ -272,7 +283,62 @@ class InstructionalBindingTests(unittest.TestCase):
 
             audit = self.api().audit_instructional_bindings(root)
 
-        self.assertIn("source-map-identity-invalid", {issue.code for issue in audit.blockers})
+        self.assertIn(
+            "source-map-derivation-mismatch", {issue.code for issue in audit.blockers}
+        )
+
+    def test_rehashed_course_artifacts_cannot_bypass_blueprint_derivation(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_provenance_package(root)
+            course_path = root / "course/course.json"
+            course = load_json(course_path)
+            course["course"]["title"] = "Forged course title"
+            write_json_atomic(course_path, course)
+            source_map_path = root / ".course-work/course-runtime-source-map.json"
+            source_map = load_json(source_map_path)
+            source_map["courseDefinitionHash"] = canonical_json_hash(course)
+            write_json_atomic(source_map_path, source_map)
+            report_path = root / ".course-work/compilation-report.json"
+            report = load_json(report_path)
+            report["courseDefinitionHash"] = canonical_json_hash(course)
+            report["sourceMapHash"] = canonical_json_hash(source_map)
+            write_json_atomic(report_path, report)
+
+            audit = self.api().audit_instructional_bindings(root)
+            with self.assertRaisesRegex(WorkflowError, "does not match compilation"):
+                verify_g5_compilation(root)
+
+        self.assertIn(
+            "course-definition-derivation-mismatch",
+            {issue.code for issue in audit.blockers},
+        )
+
+    def test_invalid_g5_evidence_is_reported_once_before_mapping_diagnosis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_provenance_package(root)
+            coverage_path = root / ".course-work/source-coverage.json"
+            coverage = load_json(coverage_path)
+            duplicate = dict(coverage["items"][0])
+            duplicate["sourceId"] = "source-2"
+            coverage["items"].append(duplicate)
+            write_json_atomic(coverage_path, coverage)
+            source_map_path = root / ".course-work/course-runtime-source-map.json"
+            source_map = load_json(source_map_path)
+            mapping = next(
+                item
+                for item in source_map["mappings"]
+                if item["targetId"] == "block:claim-text"
+            )
+            mapping["runtimePointer"] = "/course/parts/0/slices/0"
+            write_json_atomic(source_map_path, source_map)
+
+            audit = self.api().audit_instructional_bindings(root)
+
+        codes = [issue.code for issue in audit.blockers]
+        self.assertEqual(codes.count("source-map-derivation-mismatch"), 1)
+        self.assertNotIn("source-map-pointer-mismatch", codes)
 
     def test_text_mentions_do_not_count_as_asset_or_provenance_bindings(self):
         course = course_document(asset_source="assets/pdfs/other.pdf")
@@ -610,18 +676,30 @@ class InstructionalBindingTests(unittest.TestCase):
             [(issue.path, issue.code) for issue in source_map_audit.blockers],
         )
 
-    def test_invalid_json_uses_a_logical_stable_issue_path(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
-            path = root / ".course-work/source-coverage.json"
-            path.parent.mkdir()
-            path.write_text("{invalid", encoding="utf-8")
+    def test_invalid_json_is_root_independent_and_has_a_logical_message(self):
+        audits = []
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            for temporary in (first, second):
+                root = Path(temporary)
+                path = root / ".course-work/source-coverage.json"
+                path.parent.mkdir()
+                path.write_text("{invalid", encoding="utf-8")
+                audits.append(self.api().audit_instructional_bindings(root))
 
-            audit = self.api().audit_instructional_bindings(root)
-
+        evidence = [
+            [(issue.path, issue.code, issue.message) for issue in audit.blockers]
+            for audit in audits
+        ]
+        self.assertEqual(evidence[0], evidence[1])
         self.assertEqual(
-            [(issue.path, issue.code) for issue in audit.blockers],
-            [(".course-work/source-coverage.json", "invalid-json")],
+            evidence[0],
+            [
+                (
+                    ".course-work/source-coverage.json",
+                    "invalid-json",
+                    "JSON evidence is invalid",
+                )
+            ],
         )
 
     def test_package_review_destinations_use_slice_collector(self):

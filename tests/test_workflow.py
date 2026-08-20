@@ -405,7 +405,7 @@ class CompilationEvidenceTests(unittest.TestCase):
         course["course"]["title"] = "Changed after compilation"
         write_json_atomic(course_path, course)
 
-        with self.assertRaisesRegex(WorkflowError, "course definition hash"):
+        with self.assertRaisesRegex(WorkflowError, "does not match compilation"):
             verify_g5_compilation(self.root)
 
     def test_blueprint_change_invalidates_completed_g3_and_downstream(self):

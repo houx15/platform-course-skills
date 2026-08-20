@@ -10,7 +10,7 @@ from .course_compiler import (
     CompilationToolError,
     verify_compilation_evidence,
 )
-from .course_package_validation import iter_asset_references
+from .course_asset_index import iter_asset_references
 from .errors import ValidationIssue
 from .jsonio import load_json
 
@@ -114,8 +114,8 @@ def _safe_json_load(
         return None, None
     try:
         return load_json(current), None
-    except ValueError as exc:
-        return None, _issue(relative, "invalid-json", str(exc))
+    except ValueError:
+        return None, _issue(relative, "invalid-json", "JSON evidence is invalid")
 
 
 def _course_shape_issue(document: object) -> Optional[ValidationIssue]:
@@ -290,26 +290,6 @@ def _source_map_matches(
     return False, pointer_mismatch
 
 
-def _binding_references_source(
-    item: dict,
-    identity: Destination,
-    block_id: str,
-    asset_sources: Dict[Destination, Set[str]],
-    source_map: object,
-    expected_pointer: str,
-) -> Tuple[bool, bool]:
-    source_file = item.get("sourceFile")
-    if isinstance(source_file, str) and source_file in asset_sources.get(identity, set()):
-        return True, False
-    source_id = item.get("sourceId")
-    return _source_map_matches(
-        source_map,
-        source_id,
-        block_id,
-        expected_pointer,
-    )
-
-
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return ValidationIssue(path, code, message)
 
@@ -395,6 +375,7 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
     asset_sources = _asset_sources_by_destination(course)
     g5_checked = False
     g5_issue: Optional[ValidationIssue] = None
+    g5_issue_reported = False
 
     def ensure_g5() -> Optional[ValidationIssue]:
         nonlocal g5_checked, g5_issue
@@ -473,12 +454,28 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
             if block is None:
                 blockers.append(_issue(binding_path, "binding-target-missing", "binding target does not exist in CourseDefinition 2.0"))
                 continue
-            source_referenced, pointer_mismatch = _binding_references_source(
-                item,
-                identity,  # type: ignore[arg-type]
-                block["id"],
-                asset_sources,
+            # A typed CourseDefinition asset field is self-contained evidence.
+            # Provenance claims are accepted only after the entire G5 artifact
+            # set has been independently derived from the current Blueprint.
+            if item.get("sourceFile") in asset_sources.get(identity, set()):
+                continue
+            evidence_issue = ensure_g5()
+            if evidence_issue is not None:
+                if not g5_issue_reported:
+                    blockers.append(evidence_issue)
+                    g5_issue_reported = True
+                blockers.append(
+                    _issue(
+                        binding_path,
+                        "binding-source-unreferenced",
+                        "target Block does not contain or reference the declared source",
+                    )
+                )
+                continue
+            source_referenced, pointer_mismatch = _source_map_matches(
                 source_map,
+                item.get("sourceId"),
+                block["id"],
                 destination_pointers[identity],  # type: ignore[index]
             )
             if pointer_mismatch:
@@ -489,13 +486,6 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
                         "source-map runtimePointer does not identify the bound Block",
                     )
                 )
-            if source_referenced and (
-                item.get("sourceFile") not in asset_sources.get(identity, set())
-            ):
-                evidence_issue = ensure_g5()
-                if evidence_issue is not None:
-                    blockers.append(evidence_issue)
-                    source_referenced = False
             if not source_referenced:
                 blockers.append(_issue(binding_path, "binding-source-unreferenced", "target Block does not contain or reference the declared source"))
     return BindingAudit(tuple(blockers), tuple(warnings))

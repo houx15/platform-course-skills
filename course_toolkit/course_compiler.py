@@ -214,6 +214,28 @@ def verify_compilation_evidence(
             "compilation-evidence-invalid",
             "G5 source map and compilation report must be objects",
         )
+
+    # The report and source map are mutable package files.  Rebuild their pure
+    # compiler outputs before accepting their recorded hashes as evidence.
+    try:
+        expected_document = project_course_definition(blueprint)
+        expected_source_map = build_runtime_source_map(blueprint, expected_document)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise CompilationEvidenceError(
+            "compilation-evidence-invalid",
+            "G5 Blueprint cannot be compiled into current evidence",
+        ) from exc
+    if document != expected_document:
+        raise CompilationEvidenceError(
+            "course-definition-derivation-mismatch",
+            "G5 CourseDefinition does not match compilation from the current Blueprint",
+        )
+    if source_map != expected_source_map:
+        raise CompilationEvidenceError(
+            "source-map-derivation-mismatch",
+            "G5 source map does not match compilation from the current Blueprint",
+        )
+
     if report.get("status") != "compiled" or report.get("issues") != []:
         raise CompilationEvidenceError(
             "compilation-report-invalid",
