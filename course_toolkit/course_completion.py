@@ -125,13 +125,19 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
             )
         )
 
-    # Wide video and portrait PDF both need the larger column when paired.
-    # Equal or narrower allocation makes video shallow and PDF text too small.
+    # New horizontal splits are balanced by default. The only authoring-side
+    # exception is one dominant video paired with a small amount of supporting
+    # text; in that case the video may own the larger column. Slot contents are
+    # vertically centred by the shared renderer, not by arbitrary course CSS.
     if preset == "split-horizontal" and isinstance(blocks, list) and isinstance(slots, list):
-        block_types = {
-            block.get("id"): block.get("type")
+        block_by_id = {
+            block.get("id"): block
             for block in blocks
-            if isinstance(block, dict)
+            if isinstance(block, dict) and isinstance(block.get("id"), str)
+        }
+        block_types = {
+            block_id: block.get("type")
+            for block_id, block in block_by_id.items()
         }
         def slots_containing(block_type: str) -> set:
             return {
@@ -142,38 +148,113 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
                 and any(block_types.get(block_id) == block_type for block_id in slot["blockIds"])
             }
 
+        right_slot = next(
+            (slot for slot in slots if isinstance(slot, dict) and slot.get("id") == "right"),
+            None,
+        )
+        if isinstance(right_slot, dict) and isinstance(right_slot.get("blockIds"), list):
+            answerable_types = {"singleChoice", "fillBlank", "interactiveHtml"}
+            answerable_ids = {
+                block_id
+                for block_id, block_type in block_types.items()
+                if block_type in answerable_types
+            }
+            if answerable_ids and not answerable_ids.intersection(right_slot["blockIds"]):
+                issues.append(
+                    _issue(
+                        f"{base}.layout.slots",
+                        "assessment-should-be-right",
+                        "In a horizontal split, place the answerable Block in the right slot unless the source material requires a different reading order.",
+                    )
+                )
+
         if layout.get("ratio") in VALID_SPLIT_RATIOS:
             left_weight, right_weight = (int(value) for value in layout["ratio"].split(":"))
-            for block_type, code, message in (
-                (
-                    "video",
-                    "video-slot-too-narrow",
-                    "A video paired with another region must own the larger horizontal split weight (for example 2:1 or 1:2).",
-                ),
-                (
-                    "pdf",
-                    "pdf-slot-too-narrow",
-                    "A portrait PDF paired with another region must own the larger horizontal split weight (for example 1:2 or 1:3 when it is on the right).",
-                ),
-            ):
-                media_slots = slots_containing(block_type)
-                if len(media_slots) != 1:
-                    continue
-                media_slot = next(iter(media_slots))
-                media_is_wider = (
-                    media_slot == "left" and left_weight > right_weight
-                ) or (
-                    media_slot == "right" and right_weight > left_weight
+            video_slots = slots_containing("video")
+            video_slot = next(iter(video_slots)) if len(video_slots) == 1 else None
+            video_is_wider = (
+                video_slot == "left" and left_weight > right_weight
+            ) or (
+                video_slot == "right" and right_weight > left_weight
+            )
+            other_slot_id = "right" if video_slot == "left" else "left"
+            other_slot = next(
+                (slot for slot in slots if isinstance(slot, dict) and slot.get("id") == other_slot_id),
+                None,
+            )
+            other_ids = other_slot.get("blockIds", []) if isinstance(other_slot, dict) else []
+            short_supporting_text = bool(other_ids) and all(
+                block_types.get(block_id) == "text"
+                for block_id in other_ids
+            ) and sum(
+                len(str(block_by_id.get(block_id, {}).get("content", "")))
+                for block_id in other_ids
+            ) <= 360
+            asymmetric = left_weight != right_weight
+            asymmetric_video_exception = bool(
+                asymmetric
+                and video_slot
+                and video_is_wider
+                and short_supporting_text
+            )
+            if asymmetric and video_slot and not video_is_wider:
+                issues.append(
+                    _issue(
+                        f"{base}.layout.ratio",
+                        "video-slot-too-narrow",
+                        "When a horizontal split is asymmetric for a dominant video, the video must own the larger side.",
+                    )
                 )
-                if not media_is_wider:
-                    issues.append(
-                        _issue(
-                            f"{base}.layout.ratio",
-                            code,
-                            message,
+            if asymmetric and not asymmetric_video_exception:
+                issues.append(
+                    _issue(
+                        f"{base}.layout.ratio",
+                        "split-ratio-should-default-one-to-one",
+                        "Horizontal splits default to 1:1. Use an asymmetric ratio only for one dominant video paired with a small amount of supporting text.",
+                    )
+                )
+    return issues
+
+
+def _answer_position_issues(course: dict) -> List[dict]:
+    graded: List[Tuple[str, int, int]] = []
+    for part_index, part in enumerate(course.get("parts", [])):
+        if not isinstance(part, dict):
+            continue
+        for slice_index, slice_data in enumerate(part.get("slices", [])):
+            if not isinstance(slice_data, dict):
+                continue
+            for block_index, block in enumerate(slice_data.get("blocks", [])):
+                if not isinstance(block, dict) or block.get("type") != "singleChoice":
+                    continue
+                assessment = block.get("assessment")
+                options = block.get("options")
+                if not isinstance(assessment, dict) or assessment.get("mode") != "graded" or not isinstance(options, list):
+                    continue
+                correct_id = assessment.get("correctOptionId")
+                positions = [
+                    index
+                    for index, option in enumerate(options)
+                    if isinstance(option, dict) and option.get("id") == correct_id
+                ]
+                if len(positions) == 1:
+                    graded.append(
+                        (
+                            f"$.course.parts[{part_index}].slices[{slice_index}].blocks[{block_index}]",
+                            positions[0],
+                            len(options),
                         )
                     )
-    return issues
+    if len(graded) >= 3 and len({position for _, position, _ in graded}) == 1:
+        position = graded[0][1] + 1
+        return [
+            _issue(
+                "$.course.parts",
+                "single-choice-answer-position-pattern",
+                f"All {len(graded)} graded single-choice questions use answer position {position}. Reorder options so correct answer positions vary while preserving every answer's meaning and ID binding.",
+            )
+        ]
+    return []
 
 
 def _block_issues(blocks: object, base: str) -> List[dict]:
@@ -322,6 +403,7 @@ def audit_course_draft(draft: object, *, source_path: Optional[str] = None) -> d
                             "provenance": _slice_provenance(immutable if isinstance(immutable, dict) else {}, slice_id),
                         }
                     )
+        course_issues.extend(_answer_position_issues(course))
 
     status_counts: Dict[str, int] = {}
     for record in slices:

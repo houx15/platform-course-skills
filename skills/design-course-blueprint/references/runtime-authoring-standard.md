@@ -20,18 +20,22 @@ Every Slice needs:
 - an explicit deterministic Workflow;
 - explicit navigation.
 
-The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple Blocks in `full`. Use `split-horizontal` or `grid`, or split crowded material into another Slice. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
+The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple Blocks in `full`. The rule is: split-horizontal defaults to `1:1`. Grid supports two to four cells and is selected for a real comparison or grouping need, not from a rigid rule based only on Block count. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
 
 ### Media-aware composition
 
-Choose the layout from the material's natural aspect rather than distributing space evenly by habit:
+Choose the layout from the learning action and natural media aspect while keeping `1:1` as the strong horizontal default:
 
-- **PDF is portrait.** Render it as a centred portrait page column, never as a stretched wide shallow band. Beside explanatory text, put the PDF in the larger column (`1:2`/`1:3` when the PDF is on the right; reverse the ratio when it is on the left).
-- **Video is wide.** Use `full` for a focused video or give it the larger side of a horizontal split (`3:2`, `2:1`, or `3:1`; reverse when video is on the right). A paired video must not receive an equal or smaller column.
+- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself.
+- **Video is wide.** Use `full` for a focused video. The one normal asymmetric split exception is a dominant large video paired with only a small amount of supporting text; the video may receive the wider side. A video paired with substantial content remains `1:1` or is split into another Slice.
 - **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
-- **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side; let the renderer's reading card constrain line length.
+- **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side, with the answerable Block in the right slot. Let the renderer's reading card constrain line length.
 
-These are authoring decisions. The renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
+All split Slots are vertically centred by the shared renderer. These are authoring decisions; the renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
+
+Keep the reference content required to answer a question in the same Slice whenever the combined page remains readable. Do not make learners flip backward during an answer merely because authoring separated the prompt from its evidence.
+
+For AI-authored single-choice questions, vary correct answer positions across the course and do not default every correct answer to the first option. Preserve teacher-provided questions and answer semantics.
 
 ## Workflow completeness
 

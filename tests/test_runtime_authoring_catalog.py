@@ -78,11 +78,16 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
 
         self.assertIn("do-not-author-split-vertical-by-default", layout["authoringRules"])
         self.assertIn("full-layout-has-one-block", layout["authoringRules"])
+        self.assertIn("split-horizontal-defaults-to-1:1", layout["authoringRules"])
+        self.assertIn("asymmetric-only-for-dominant-video-with-short-supporting-text", layout["authoringRules"])
+        self.assertIn("answerable-block-prefers-right-slot", layout["authoringRules"])
+        self.assertIn("reference-and-answer-prefer-same-slice", layout["authoringRules"])
+        self.assertIn("grid-supports-two-to-four-cells", layout["authoringRules"])
         self.assertEqual(
             layout["mediaComposition"],
             {
-                "pdf": "portrait-column; never stretch into a wide shallow band",
-                "video": "wide-region; when paired, the video slot must have the larger split weight",
+                "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
+                "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
                 "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
             },
         )

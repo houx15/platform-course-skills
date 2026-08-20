@@ -19,6 +19,13 @@ DEFAULT_STATIC_DIR = ROOT / "course_toolkit" / "runtime_dist" / "preview"
 CONTRACT_VALIDATOR = ROOT / "course_toolkit" / "runtime_dist" / "validate-course-definition.mjs"
 
 
+def preview_scope_notice(url: str) -> str:
+    return (
+        f"本地预览：{url}\n"
+        "这个链接只能在这台电脑上查看。若要让其他人预览，需要先保存或发布到学生端。"
+    )
+
+
 def _safe_file(base: Path, raw_relative: str) -> Path:
     decoded = unquote(raw_relative)
     candidate = Path(decoded)

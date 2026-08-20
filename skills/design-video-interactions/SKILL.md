@@ -7,7 +7,7 @@ description: Use when a platform course includes a video, an incompatible or unu
 
 ## Scope
 
-Design the structured interaction layer that accompanies a course video. When the supplied file is incompatible or unusually large, this Skill may also prepare a platform-compatible candidate after the teacher approves the exact processing plan. Never overwrite, delete, crop, trim, or otherwise edit the original file.
+Validate and encode the structured interaction layer that accompanies a course video. Never invent a video question. Use only teacher-provided video questions; when none were supplied, emit no video interaction and continue with an ordinary video Block. When the supplied file is incompatible or unusually large, this Skill may also prepare a platform-compatible candidate after the teacher approves the exact processing plan. Never overwrite, delete, crop, trim, or otherwise edit the original file.
 
 ## Safe video processing
 
@@ -31,13 +31,13 @@ Design the structured interaction layer that accompanies a course video. When th
 ## Workflow
 
 1. Locate the source-coverage items and course position served by the video.
-2. Infer the video learning purpose and what the student should notice, decide, explain, or apply from source coverage. Record it as a source-backed AI draft; ask only when the intended evidence or correct answer is a true blocker.
+2. Record the teacher's stated video learning purpose as a source-backed AI draft. Extract only teacher-provided video questions and their intended placement. Do not propose, infer, or add a checkpoint from the video content, its duration, or a general learning objective. If there is no teacher-provided question, record `no video interaction` and continue. Ask only when ambiguity in a supplied question is a true blocker.
 3. If the MP4 exists, resolve the runtime relative to this skill and read its 实际时长 with `scripts/validate-video-interactions.py` during validation. The final file must use an MP4 container, H.264 video, AAC audio when audio exists, and `faststart`; an unverified or incompatible profile blocks upload.
 4. If the final MP4 is unavailable, describe each pause with a 语义锚点, set `timeSeconds` to `null`, and set `status` to `needs-timing`.
-5. For every event, define prompt, interaction type, options when applicable, graded answer or reflection rubric, feedback, and blocking behavior.
-6. When the actual duration 超过 10 分钟, tell the teacher and review the whole timeline for stretches longer than 10 minutes without a meaningful checkpoint. 建议增加交互点 only where a pause helps students notice, retrieve, predict, decide, or apply; do not add arbitrary interruptions to satisfy a count. A `long-video` or `sparse-video-interactions` result is a warning, not an upload blocker.
+5. For every teacher-provided event, preserve its prompt, interaction type, options, graded answer or reflection rubric, feedback, and blocking behavior. Complete only contract fields that can be derived without changing the question.
+6. When the actual duration 超过 10 分钟, report `long-video` as a warning. Do not use duration or sparse coverage as permission to propose questions, add pauses, or interrupt playback；不要建议增加交互点. `sparse-video-interactions` is informational and never an invitation to invent content.
 7. When the file exceeds `500 MiB`, return the `large-video` warning and carry it into the preview handoff. File size alone is not a blocker in this toolkit; do not stop solely for warning acknowledgement. Offer the safe processing path above when conversion or compression would be useful.
-8. Fill [video-interaction-design-template.md](assets/video-interaction-design-template.md), persist event purpose and placement as an AI draft, and continue to JSON generation. Ask only when the source cannot support event correctness, placement, or blocking behavior.
+8. When teacher-provided interactions exist, fill [video-interaction-design-template.md](assets/video-interaction-design-template.md), persist their purpose and placement as an AI draft, and continue to JSON generation. Ask only when the supplied question cannot support correct timing, answers, or blocking behavior. When no interaction exists, do not create interaction JSON merely to populate the workflow.
 9. Read [video-contract.md](references/video-contract.md). Write video interaction JSON first; JSON 是唯一事实源.
 10. Generate the Markdown view with `scripts/render-video-interactions.py`. Do not maintain Markdown independently.
 11. Run `scripts/validate-video-interactions.py COURSE_DIR INTERACTION_JSON`. Fix invalid ordering, repeated times, duration mismatch, profile blockers, and events outside the actual MP4.

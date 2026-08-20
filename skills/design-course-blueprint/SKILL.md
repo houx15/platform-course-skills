@@ -38,17 +38,19 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
    - a deterministic `workflow` with explicit initial state, Steps, ordered actions, typed transitions, all meaningful answer branches, and a reachable terminal path;
    - complete `navigation`.
 
-6. Keep one Slice visually bounded to one desktop screen. Split the Slice when its learning action, materials, or Blocks cannot fit without crowding. Compose by natural media aspect: PDF is a portrait column, video owns a wide region, and HTML preserves its declared `1:1`/`4:3` ratio without stretching. Text and assessments need constrained reading width. A Slot may contain multiple ordered Blocks, but density is still a review constraint.
-7. For interactive HTML, inspect the actual file and explicitly decide whether it uses audio. When it does, author `capabilities.audio: true` and require the host lifecycle protocol. A valid completion message must carry `correct` or `value`; an empty completion payload is invalid.
-8. Do not generate a Workflow transition on `pdf.pageChanged`. It exists in the contract vocabulary but the pinned renderer has no producer for it; the catalog marks it `do-not-generate-transition`. PDF evidence must come from a separate interaction or assessment.
-9. Store proposed runtime choices in each Slice's `productionDecisions` inside `course-completion-plan.json`, with source IDs, decision IDs, rationale, and status `ai-proposed`. Persist one traceability row per Slice without interrupting the first-preview path:
+6. Keep one Slice visually bounded to one desktop screen. Split the Slice when its learning action, materials, or Blocks cannot fit without crowding. A `split-horizontal` defaults to `1:1`, including text beside a portrait PDF. The only normal asymmetric exception is one dominant large video paired with a small amount of supporting text; give the video the wider side. Let the shared renderer keep both sides vertically centred. Put an answerable Block in the right slot when it shares a horizontal split with reference or explanatory content. A `grid` may contain two to four cells; choose it when the material really benefits from comparison rather than from a rigid element-count formula. Interactive HTML preserves its declared `1:1`/`4:3` ratio without stretching. Text and assessments need constrained reading width.
+7. Keep the evidence needed for an answer in the same Slice whenever it remains readable. Do not require the learner to flip back to another Slice or PDF page merely to recall the referenced prompt. If the source and answer surface cannot fit together clearly, reframe the task or split the teaching sequence before the answer rather than making navigation part of the assessment.
+8. For AI-authored single-choice questions, vary correct answer positions and do not default every correct answer to the first option. Reordering options must preserve the exact answer meaning and feedback. Teacher-provided questions and answers remain unchanged unless the teacher explicitly requests an edit.
+9. For interactive HTML, inspect the actual file and explicitly decide whether it uses audio. When it does, author `capabilities.audio: true` and require the host lifecycle protocol. A valid completion message must carry `correct` or `value`; an empty completion payload is invalid.
+10. Do not generate a Workflow transition on `pdf.pageChanged`. It exists in the contract vocabulary but the pinned renderer has no producer for it; the catalog marks it `do-not-generate-transition`. PDF evidence must come from a separate interaction or assessment.
+11. Store proposed runtime choices in each Slice's `productionDecisions` inside `course-completion-plan.json`, with source IDs, decision IDs, rationale, and status `ai-proposed`. Persist one traceability row per Slice without interrupting the first-preview path:
 
    | Slice | Layout | Initial view | Narration and sequence | Student action | Branches and completion | Navigation | Needs confirmation |
    | --- | --- | --- | --- | --- | --- | --- | --- |
 
-10. Apply source-backed production decisions to `.course-work/course-blueprint.json`, keep `approval.teacherConfirmed: false`, update provenance, and continue directly to compilation. The teacher reviews these choices in the renderer preview. Ask one batched question only for true blockers. Never edit generated `course/course.json` directly.
-11. Rerun `complete-course-draft.py`. Continue until every Slice is `ready-for-contract-validation` and course-level issues are empty.
-12. Compile and validate through the shared student Zod contract:
+12. Apply source-backed production decisions to `.course-work/course-blueprint.json`, keep `approval.teacherConfirmed: false`, update provenance, and continue directly to compilation. The teacher reviews these choices in the renderer preview. Ask one batched question only for true blockers. Never edit generated `course/course.json` directly.
+13. Rerun `complete-course-draft.py`. Continue until every Slice is `ready-for-contract-validation` and course-level issues are empty.
+14. Compile and validate through the shared student Zod contract:
 
    ```bash
    python _course-toolkit/scripts/compile-course.py ROOT --json

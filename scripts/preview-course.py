@@ -8,7 +8,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from course_toolkit.preview_server import create_preview_server, validate_preview_prerequisites
+from course_toolkit.preview_server import create_preview_server, preview_scope_notice, validate_preview_prerequisites
 from course_toolkit.workflow import verify_g6_validation
 
 
@@ -32,11 +32,13 @@ def main() -> int:
             "pid": os.getpid(),
             "courseId": validation["courseId"],
             "bind": host,
+            "scope": "local-only",
+            "sharing": "save or publish to the student platform",
         }
         if args.json:
             print(json.dumps(payload, ensure_ascii=False), flush=True)
         else:
-            print(f"Course preview: {url}", flush=True)
+            print(preview_scope_notice(url), flush=True)
         if not args.no_open:
             webbrowser.open(url)
         server.serve_forever()

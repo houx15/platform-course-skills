@@ -9,11 +9,19 @@ from pathlib import Path
 
 from course_toolkit.preview_server import (
     create_preview_server,
+    preview_scope_notice,
     validate_preview_prerequisites,
 )
 
 
 class PreviewServerTests(unittest.TestCase):
+    def test_preview_scope_notice_explains_local_only_and_student_publication(self):
+        notice = preview_scope_notice("http://127.0.0.1:8732/")
+
+        self.assertIn("只能在这台电脑上查看", notice)
+        self.assertIn("其他人", notice)
+        self.assertIn("发布到学生端", notice)
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)

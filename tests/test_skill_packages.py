@@ -305,7 +305,7 @@ class SkillPackageTests(unittest.TestCase):
         self.assertNotIn("Recommend opening a 新会话", director)
         self.assertNotIn("不得生成、剪辑、转码或修改 MP4", skill)
 
-    def test_course_catalog_and_generated_cover_are_teacher_confirmed_and_hash_bound(self):
+    def test_course_catalog_is_fixed_and_cover_generation_is_deferred(self):
         director = (ROOT / "skills/build-platform-course/SKILL.md").read_text(encoding="utf-8")
         publisher = (ROOT / "skills/publish-platform-course/SKILL.md").read_text(encoding="utf-8")
         api_contract = (
@@ -322,27 +322,39 @@ class SkillPackageTests(unittest.TestCase):
             "structured `introduction`",
             "`cardIds`",
             "featured_rank",
-            "separate subagent",
-            "imagegen2",
-            "manage-course-cover.py prompt",
-            "pinned course-cover prompt",
-            "Create a 16:9 conceptual course cover",
-            "16:9",
-            "quality-100 WebP",
-            "manage-course-cover.py confirm",
-            ".course-work/cover-delivery/course-cover.webp",
-            "`coverAssetPath`",
-            "`coverUrl`",
-            "exact uploaded bytes",
-            "The teacher makes only two catalog-and-cover decisions",
+            "Cover generation is deferred",
+            "do not call image generation",
+            "does not block preview or publication",
+            "The teacher makes only one catalog decision",
             "selects the human-readable course name",
-            "accepts or rejects the generated cover",
             "Do not ask the teacher to review or approve category, cardIds, or introduction separately",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
         self.assertNotIn("Final generated-cover publication remains blocked", combined)
         self.assertNotIn("authoring API v1.3.0", combined)
+
+    def test_authoring_rules_prevent_invented_video_questions_and_repeated_answer_positions(self):
+        director = (ROOT / "skills/build-platform-course/SKILL.md").read_text(encoding="utf-8")
+        blueprint = (ROOT / "skills/design-course-blueprint/SKILL.md").read_text(encoding="utf-8")
+        video = (ROOT / "skills/design-video-interactions/SKILL.md").read_text(encoding="utf-8")
+        runtime = (ROOT / "skills/design-course-blueprint/references/runtime-authoring-standard.md").read_text(encoding="utf-8")
+        combined = "\n".join((director, blueprint, video, runtime))
+
+        for phrase in (
+            "Never invent a video question",
+            "teacher-provided video questions",
+            "no video interaction",
+            "correct answer positions",
+            "do not default every correct answer to the first option",
+            "split-horizontal defaults to `1:1`",
+            "two to four cells",
+            "vertically centred",
+            "answerable Block in the right slot",
+            "same Slice",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
 
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (

@@ -45,10 +45,9 @@
 
 以下协议供接手课程的 Agent 执行。不要把内部命令交给老师。
 
-老师在这套流程中只做两个选择（这里专指课程目录绑定与封面环节）：
+老师在这个环节只做一个选择：
 
-- 选择或确认课程名称；
-- 接受或拒绝课程封面。
+- 选择或确认课程名称。
 
 分类、Cards 和 Introduction 是平台预先定稿的课程配置。Agent 不要求老师分别审核、确认或改写，也不能把它们变成第三类选择。
 
@@ -96,29 +95,11 @@ Cards 不属于 `CourseDefinition`。Cards 不通过 `ship` 提交。将目录�
 
 这里的 `cardIds`、`category` 和 `introduction` 必须全部来自同一条已确认目录记录。学生端查询结果可能把 Cards 返回为 `card_ids`；教师工具提交时仍使用 `cardIds`。
 
-### 正式发布前生成并审核 Cover
+### Cover 延后由管理员统一处理
 
-`save-preview` 不要求生成 Cover。最终 `publish` 必须使用老师审核过的专属 Cover。
+封面由管理员后续统一生成。教师的 Agent 本轮不调用图片生成工具，也不要求老师挑选或审核封面；没有图片生成能力也不得阻塞课程检查、本地预览、`save-preview` 或 `publish`。
 
-执行顺序如下：
-
-1. 先确认 33 门课程绑定。
-2. 调用 `manage-course-cover.py prompt`，取得已填入正式课程名称的固定 Prompt。
-3. 把该 Prompt 原样交给独立 subagent，要求它调用 imagegen2。不得缩写、翻译或改写 Prompt。
-4. 把原始生成结果保存在 `.course-work/cover-sources/`。
-5. 调用 `manage-course-cover.py prepare`，生成严格 16:9、质量 100 的 WebP 候选。
-6. 把实际图片展示给老师。图片描述、文件名或检查结果不能代替看图。
-7. 明确询问老师接受还是拒绝这张图片。
-
-当前宿主无法安排 subagent 或调用 imagegen2 时，明确报告阻塞。不得伪造生成记录、改用任意图片或跳过 Cover。
-
-老师拒绝时保留原图和候选图，不得生成发布副本。根据老师意见重新生成候选，再次展示并审核。
-
-老师明确接受后，调用 `manage-course-cover.py confirm`。只有该命令可以生成 `.course-work/cover-delivery/course-cover.webp`。确认记录绑定课程目录、完整 Prompt 和文件 SHA-256；任一内容改变后都要重新看图确认。
-
-把确认后的 WebP 作为 `cover/course-cover.webp` 上传 OSS。在 ship 请求中使用 `coverAssetPath: "cover/course-cover.webp"`，同时保持库存 `cover` 为空。不得发送 OSS object key、URL 或 `asset:` 值。
-
-发布后要求学生端返回非空 `coverUrl`。由代码下载 `coverUrl` 返回的字节，并与老师已经确认的 Cover 文件比较 SHA-256 和字节数。两者完全一致后才能完成 G10 和报告发布成功；这项自动校验不要求老师再次确认。不得保存或展示签名 URL。
+如果课程目录中已经存在管理员提供并确认过的 `.course-work/course-cover.json`，发布工具会继续验证并复用对应的 WebP：上传为课程相对路径 `cover/course-cover.webp`，在 ship 请求中使用 `coverAssetPath: "cover/course-cover.webp"`，并核对发布后的 `coverUrl` 是否解析为相同字节。没有该记录时，发布请求保持 `cover` 和 `coverAssetPath` 为空；更新已有课程时不会借此清除远端原封面。
 
 ## 老师如何使用
 
@@ -240,7 +221,7 @@ Agent 会检查课程结构、每页 layout 和 workflow，以及 PDF、视频�
 
 ### 第六步：在浏览器中预览和批注
 
-检查通过后，Agent 会打开本机预览链接。这里使用学生端的真实课程 renderer，但开场、结尾和逐页讲解在本地预览中可以静音。
+检查通过后，Agent 会打开本机预览链接。这里使用学生端的真实课程 renderer，但开场、结尾和逐页讲解在本地预览中可以静音。`127.0.0.1` 是本地地址，这个链接只能在老师当前这台电脑上观看；若要让其他人预览，需要先保存或发布到学生端。
 
 右侧“课程批注”是额外的教师预览工具，不属于学生端课程界面。当前版本收起时占 46px、展开时占 330px；学生端本身还有自己的侧边栏，因此判断课程真实排版时应先收起教师批注栏，需要留言时再展开。这个本地页面验证共享课程 renderer，不能单独证明学生端完整外壳与侧边栏组合后的最终比例；涉及外壳的显示问题应记录为预览或学生端运行问题，不得通过修改课程 JSON 掩盖。
 
@@ -250,8 +231,9 @@ Agent 会检查课程结构、每页 layout 和 workflow，以及 PDF、视频�
 2. 访问每一个 Slice；
 3. 实际操作相关视频弹题、HTML、PDF、答题和翻页；
 4. 检查全屏和左右分栏是否清楚；旧课程若使用上下分栏，也要确认没有形成难读的横向薄条；
-5. 在右侧批注栏选择对应的 Slice、Block、图片或 workflow Step，写下具体意见；
-6. 只有在所有页面和关键互动都检查完后，才点击“确认我已完整审查”。
+5. 正常操作课程时保持“批注模式”关闭；需要留言时打开批注模式，直接点击页面中的组件选中对应的 Block 或图片，也可以选择整页 Slice；此时点击不会触发学生交互；
+6. 写下具体意见。已有批注可以修改、删除、标记已完成或重新打开；只有在当前预览确实解决问题后才标记完成；
+7. 只有在所有页面和关键互动都检查完后，才点击“确认我已完整审查”。
 
 一条有用的批注应同时说明问题和期望，例如：
 
@@ -301,9 +283,7 @@ Agent 会先展示精确 dry run。确认课程 ID、创建或更新、素材数
 
 任何课程内容、素材、远端状态或发布选项变化都会使旧批准失效。修改同一门课时始终使用相同课程 ID；未改变的素材会根据相同课程 ID、相对路径和文件哈希复用。
 
-正式发布前，Agent 还会安排一个独立的封面生成任务：工具会把已确认课程名称填入固定的完整封面 Prompt，再由子 Agent 原样使用该 Prompt 调用 imagegen2，不允许自行缩写或改写。生成结果会另存为 16:9、质量 100 的 WebP 候选。老师会直接看到图片并确认采用；原始生成结果和未采用候选都保留，确认同时绑定目录、Prompt 和文件哈希，任一变化后必须重新看图确认。采用后的发布副本保存在 `.course-work/cover-delivery/course-cover.webp`，并以 `cover/course-cover.webp` 的课程相对路径按课程 ID 和文件哈希参与 OSS 上传与复用，不会污染 CourseDefinition 的正文素材集合。
-
-学生端 authoring API v1.4.0 使用课程相对路径 `coverAssetPath: "cover/course-cover.webp"` 绑定专属封面。Agent 会先上传老师确认过的 WebP，再 ship 同一个稳定课程 ID；发布后还必须得到非空的签名 `coverUrl`，下载并核对它是否与刚才上传的 exact uploaded bytes 完全一致。只有 SHA-256 和字节数一致才会完成 G10。签名 URL 本身不会保存或展示，学生端管理员凭证也不会发送给该 URL。
+封面不属于教师本轮课程生产任务，由管理员后续统一生成。缺少封面不会阻止提交。若管理员已经提供了经过确认的 WebP，学生端 authoring API v1.4.0 会使用课程相对路径 `coverAssetPath: "cover/course-cover.webp"` 绑定，并由工具自动核对 `coverUrl` 返回的字节；否则本次提交不携带封面。
 
 第一次需要真实提交时，老师可以把管理员提供的 `OSS_ADMIN_KEY` 交给 Agent。Agent 会把它写入课程目录的本地 `.env`，同时确认 `/.env` 已加入 `.gitignore`；老师不需要执行命令，也不需要设置系统环境变量。Git 中只保留值为空的 `.env.example`。进程环境变量优先于 `.env`，方便部署环境覆盖本地设置。
 
@@ -399,7 +379,7 @@ python3 scripts/install-skills.py --target both --replace
 9. `apply-preview-feedback` 将批注分为文案机械修改、明确的语义修改和学生端 runtime bug；精确批注直接执行，修改 Blueprint 后重新编译、校验和预览。
 10. 独立终审通过后，才准备精确发布 dry run。教师确认后上传必要 OSS 素材，保存同一稳定 slug 的课程，并按要求 ship。
 
-课程在开始或提交前还会绑定到正式的 33 门课程目录。绑定记录决定学生端的七类分类、结构化介绍和工具卡，旧课程也不能跳过。正式发布还要求一个由 imagegen2 子 Agent 生成、教师看图确认的 16:9 质量 100 WebP 封面；目录或封面哈希变化会使旧发布批准失效。
+课程在开始或提交前还会绑定到正式的 33 门课程目录。老师只确认课程名称；绑定记录固定决定学生端的七类分类、结构化介绍和工具卡，旧课程也不能跳过。封面由管理员后续统一生成，不进入教师本轮确认流程。
 
 任何输入、Blueprint、素材、renderer、批注或终审证据变化，都会使相应下游证据失效。文件存在不代表质量门已经通过。
 
@@ -413,10 +393,13 @@ python3 scripts/install-skills.py --target both --replace
 
 ## 媒体与交互检查
 
-- Layout 必须服从素材的天然比例：PDF 作为竖向页面显示，与文字并排时占更宽的一列；视频使用宽区域或单独全屏；互动 HTML 保持声明的 `1:1` 或 `4:3` 比例并居中缩放，不得拉伸。
+- 左右分屏强默认 `1:1`，两侧内容由共享 renderer 垂直居中。PDF 作为竖向页面在自己的栏位内居中显示，不因为是 PDF 就偏离 `1:1`。只有“大视频 + 少量辅助文字”可以使用非对称比例，并把更宽一侧给视频。互动 HTML 保持声明的 `1:1` 或 `4:3` 比例并居中缩放，不得拉伸。
+- 需要作答的 Block 与参考或解释内容并排时，默认放在右侧。网格可以承载 2–4 个格子，是否使用由比较和分组关系决定，不机械按照元素数量套版。
+- 学生答题所需的参考材料尽量和题目放在同一个 Slice；不要要求学生为了作答频繁翻回上一页。内容无法在一屏内清晰呈现时，先调整教学顺序或拆分讲解，再进入作答。
 - `full` 一页只承载一个聚焦 Block。文字和题目不能铺满超宽屏，也不能被压成横向薄条；素材过多时拆成多个 Slice。
 - `pdf` Block 必须保留来源明确的原始 PDF 字节，并检查扩展名、文件头、EOF、路径安全与真实 renderer 行为。
-- 视频必须是 MP4、H.264、`yuv420p`、faststart；存在音轨时使用 AAC。交互文件会检查时间范围、自动暂停、必做题和完成规则。
+- 视频必须是 MP4、H.264、`yuv420p`、faststart；存在音轨时使用 AAC。视频题只采用老师已经提供的问题；没有老师输入就不编造、不建议新增，也不生成视频交互。已有交互文件会检查时间范围、自动暂停、必做题和完成规则。
+- AI 新写的单选题必须分散正确答案位置，不能把所有正确答案都默认放在 A；老师原有题目不因这条规则被静默改写。
 - HTML 在 iframe 中遵守 renderer 支持的消息协议。完成时必须提交规定的学生学习数据；自动播放音乐仍受浏览器 autoplay 策略约束，并需要在真实预览中验证。
 - 旧 HTML 若使用 `INTERACTION_COMPLETE`、缺少握手或 `sessionToken`、在握手前静默丢弃消息，Agent 会备份原件并直接修复课程交付副本，不要求老师理解或修改协议代码；题目、答案、评分、完成门槛、DOM 和 CSS 必须保持不变。
 - WEBVTT、JSON、HTML、图片、PDF 与视频均按课程内相对路径管理。
@@ -425,7 +408,9 @@ python3 scripts/install-skills.py --target both --replace
 
 ## 预览、批注与修改
 
-`preview-platform-course` 只绑定 `127.0.0.1`，使用真实学生端 renderer、内存 session adapter 和本地素材解析。批注 UI 位于 renderer 外部，并绑定 Course、Part、Slice、Block、图片 item 或 workflow Step 的稳定 ID；不会把 CSS selector、坐标或 DOM 结构当作修改目标。
+`preview-platform-course` 只绑定 `127.0.0.1`，这个本地预览链接只能在当前电脑查看；需要他人预览时必须保存或发布到学生端。页面使用真实学生端 renderer、内存 session adapter 和本地素材解析。批注 UI 位于 renderer 外部，并绑定 Course、Part、Slice、Block、图片 item 或 workflow Step 的稳定 ID；不会把 CSS selector、坐标或 DOM 结构当作修改目标。
+
+批注模式可以打开或关闭。关闭时页面保持正常学生交互；打开时直接点击组件即可选定批注目标，且不会误触该组件。批注可以修改、删除、标记已完成或重新打开。
 
 完成预览要求教师访问每个 Slice、检查相关交互与分支、处理 runtime error，并明确点击完成。修改后必须重新生成当前 hash 对应的预览证据。打开页面或生成截图都不能代替这一过程。
 

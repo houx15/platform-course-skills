@@ -164,14 +164,13 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
 
-    def test_readme_teaches_agents_catalog_binding_cover_review_and_card_submission(self):
+    def test_readme_teaches_agents_catalog_binding_deferred_cover_and_card_submission(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         required = (
             "## 33 门课程绑定与封面协议",
-            "老师在这套流程中只做两个选择",
+            "老师在这个环节只做一个选择",
             "选择或确认课程名称",
-            "接受或拒绝课程封面",
             "代码提议课程名称，老师只确认课程名称",
             "不得把模糊匹配第一名静默写成最终选择",
             "从固定目录原样取得",
@@ -182,13 +181,9 @@ class InstallerTests(unittest.TestCase):
             '"cardIds": ["belief-spectrum", "perspective-matrix"]',
             "Cards 不属于 `CourseDefinition`",
             "Cards 不通过 `ship` 提交",
-            "把实际图片展示给老师",
-            "不得伪造生成记录",
-            "老师拒绝时保留原图和候选图",
-            "不得生成发布副本",
-            "老师明确接受后",
-            '`coverAssetPath: "cover/course-cover.webp"`',
-            "`coverUrl` 返回的字节",
+            "封面由管理员后续统一生成",
+            "没有图片生成能力也不得阻塞",
+            "本轮不调用图片生成工具",
         )
         for phrase in required:
             with self.subTest(phrase=phrase):

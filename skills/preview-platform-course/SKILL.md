@@ -22,10 +22,11 @@ Open the course with the real student renderer and keep all review records local
    ```
 
    In a repository checkout, use `python scripts/preview-course.py ROOT`. Keep the foreground process running while the teacher reviews the browser URL.
-2. Explain that the page mounts the real student renderer with in-memory sessions and fallback opening/closing text. It must match student layout, workflow, video interactions, PDF, iframe completion, navigation, and media behavior; the side panel is separate preview chrome.
+2. Tell the teacher plainly that this is a local preview: the `127.0.0.1` link can be viewed only on this computer. To let another person review it, the course must first be saved or published to the student platform. Explain that the page mounts the real student renderer with in-memory sessions and fallback opening/closing text. It must match student layout, workflow, video interactions, PDF, iframe completion, navigation, and media behavior; the side panel is separate preview chrome.
 3. Ask the teacher to traverse every Slice at a desktop viewport, exercise meaningful branches and interactions, and inspect the runtime diagnostics panel. Merely opening the URL is not teacher completion.
-4. Save each comment in the side panel. Select a stable semantic target: Course, Part, Slice, Block, image item, or workflow Step ID. Never encode CSS selectors, pixel coordinates, array indexes, signed URLs, or generated DOM structure as the target.
-5. Keep content/layout/workflow/media/question comments separate from runtime errors. A runtime bug must remain classified as a runtime bug and cannot be hidden by rewriting content.
+4. The preview sidebar has a separate annotation mode. Keep it off while testing the student interaction. Turn annotation mode on only when adding a note; clicking a rendered Block or image then selects its stable semantic target without triggering the learner interaction. In annotation mode, embedded PDF and HTML iframes temporarily stop receiving pointer events so clicking their visible area selects the enclosing Block; turn the mode off to operate them normally. The teacher can also target the whole Slice. Never encode CSS selectors, pixel coordinates, array indexes, signed URLs, or generated DOM structure as the target.
+5. Save each comment in the side panel. Existing comments can be edited, deleted, marked complete, or reopened. Mark complete only after the current preview visibly resolves the issue; deletion is for accidental or duplicate notes, not for hiding unresolved feedback.
+6. Keep content/layout/workflow/media/question comments separate from runtime errors. A runtime bug must remain classified as a runtime bug and cannot be hidden by rewriting content.
 
 ## Finish or revise
 

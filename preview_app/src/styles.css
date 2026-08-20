@@ -88,6 +88,16 @@ button, select, textarea, input { font: inherit; }
   background: var(--mk-paper);
 }
 
+.preview-stage--annotation-mode { cursor: crosshair; }
+.preview-stage--annotation-mode [data-block-id],
+.preview-stage--annotation-mode [data-item-id] { cursor: crosshair; }
+.preview-stage--annotation-mode iframe { pointer-events: none !important; }
+.preview-stage [data-annotation-selected="true"] {
+  outline: 3px solid var(--mk-info);
+  outline-offset: 4px;
+  border-radius: var(--mk-radius-md);
+}
+
 .annotation-toggle {
   position: absolute;
   z-index: 30;
@@ -141,9 +151,27 @@ button, select, textarea, input { font: inherit; }
 }
 
 .annotation-drawer {
+  position: relative;
   width: 100%;
   height: 100%;
 }
+
+.annotation-mode-switch {
+  position: absolute;
+  z-index: 31;
+  top: 18px;
+  left: 24px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--mk-input-border);
+  border-radius: var(--mk-radius-sm);
+  background: var(--mk-surface);
+  color: var(--mk-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.annotation-mode-switch[aria-pressed="true"] { border-color: var(--mk-info); background: var(--mk-info-bg); color: var(--mk-info); }
 
 .preview-panel {
   height: 100%;
@@ -160,6 +188,10 @@ button, select, textarea, input { font: inherit; }
 .eyebrow { margin: 0; color: #637268; font-size: 11px; font-weight: 750; letter-spacing: .15em; }
 
 .annotation-form { display: grid; gap: 14px; padding-top: 22px; }
+.annotation-target { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid #bdc8bf; border-radius: 8px; background: #f7faf8; }
+.annotation-target span { color: #637268; font-size: 11px; font-weight: 750; }
+.annotation-target strong { overflow-wrap: anywhere; font-size: 13px; }
+.annotation-target button { justify-self: start; min-height: 28px; padding: 0 9px; border: 1px solid #bdc8bf; background: white; color: #245c3b; font-size: 12px; }
 .annotation-form label { display: grid; gap: 6px; color: #3c4d42; font-size: 13px; font-weight: 650; }
 .annotation-form select,
 .annotation-form textarea {
@@ -191,9 +223,17 @@ button, select, textarea, input { font: inherit; }
 
 .annotation-list, .event-list { margin: 0; padding: 0; list-style: none; }
 .annotation-list li { margin-top: 10px; padding: 12px; border: 1px solid #d8ded7; border-radius: 8px; background: white; }
+.annotation-list li[data-status="dismissed"] { opacity: .68; background: #f4f6f4; }
+.annotation-list__meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.annotation-list__meta em { color: #728078; font-size: 11px; font-style: normal; }
 .annotation-list span { color: #245c3b; font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .annotation-list p { margin: 5px 0; font-size: 13px; }
 .annotation-list small { color: #728078; overflow-wrap: anywhere; }
+.annotation-list__editor label { display: grid; gap: 6px; color: #3c4d42; font-size: 12px; font-weight: 650; }
+.annotation-list__editor textarea { min-height: 84px; padding: 9px; border: 1px solid #bdc8bf; border-radius: 7px; resize: vertical; }
+.annotation-list__actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.annotation-list__actions button { min-height: 30px; padding: 0 9px; border: 1px solid #bdc8bf; border-radius: 7px; background: white; color: #245c3b; font-size: 12px; cursor: pointer; }
+.annotation-list__actions button.danger { color: #912e2e; }
 details { margin-top: 28px; color: #617067; font-size: 12px; }
 .event-list li { margin-top: 5px; overflow-wrap: anywhere; }
 .runtime-error, .preview-boot-error { color: #912e2e; }

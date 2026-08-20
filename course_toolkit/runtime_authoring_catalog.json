@@ -66,11 +66,15 @@
       "hidden-blocks-keep-slots",
       "do-not-author-split-vertical-by-default",
       "full-layout-has-one-block",
-      "media-natural-aspect-determines-slot-weight"
+      "split-horizontal-defaults-to-1:1",
+      "asymmetric-only-for-dominant-video-with-short-supporting-text",
+      "answerable-block-prefers-right-slot",
+      "reference-and-answer-prefer-same-slice",
+      "grid-supports-two-to-four-cells"
     ],
     "mediaComposition": {
-      "pdf": "portrait-column; never stretch into a wide shallow band",
-      "video": "wide-region; when paired, the video slot must have the larger split weight",
+      "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
+      "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
       "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching"
     }
   },

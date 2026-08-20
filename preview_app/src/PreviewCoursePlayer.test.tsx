@@ -4,13 +4,13 @@ import type { CourseDefinitionDocument } from "@mind-imprint/course-contract";
 import { PreviewCoursePlayer } from "./PreviewCoursePlayer";
 
 vi.mock("@mind-imprint/course-renderer", () => ({
-  CoursePlayer: () => <div data-testid="course-player">Student course</div>,
+  CoursePlayer: () => <div data-testid="course-player"><div data-block-id="case-question"><button type="button">Answer this question</button></div></div>,
   InteractionLoaderProvider: ({ children }: { children: React.ReactNode }) => children,
   AudioEngineProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
 vi.mock("./AnnotationPanel", () => ({
-  AnnotationPanel: () => <aside aria-label="课程批注">Annotations</aside>,
+  AnnotationPanel: ({ selectedTargetKey }: { selectedTargetKey?: string | null }) => <aside aria-label="课程批注">Selected: {selectedTargetKey ?? "slice"}</aside>,
 }));
 
 vi.mock("./previewAdapters", () => ({
@@ -46,5 +46,19 @@ describe("PreviewCoursePlayer", () => {
     expect(screen.getByLabelText("课程批注")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "关闭课程批注" })).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("button", { name: "关闭课程批注" }).parentElement).toHaveStyle({ width: "330px" });
+  });
+
+  it("selects a rendered component as the annotation target by clicking it", () => {
+    render(<PreviewCoursePlayer document={document} definitionHash={"a".repeat(64)} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开课程批注" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Answer this question" }));
+    expect(screen.getByLabelText("课程批注")).toHaveTextContent("Selected: slice");
+
+    fireEvent.click(screen.getByRole("button", { name: "开启点选批注" }));
+    expect(screen.getByRole("button", { name: "关闭点选批注" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Answer this question" }));
+
+    expect(screen.getByLabelText("课程批注")).toHaveTextContent("Selected: block:case-question");
   });
 });

@@ -219,7 +219,8 @@ def prepare_live_preflight(
     except CourseCatalogError as exc:
         raise LivePublicationBlocked(str(exc)) from exc
     generated_cover = None
-    if action == "publish":
+    cover_record_path = root / ".course-work/course-cover.json"
+    if action == "publish" and cover_record_path.is_file():
         try:
             generated_cover = load_confirmed_cover(root)
         except CourseCoverError as exc:
@@ -302,7 +303,8 @@ def prepare_live_preflight(
             "publishedSaveMutatesLiveBytes": remote is not None and remote.status == "published",
             "shipRegeneratesTTS": action == "publish",
             "assetReuseUsesLocalProofOnly": bool(reuse),
-            "generatedCoverRequiresCourseAssetPathSupport": action == "publish",
+            "coverGenerationDeferred": action == "publish" and generated_cover is None,
+            "generatedCoverRequiresCourseAssetPathSupport": generated_cover is not None,
         },
         "preparedAt": now,
     }

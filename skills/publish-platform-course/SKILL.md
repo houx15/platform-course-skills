@@ -19,7 +19,7 @@ Handle the only externally mutating phase. Read [api-contract.md](references/api
 
    Never replace an existing local identity and never adopt a remote course that merely happens to use the same slug.
 4. `OSS_ADMIN_KEY` may come from the process environment or 课程目录的 `.env`; 进程环境变量优先. The publication command loads the course `.env` first and uses the toolkit checkout `.env` only as a local development fallback. If a teacher provides the key to the Agent, confirm that `/.env` is ignored, write only `OSS_ADMIN_KEY=...` to that local file, and keep `.env.example` empty. 老师不需要执行命令. 不得回显凭证 or place it in command arguments, ordinary output, generated course files, JSON evidence, or Git. Never print an Authorization header or presigned URL.
-5. For `publish`, require `.course-work/course-cover.json`. Run `python _course-toolkit/scripts/manage-course-cover.py prompt ROOT --json` and pass its pinned course-cover prompt, beginning `Create a 16:9 conceptual course cover for high-school students.`, unchanged to the separate imagegen2 subagent. Preserve the original generation under `.course-work/cover-sources/` and use `manage-course-cover.py prepare` with that same prompt to create an exact 16:9 quality-100 WebP candidate through `cwebp -q 100`. Show it to the teacher and record explicit confirmation with `manage-course-cover.py confirm` before `.course-work/cover-delivery/course-cover.webp` enters the OSS manifest as `cover/course-cover.webp`. Catalog, prompt, or file hash changes require review again.
+5. Cover generation is deferred to the platform administrator. Do not call image generation, ask the teacher to create a placeholder, or block `save-preview` or `publish` because `.course-work/course-cover.json` is absent. A missing cover does not block preview or publication. If a previously confirmed administrator-supplied cover record exists, include its exact WebP in the manifest and retain the existing `coverAssetPath` verification; otherwise send both stock `cover` and `coverAssetPath` empty so a pre-existing remote cover is preserved.
 
 ## Prepare the dry run
 
@@ -34,7 +34,7 @@ python _course-toolkit/scripts/publish-course.py preflight ROOT \
   --json
 ```
 
-Present the teacher-readable dry run: stable slug, create/update mode, exact action, definition hash, blurb, confirmation that fixed catalog metadata is bound, generated cover path/hash, upload and reuse counts, and risks. Do not present category, `cardIds`, or `introduction` as separate teacher choices or approval items. State plainly:
+Present the teacher-readable dry run: stable slug, create/update mode, exact action, definition hash, blurb, confirmation that fixed catalog metadata is bound, optional existing cover path/hash when present, upload and reuse counts, and risks. Do not present category, `cardIds`, or `introduction` as separate teacher choices or approval items. State plainly:
 
 - all writes hit production;
 - the API is last-writer-wins;
@@ -42,7 +42,7 @@ Present the teacher-readable dry run: stable slug, create/update mode, exact act
 - ship regenerates TTS and should not be repeated casually;
 - asset reuse is based on local upload proof for the same slug, relative path, and SHA-256 because the server has no asset existence/checksum endpoint.
 - category, structured introduction, and card IDs come from the confirmed 33-course catalog entry, not free-form publication flags;
-- the confirmed generated WebP is included in upload/reuse counts and authoring API v1.4.0 receives only the course-relative `coverAssetPath` `cover/course-cover.webp`; never send an OSS key, URL, or `asset:` value, and never combine a non-empty stock `cover` with `coverAssetPath`.
+- when a confirmed administrator-supplied WebP exists, it is included in upload/reuse counts and course-authoring-v1.4.0 receives only the course-relative `coverAssetPath` `cover/course-cover.webp`; without one, cover generation remains deferred and publication proceeds without it. Never send an OSS key, URL, or `asset:` value, and never combine a non-empty stock `cover` with `coverAssetPath`.
 
 Do not expose object keys in the ordinary summary. Multiple relative paths with identical bytes still need separate OSS objects because the CourseDefinition references each relative path.
 
@@ -59,7 +59,7 @@ python _course-toolkit/scripts/course-workflow.py confirm-decision ROOT \
 python _course-toolkit/scripts/publish-course.py status ROOT --json
 ```
 
-Any definition, asset, G6/G7/G8 evidence, catalog selection, generated cover, options, remote observation, or API base change requires a new preflight and exact approval.
+Any definition, asset, G6/G7/G8 evidence, catalog selection, optional cover, options, remote observation, or API base change requires a new preflight and exact approval.
 
 ## Execute and recover
 

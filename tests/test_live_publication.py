@@ -222,6 +222,27 @@ class LivePublicationTests(unittest.TestCase):
 
         self.assertIsNone(self.api.remote)
 
+    def test_publish_can_defer_cover_for_central_generation(self):
+        (self.root / ".course-work/course-cover.json").unlink()
+        self.api.supports_generated_course_cover = False
+
+        preflight = prepare_live_preflight(
+            self.root, self.api, action="publish", blurb="Demo", now=NOW
+        )
+
+        self.assertIsNone(preflight["generatedCover"])
+        self.assertIsNone(preflight["options"]["coverAssetPath"])
+        self.assertNotIn(
+            "cover/course-cover.webp",
+            [item["relativePath"] for item in preflight["assets"]["upload"]],
+        )
+        self.approve_preflight()
+        result = execute_live_publication(self.root, self.api, now=NOW)
+
+        self.assertEqual(result["status"], "published")
+        self.assertIsNone(self.api.last_cover_asset_path)
+        self.assertEqual(self.api.cover_verifications, [])
+
     def test_successful_local_upload_proof_is_reused_by_path_and_hash(self):
         prepare_live_preflight(self.root, self.api, action="publish", blurb="Demo", now=NOW)
         self.approve_preflight()

@@ -30,6 +30,33 @@ afterEach(() => {
 });
 
 describe("AnnotationPanel", () => {
+  const existingAnnotation = {
+    id: "annotation-existing-one",
+    type: "content" as const,
+    status: "open" as const,
+    required: true,
+    target: {
+      courseId: "review-course",
+      partId: "part-one",
+      sliceId: "slice-one",
+      blockId: "image-gallery",
+      itemId: null,
+      workflowStepId: null,
+    },
+    definitionHash: "a".repeat(64),
+    text: "Make the caption clearer.",
+    screenshotPath: null,
+    createdAt: "2026-08-20T00:00:00.000Z",
+    updatedAt: "2026-08-20T00:00:00.000Z",
+    classification: null,
+    proposedChange: null,
+    resolutionDecisionId: null,
+    appliedBlueprintHash: null,
+    verifiedAgainstDefinitionHash: null,
+    orphanReason: null,
+    reboundFromDefinitionHash: null,
+  };
+
   it("saves an annotation against a stable item target", async () => {
     const requests: RequestInit[] = [];
     vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -40,9 +67,8 @@ describe("AnnotationPanel", () => {
       );
     }));
 
-    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} />);
+    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} selectedTargetKey="item:image-gallery:image-alpha" />);
     await screen.findByText("课程预览与批注");
-    fireEvent.change(screen.getByLabelText("批注目标"), { target: { value: "item:image-gallery:image-alpha" } });
     fireEvent.change(screen.getByLabelText("具体批注"), { target: { value: "Please make this image larger." } });
     fireEvent.click(screen.getByRole("button", { name: "保存批注" }));
 
@@ -87,5 +113,66 @@ describe("AnnotationPanel", () => {
       teacherConfirmed: true,
       runtimeErrors: [],
     });
+  });
+
+  it("edits an existing annotation and reopens it for AI work", async () => {
+    const requests: RequestInit[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") requests.push(init);
+      return new Response(
+        init?.method === "PUT"
+          ? JSON.stringify({ ok: true })
+          : JSON.stringify({ schemaVersion: "1.0", annotations: [existingAnnotation] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }));
+
+    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "修改批注" }));
+    const editor = screen.getByLabelText("修改批注内容");
+    expect(editor).toHaveValue("Make the caption clearer.");
+    fireEvent.change(editor, { target: { value: "Make the evidence label clearer." } });
+    fireEvent.click(screen.getByRole("button", { name: "保存修改" }));
+
+    await waitFor(() => expect(requests).toHaveLength(1));
+    const payload = JSON.parse(String(requests[0]?.body));
+    expect(payload.annotations[0]).toMatchObject({
+      id: "annotation-existing-one",
+      text: "Make the evidence label clearer.",
+      status: "open",
+    });
+  });
+
+  it("marks an annotation complete, can reopen it, and can delete it", async () => {
+    const requests: RequestInit[] = [];
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    vi.stubGlobal("fetch", vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.method === "PUT") requests.push(init);
+      return new Response(
+        init?.method === "PUT"
+          ? JSON.stringify({ ok: true })
+          : JSON.stringify({ schemaVersion: "1.0", annotations: [existingAnnotation] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      );
+    }));
+
+    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} />);
+    fireEvent.click(await screen.findByRole("button", { name: "标记已完成" }));
+    await waitFor(() => expect(requests).toHaveLength(1));
+    expect(JSON.parse(String(requests[0]?.body)).annotations[0]).toMatchObject({
+      status: "dismissed",
+      resolutionDecisionId: "decision-complete-annotation-existing-one",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "重新打开" }));
+    await waitFor(() => expect(requests).toHaveLength(2));
+    expect(JSON.parse(String(requests[1]?.body)).annotations[0]).toMatchObject({
+      status: "open",
+      resolutionDecisionId: null,
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "删除批注" }));
+    await waitFor(() => expect(requests).toHaveLength(3));
+    expect(JSON.parse(String(requests[2]?.body)).annotations).toEqual([]);
   });
 });
