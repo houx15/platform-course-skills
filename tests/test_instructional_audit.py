@@ -784,6 +784,45 @@ class InstructionalAuditTests(unittest.TestCase):
                 "teacher-correctness-preserved", plan_slice=plan_slice, course_slice=no_key, source_ids={"source-1"}, target_ids={"block:question"}
             )[0]
         )
+        graded_fill_blank = {
+            "blocks": [
+                {
+                    "id": "blank", "type": "fillBlank", "prompt": "填写证据。",
+                    "assessment": {"mode": "graded", "acceptedAnswers": ["证据", "来源"]},
+                }
+            ]
+        }
+        self.assertTrue(
+            instructional_audit._check_requirements(
+                "teacher-correctness-preserved", plan_slice=plan_slice, course_slice=graded_fill_blank, source_ids={"source-1"}, target_ids={"block:blank"}
+            )[0]
+        )
+        identifier_only = {"blocks": [{"id": "this-case-block", "type": "text", "content": "中性内容。"}]}
+        self.assertFalse(
+            instructional_audit._check_requirements(
+                "deictic-reference-resolves", plan_slice=plan_slice, course_slice=identifier_only, source_ids={"source-1"}, target_ids={"block:this-case-block"}
+            )[0]
+        )
+        learner_visible = {"blocks": [{"id": "neutral-block", "type": "singleChoice", "prompt": "This claim needs evidence.", "options": [{"id": "option-one", "label": "来源"}]}]}
+        self.assertTrue(
+            instructional_audit._check_requirements(
+                "deictic-reference-resolves", plan_slice=plan_slice, course_slice=learner_visible, source_ids={"source-1"}, target_ids={"block:neutral-block"}
+            )[0]
+        )
+        images = {"blocks": [{"id": "visual", "type": "images", "items": [{"id": "item", "source": "assets/images/this.png", "alt": "图表"}]}]}
+        self.assertTrue(
+            instructional_audit._check_requirements(
+                "image-supports-assigned-claim", plan_slice=plan_slice, course_slice=images, source_ids={"source-1"}, target_ids={"block:visual"}
+            )[0]
+        )
+
+    def test_structured_confirmed_decision_round_trips_for_non_audit_workflow_use(self):
+        store = DecisionStore(self.root / ".course-work/decisions.json")
+        store.request("decision-structured", "选择发布方案", "context-hash")
+        store.confirm("decision-structured", {"choice": "approve", "rationale": "evidence complete"}, "2026-08-21T04:00:00Z")
+        store.save()
+        hashes = _current_artifact_hashes(self.root)[0]
+        self.assertTrue(hashes["decisionStoreHash"])
 
     def test_applicable_checks_require_their_relevant_ids_only_when_available(self):
         candidate = _candidate(self.root)

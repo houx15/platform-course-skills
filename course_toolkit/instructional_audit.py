@@ -86,6 +86,19 @@ def _nonempty(value: object, *, maximum: int = _MAX_EVIDENCE_CHARS) -> bool:
     return isinstance(value, str) and bool(value.strip()) and len(value) <= maximum
 
 
+def _substantive(value: object) -> bool:
+    """Mirror DecisionStore.confirm's Any answer contract for JSON values."""
+    if value is None:
+        return False
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, list):
+        return bool(value) and any(_substantive(item) for item in value)
+    if isinstance(value, dict):
+        return bool(value) and any(_substantive(item) for item in value.values())
+    return isinstance(value, (bool, int, float))
+
+
 def _safe_root(root: Path) -> Path:
     requested = Path(root).absolute()
     # Keep the direct-root policy explicit, while resolving a symlink in an
@@ -167,7 +180,7 @@ def _validate_decision_document(document: object) -> List[dict]:
         status = item["status"]
         if status == "pending" and (item.get("answer") is not None or item.get("decidedAt") is not None or item.get("invalidatedAt") is not None):
             raise InstructionalAuditError("invalid-decisions", "pending teacher decisions may not have an answer or terminal timestamp", path=".course-work/decisions.json")
-        if status == "confirmed" and (not _nonempty(item.get("answer")) or not _nonempty(item.get("decidedAt")) or item.get("invalidatedAt") is not None):
+        if status == "confirmed" and (not _substantive(item.get("answer")) or not _nonempty(item.get("decidedAt")) or item.get("invalidatedAt") is not None):
             raise InstructionalAuditError("invalid-decisions", "confirmed teacher decisions require an answer and decision time only", path=".course-work/decisions.json")
         if status == "invalidated" and not _nonempty(item.get("invalidatedAt")):
             raise InstructionalAuditError("invalid-decisions", "invalidated teacher decisions require an invalidation time", path=".course-work/decisions.json")
@@ -322,6 +335,43 @@ def _slice_known_ids(
 _DEICTIC_REFERENCE = re.compile(r"\b(?:this|that|these|those|above|below)\b|这|该|此|上图|下图|上述|如下", re.IGNORECASE)
 
 
+def _learner_visible_block_text(block: Mapping[str, object]) -> List[str]:
+    """Extract authored learner language, excluding IDs, paths, and protocol data."""
+    block_type = block.get("type")
+    if block_type == "text":
+        return [block["content"]] if isinstance(block.get("content"), str) else []
+    if block_type == "images":
+        texts: List[str] = []
+        for item in block.get("items", []) if isinstance(block.get("items"), list) else []:
+            if isinstance(item, dict):
+                texts.extend(value for value in (item.get("alt"), item.get("caption")) if isinstance(value, str))
+        return texts
+    if block_type == "pdf":
+        return [block["title"]] if isinstance(block.get("title"), str) else []
+    if block_type in {"fillBlank", "singleChoice"}:
+        texts = [block["prompt"]] if isinstance(block.get("prompt"), str) else []
+        for option in block.get("options", []) if isinstance(block.get("options"), list) else []:
+            if isinstance(option, dict) and isinstance(option.get("label"), str):
+                texts.append(option["label"])
+        assessment = block.get("assessment")
+        if isinstance(assessment, dict):
+            texts.extend(value for value in (assessment.get("correctFeedback"), assessment.get("incorrectFeedback"), assessment.get("rubric")) if isinstance(value, str))
+        return texts
+    return []
+
+
+def _has_teacher_correctness(block: Mapping[str, object]) -> bool:
+    assessment = block.get("assessment")
+    if not isinstance(assessment, dict) or assessment.get("mode") != "graded":
+        return False
+    if block.get("type") == "singleChoice":
+        return _nonempty(assessment.get("correctOptionId"))
+    if block.get("type") == "fillBlank":
+        answers = assessment.get("acceptedAnswers")
+        return isinstance(answers, list) and bool(answers) and all(_nonempty(answer) for answer in answers)
+    return False
+
+
 def _slice_data(plan: Mapping[str, object], course: Mapping[str, object], key: Tuple[str, str]) -> Tuple[dict, dict]:
     plan_slice: dict = {}
     course_slice: dict = {}
@@ -350,24 +400,9 @@ def _check_requirements(
     """Return (applies, requires_source_ids, requires_target_ids) structurally."""
     blocks = course_slice.get("blocks", []) if isinstance(course_slice.get("blocks"), list) else []
     question = any(isinstance(block, dict) and block.get("type") in {"singleChoice", "fillBlank"} for block in blocks)
-    def strings(value: object) -> List[str]:
-        if isinstance(value, str):
-            return [value]
-        if isinstance(value, dict):
-            return [text for nested in value.values() for text in strings(nested)]
-        if isinstance(value, list):
-            return [text for nested in value for text in strings(nested)]
-        return []
-    final_text = " ".join(text for block in blocks if isinstance(block, dict) for text in strings(block))
-    image_block = any(isinstance(block, dict) and block.get("type") in {"image", "figure"} for block in blocks)
-    correctness = any(
-        isinstance(block, dict)
-        and block.get("type") in {"singleChoice", "fillBlank"}
-        and isinstance(block.get("assessment"), dict)
-        and block["assessment"].get("mode") == "graded"
-        and any(_nonempty(block["assessment"].get(field)) for field in ("correctOptionId", "correctAnswer", "answerKey"))
-        for block in blocks
-    )
+    final_text = " ".join(text for block in blocks if isinstance(block, dict) for text in _learner_visible_block_text(block))
+    image_block = any(isinstance(block, dict) and block.get("type") == "images" for block in blocks)
+    correctness = any(isinstance(block, dict) and _has_teacher_correctness(block) for block in blocks)
     action = plan_slice.get("learnerAction") if isinstance(plan_slice.get("learnerAction"), dict) else {}
     reference = bool(plan_slice.get("coVisibleRequirements")) or action.get("referencePolicy") in {"co-visible", "justified-dependency"}
     visible_text = " ".join(
@@ -732,11 +767,11 @@ def _confirmed_review_decision(
     decision = matches[0]
     if decision.get("status") != "confirmed":
         raise InstructionalAuditError("review-decision-unconfirmed", "review resolution requires an explicit confirmed teacher decision", path=".course-work/decisions.json")
-    if not _nonempty(decision.get("question")) or not _nonempty(decision.get("decidedAt")) or not _nonempty(decision.get("answer")):
+    if not _nonempty(decision.get("question")) or not _nonempty(decision.get("decidedAt")) or not _substantive(decision.get("answer")):
         raise InstructionalAuditError("review-decision-invalid", "teacher decision needs a substantive question, answer, and decision time", path=".course-work/decisions.json")
     if decision.get("contextHash") != context_hash:
         raise InstructionalAuditError("review-decision-stale", "teacher decision does not bind this exact semantic review", path=".course-work/decisions.json")
-    if decision["answer"].strip() not in arrangements:
+    if not isinstance(decision["answer"], str) or decision["answer"].strip() not in arrangements:
         raise InstructionalAuditError("review-decision-answer-invalid", "teacher decision answer must choose one recorded plausible arrangement", path=".course-work/decisions.json")
     return canonical_json_hash(decision)
 
