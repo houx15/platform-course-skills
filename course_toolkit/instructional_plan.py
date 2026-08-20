@@ -9,7 +9,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
-import fcntl
+import errno
 import os
 from pathlib import Path
 import re
@@ -23,6 +23,16 @@ from .hashing import canonical_json_hash, hash_path
 from .instructional_bindings import load_instructional_coverage, validate_instructional_coverage
 from .jsonio import load_json, write_json_atomic, write_text_atomic
 from .materials import validate_material_inventory
+
+try:  # POSIX only; Windows imports this module without fcntl.
+    import fcntl as _fcntl
+except ImportError:  # pragma: no cover - exercised through backend simulation.
+    _fcntl = None
+
+try:  # Windows only; POSIX imports this module without msvcrt.
+    import msvcrt as _msvcrt
+except ImportError:  # pragma: no cover - platform-specific import.
+    _msvcrt = None
 
 
 PLAN_RELATIVE_PATH = ".course-work/course-storyboard.json"
@@ -51,7 +61,8 @@ BACKTRACKING = re.compile(r"backtrack|go back|previous (?:page|slice)|回看|回
 REFERENCE_LANGUAGE = re.compile(
     r"\b(?:consult|reference|look at)\b|"
     r"\b(?:read|compare)\s+(?:the\s+)?(?:source|material|chart|image|figure)\b|"
-    r"(?:参考|引用|依据)(?:材料|图表|图片|证据)?|"
+    r"(?:参考|引用)(?:材料|图表|图片|证据)?|"
+    r"依据(?:外部)?(?:材料|图表|图片|证据)|"
     r"(?:查看|阅读)(?:材料|图表|图片|证据)|"
     r"(?:比较|对照)(?:材料|图表|图片|证据)",
     re.IGNORECASE,
@@ -434,10 +445,17 @@ def _validate_coverage_placement(document: dict, coverage: object, issues: List[
     for coverage_index, item in enumerate(items):
         if not isinstance(item, dict) or not isinstance(item.get("sourceId"), str):
             continue
+        uses = source_uses.get(item["sourceId"], [])
         bindings = item.get("bindings")
+        disposition = item.get("disposition")
+        if disposition in {"authoring-only", "exclude-proposed", "exclude-approved"}:
+            for _, source_path in uses:
+                issues.append(_issue(source_path, "learner-source-disposition-forbidden", "learner-facing sourceUses may not use authoring-only or excluded material"))
         if not isinstance(bindings, list) or not bindings:
+            for _, source_path in uses:
+                issues.append(_issue(source_path, "plan-source-use-unbound", "learner-facing source use needs a coverage Part/Slice binding"))
             continue
-        plan_pairs = {pair for pair, _ in source_uses.get(item["sourceId"], [])}
+        plan_pairs = {pair for pair, _ in uses}
         binding_pairs = set()
         for binding_index, binding in enumerate(bindings):
             if not isinstance(binding, dict):
@@ -449,7 +467,7 @@ def _validate_coverage_placement(document: dict, coverage: object, issues: List[
             binding_pairs.add(pair)
             if pair not in plan_pairs:
                 issues.append(_issue(f"{COVERAGE_RELATIVE_PATH}.items[{coverage_index}].bindings[{binding_index}]", "coverage-binding-plan-mismatch", "coverage learner binding is not represented by sourceUses in the same Part/Slice"))
-        for pair, source_path in source_uses.get(item["sourceId"], []):
+        for pair, source_path in uses:
             if pair not in binding_pairs:
                 issues.append(_issue(source_path, "plan-source-use-binding-mismatch", "planned source use does not match an existing coverage Part/Slice binding"))
 
@@ -536,7 +554,7 @@ def _validated_current(root: Path) -> Tuple[Path, dict, dict, Dict[str, str]]:
 
 @contextmanager
 def _plan_guard(root: Path, *, timeout_seconds: float = 3.0) -> Iterator[None]:
-    """Serialize toolkit page-plan writes across macOS/Linux processes."""
+    """Serialize toolkit page-plan writes across POSIX and Windows processes."""
     work = root / ".course-work"
     lock = root / PLAN_LOCK_RELATIVE_PATH
     if work.is_symlink() or lock.is_symlink():
@@ -547,19 +565,37 @@ def _plan_guard(root: Path, *, timeout_seconds: float = 3.0) -> Iterator[None]:
     except OSError as exc:
         raise PlanApprovalError("plan-lock-unavailable", ".course-work", "page-plan lock cannot be opened") from exc
     deadline = time.monotonic() + timeout_seconds
+    locked = False
     try:
+        if _msvcrt is not None:
+            if os.fstat(descriptor).st_size == 0:
+                os.write(descriptor, b"\0")
+            os.lseek(descriptor, 0, os.SEEK_SET)
         while True:
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if _fcntl is not None:
+                    _fcntl.flock(descriptor, _fcntl.LOCK_EX | _fcntl.LOCK_NB)
+                elif _msvcrt is not None:
+                    os.lseek(descriptor, 0, os.SEEK_SET)
+                    _msvcrt.locking(descriptor, _msvcrt.LK_NBLCK, 1)
+                else:
+                    raise PlanApprovalError("plan-lock-unavailable", ".course-work", "no supported page-plan lock backend is available")
+                locked = True
                 break
-            except BlockingIOError:
+            except (BlockingIOError, OSError) as exc:
+                if isinstance(exc, OSError) and getattr(exc, "errno", None) not in {errno.EACCES, errno.EAGAIN}:
+                    raise
                 if time.monotonic() >= deadline:
                     raise PlanApprovalError("plan-lock-timeout", ".course-work", "page-plan is being edited by another toolkit process")
                 time.sleep(0.05)
         yield
     finally:
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
+            if locked and _fcntl is not None:
+                _fcntl.flock(descriptor, _fcntl.LOCK_UN)
+            elif locked and _msvcrt is not None:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                _msvcrt.locking(descriptor, _msvcrt.LK_UNLCK, 1)
         finally:
             os.close(descriptor)
 
@@ -716,13 +752,19 @@ def _detail_list(value: object) -> str:
 def render_teacher_plan(plan: dict, coverage: dict) -> str:
     """Generate the teacher view; this Markdown is deliberately never approval evidence."""
     title = plan.get("title") if _nonempty(plan.get("title")) else "课程页计划"
-    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
     part_titles = {
         part.get("partId"): part.get("title", "—")
         for part in plan.get("parts", [])
         if isinstance(part, dict)
     }
     slices = list(_slice_rows(plan))
+    used_source_ids = {
+        source_use.get("sourceId")
+        for slice_data in slices
+        for source_use in slice_data.get("sourceUses", [])
+        if isinstance(source_use, dict) and isinstance(source_use.get("sourceId"), str)
+    }
     for slice_data in slices:
         source_uses = slice_data.get("sourceUses")
         identity = f"{slice_data.get('partId', '—')} / {slice_data.get('sliceId', '—')}"
@@ -759,7 +801,7 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
         disposition = item.get("disposition")
         source_id = item.get("sourceId")
         bindings = item.get("bindings", [])
-        relevant = disposition in {"authoring-only", "exclude-proposed", "exclude-approved"} or (disposition == "optional-support" and (not isinstance(bindings, list) or not bindings))
+        relevant = disposition in {"authoring-only", "exclude-proposed", "exclude-approved"} or (disposition == "optional-support" and source_id not in used_source_ids and (not isinstance(bindings, list) or not bindings))
         if relevant:
             rows.append((source_id or "—", disposition or "—", item.get("location") or "—", item.get("reason") or item.get("summary") or "—"))
     if rows:

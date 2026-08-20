@@ -1,6 +1,7 @@
 import copy
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from contextlib import contextmanager
@@ -195,14 +196,34 @@ class InstructionalPlanTests(unittest.TestCase):
         self.assertNotIn("G0", rendered)
         self.assertNotIn("workflow", rendered.lower())
 
-    def test_unused_optional_summary_uses_coverage_bindings_not_plan_mentions(self):
+    def test_teacher_table_has_exactly_eight_cells_per_header_delimiter_and_row(self):
+        rendered = self.api().render_teacher_plan(plan_document(), coverage_document())
+        table = rendered.split("## 页面计划", 1)[1].split("## 页面细节", 1)[0]
+        rows = [line for line in table.splitlines() if line.startswith("|")]
+        self.assertGreaterEqual(len(rows), 3)
+        for row in rows:
+            self.assertEqual(len(row.split("|")[1:-1]), 8, row)
+
+    def test_unbound_optional_source_use_is_rejected_and_never_rendered_as_unused(self):
         coverage = coverage_document()
         plan = plan_document()
         plan["parts"][0]["slices"][0]["sourceUses"].append({"sourceId": "source-support", "locator": "page:9", "materialRole": "可选延伸"})
-        self.assertIn("source&#45;support", self.api().render_teacher_plan(plan, coverage))
+        self.assertIn("plan-source-use-unbound", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage)})
+        unused = self.api().render_teacher_plan(plan, coverage).split("## 未使用或仅用于备课", 1)[1]
+        self.assertNotIn("source&#45;support", unused)
         coverage["items"][2]["bindings"] = [{"partId": "part-evidence", "sliceId": "slice-compare", "blockId": "support-block"}]
         unused = self.api().render_teacher_plan(plan, coverage).split("## 未使用或仅用于备课", 1)[1]
         self.assertNotIn("source&#45;support", unused)
+
+    def test_authoring_or_excluded_material_cannot_be_learner_source_use(self):
+        coverage = coverage_document()
+        coverage["items"].append({"sourceId": "source-exclude-approved", "sourceFile": "materials/duplicate.pdf", "location": "page:4", "summary": "重复内容", "disposition": "exclude-approved", "reason": "重复", "decisionId": "decision-1", "teacherConfirmed": True, "bindings": []})
+        for source_id in ("source-authoring", "source-exclude", "source-exclude-approved"):
+            with self.subTest(source_id=source_id):
+                data = plan_document()
+                item = next(item for item in coverage["items"] if item["sourceId"] == source_id)
+                data["parts"][0]["slices"][0]["sourceUses"].append({"sourceId": source_id, "locator": item["location"], "materialRole": "不应面向学生"})
+                self.assertIn("learner-source-disposition-forbidden", {issue.code for issue in self.api().validate_instructional_plan(data, coverage)})
 
     def test_unknown_source_empty_purpose_and_action_are_rejected(self):
         data = plan_document()
@@ -472,6 +493,10 @@ class InstructionalPlanTests(unittest.TestCase):
         self.assertNotIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
         action["description"] = "比较图表后提交回答。"
         self.assertIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        action["description"] = "写出你的判断依据。"
+        self.assertNotIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        action["description"] = "依据外部证据写出你的判断。"
+        self.assertIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             write_root(root, plan=data)
@@ -480,6 +505,47 @@ class InstructionalPlanTests(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("stable-target-required", result.stderr)
             self.assertNotIn(str(root), result.stderr)
+
+    def test_plan_guard_has_windows_backend_and_real_process_timeout_then_release(self):
+        api = self.api()
+        class FakeMsvcrt:
+            LK_NBLCK = 1
+            LK_UNLCK = 2
+            calls = []
+
+            @classmethod
+            def locking(cls, descriptor, mode, size):
+                cls.calls.append((mode, size))
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / ".course-work").mkdir()
+            with patch.object(api, "_fcntl", None), patch.object(api, "_msvcrt", FakeMsvcrt):
+                with api._plan_guard(root, timeout_seconds=0.1):
+                    pass
+            self.assertEqual([mode for mode, _ in FakeMsvcrt.calls], [FakeMsvcrt.LK_NBLCK, FakeMsvcrt.LK_UNLCK])
+            holder = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    "from pathlib import Path; import time; from course_toolkit.instructional_plan import _plan_guard; root=Path(__import__('sys').argv[1]);\nwith _plan_guard(root, timeout_seconds=1):\n print('locked', flush=True); time.sleep(0.5)",
+                    str(root),
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertEqual(holder.stdout.readline().strip(), "locked")
+            with self.assertRaises(api.PlanApprovalError) as caught:
+                with api._plan_guard(root, timeout_seconds=0.1):
+                    pass
+            self.assertEqual(caught.exception.code, "plan-lock-timeout")
+            self.assertEqual(holder.wait(timeout=2), 0, holder.stderr.read())
+            holder.stdout.close()
+            holder.stderr.close()
+            with api._plan_guard(root, timeout_seconds=0.1):
+                pass
 
     def test_render_rejects_symlinked_output_and_never_reports_absolute_path(self):
         with tempfile.TemporaryDirectory() as temporary:

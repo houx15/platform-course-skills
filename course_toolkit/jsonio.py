@@ -7,6 +7,13 @@ import stat
 from typing import Any, Optional, Tuple
 
 
+def _unsupported_directory_sync_error(exc: OSError) -> bool:
+    unsupported = {errno.EINVAL, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP)}
+    if exc.errno in unsupported:
+        return True
+    return os.name == "nt" and exc.errno in {errno.EACCES, errno.EPERM}
+
+
 def load_json(path: Path) -> Any:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -45,14 +52,14 @@ def _fsync_directory(parent: Path) -> None:
     try:
         descriptor = os.open(parent, flags)
     except OSError as exc:
-        if exc.errno in {errno.EINVAL, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP)}:
+        if _unsupported_directory_sync_error(exc):
             return
         raise
     try:
         try:
             os.fsync(descriptor)
         except OSError as exc:
-            if exc.errno not in {errno.EINVAL, errno.ENOTSUP, getattr(errno, "EOPNOTSUPP", errno.ENOTSUP)}:
+            if not _unsupported_directory_sync_error(exc):
                 raise
     finally:
         os.close(descriptor)
@@ -70,7 +77,8 @@ def write_text_atomic(path: Path, text: str, *, reject_symlinks: bool = False) -
     path.parent.mkdir(parents=True, exist_ok=True)
     if reject_symlinks and path.is_symlink():
         raise ValueError("destination may not be a symlink")
-    mode = _existing_mode(path) or 0o644
+    existing_mode = _existing_mode(path)
+    mode = 0o644 if existing_mode is None else existing_mode
     descriptor, temporary = _open_secure_temp(path.parent, path.name, mode)
     try:
         with os.fdopen(descriptor, "wb") as handle:
