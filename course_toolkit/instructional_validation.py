@@ -332,9 +332,9 @@ def _external_event_updates(
         source_id = on.get("sourceId")
         candidates = [source_id] if isinstance(source_id, str) else sorted(active_narrations)
         return [
-            (set(), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ())
+            (set(active_narrations), dict(active_timers), set(consumed_events).union({(narration_id, "narration.ended")}), dict(attempts), set(locked_assessments), set(playing_videos), ())
             for narration_id in candidates
-            if narration_id in active_narrations
+            if narration_id in active_narrations and (narration_id, "narration.ended") not in consumed_events and (narration_id, "narration.paused") not in consumed_events
         ]
     if producer == "timer":
         selected_ids = {value for value in (on.get("sourceId"), on.get("timerId")) if isinstance(value, str)}
@@ -425,15 +425,22 @@ def _external_event_updates(
             if event_type == "video.started":
                 updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).union({block_id}), ()))
             elif event_type == "video.interaction.shown" and block_id in playing_videos:
-                cue_id = on.get("interactionId")
-                if isinstance(cue_id, str) and cue_id in (video_cues or {}).get(block_id, ()) and _matcher_matches(on, (block_id, event_type, cue_id, None)):
+                declared = (video_cues or {}).get(block_id, ())
+                # Cues are revealed in document order.  A wildcard matcher
+                # binds the next real cue ID; it cannot jump to a later cue.
+                next_cue = next((cue for cue in declared if (block_id, f"cue-shown:{cue}") not in consumed_events), None)
+                if next_cue is not None and _matcher_matches(on, (block_id, event_type, next_cue, None)):
                     next_consumed = set(consumed_events)
-                    next_consumed.add((block_id, f"cue-shown:{cue_id}"))
-                    updates.append((set(active_narrations), dict(active_timers), next_consumed, dict(attempts), set(locked_assessments), set(playing_videos), ((block_id, "video.interaction.completed", cue_id),)))
+                    next_consumed.add((block_id, f"cue-shown:{next_cue}"))
+                    next_consumed.add((block_id, f"cue-active:{next_cue}"))
+                    updates.append((set(active_narrations), dict(active_timers), next_consumed, dict(attempts), set(locked_assessments), set(playing_videos), ()))
             elif event_type == "video.interaction.completed" and block_id in playing_videos:
-                cue_id = on.get("interactionId")
-                if isinstance(cue_id, str) and cue_id in (video_cues or {}).get(block_id, ()) and (block_id, f"cue-shown:{cue_id}") in consumed_events:
-                    updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
+                declared = (video_cues or {}).get(block_id, ())
+                active_cue = next((cue for cue in declared if (block_id, f"cue-active:{cue}") in consumed_events), None)
+                if active_cue is not None and _matcher_matches(on, (block_id, event_type, active_cue, None)):
+                    next_consumed = {fact for fact in consumed_events if fact != (block_id, f"cue-active:{active_cue}")}
+                    next_consumed.add((block_id, f"cue-completed:{active_cue}"))
+                    updates.append((set(active_narrations), dict(active_timers), next_consumed, dict(attempts), set(locked_assessments), set(playing_videos), ()))
             elif event_type == "video.ended" and block_id in playing_videos:
                 tail = ((block_id, "block.completed"),) if isinstance(block.get("completion"), dict) else ()
                 updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).difference({block_id}), tail))
@@ -794,13 +801,18 @@ def _effective_step_states(
                 # replaces the previous active track, whose ended event can no
                 # longer arrive.
                 active_narrations = {action["narrationId"]}
+                consumed_events = {fact for fact in consumed_events if fact[0] != action["narrationId"]}
                 continue
             if action_type == "pauseNarration" and isinstance(action.get("narrationId"), str):
                 # Pause retains the controller's active identity and can later
-                # be replayed; only stop detaches it permanently.
+                # be resumed by an explicit play action; only stop detaches it
+                # permanently.  A paused track cannot itself emit ended.
+                if action["narrationId"] in active_narrations:
+                    consumed_events.add((action["narrationId"], "narration.paused"))
                 continue
             if action_type == "stopNarration" and isinstance(action.get("narrationId"), str):
                 active_narrations.discard(action["narrationId"])
+                consumed_events = {fact for fact in consumed_events if fact[0] != action["narrationId"]}
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
@@ -844,10 +856,19 @@ def _effective_step_states(
                     playing_videos.add(target)
                     pending_events = (*pending_events, (target, "video.started"))
                 continue
+            if action_type == "pauseBlock" and isinstance(target, str):
+                block = blocks.get(target)
+                if isinstance(block, dict) and block.get("type") == "video" and target in playing_videos:
+                    playing_videos.discard(target)
+                    pending_events = (*pending_events, (target, "video.paused"))
+                continue
             if not isinstance(target, str):
                 continue
             if action_type == "show": visible.add(target)
-            elif action_type == "hide": visible.discard(target)
+            elif action_type == "hide":
+                visible.discard(target)
+                if blocks.get(target, {}).get("type") == "video":
+                    consumed_events = {fact for fact in consumed_events if fact[0] != target or not fact[1].startswith("cue-active:")}
             elif action_type == "enable":
                 if target not in visible:
                     issues.append(_issue(f"block:{target}", "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
@@ -925,6 +946,16 @@ def _effective_step_states(
             ):
                 pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
 
+        # Once playback has ended, the player retains its selected track and
+        # exposes replay.  Model that learner control as a new playing epoch
+        # (clear the ended fact), without treating pause as an automatic end.
+        # This is finite: the replay state is identical to the pre-ended state
+        # and therefore is deduplicated by ``seen``.
+        for narration_id in sorted(active_narrations):
+            if (narration_id, "narration.ended") in consumed_events:
+                replayed = {fact for fact in consumed_events if fact[0] != narration_id}
+                pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(replayed), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events, False))
+
         # A learner can submit any visible/enabled assessment or play/end any
         # visible/enabled video.  Only an event with no matching transition is
         # ignored in-place; when it does match, runtime takes that first
@@ -934,8 +965,11 @@ def _effective_step_states(
             if block.get("type") in ASSESSMENT_TYPES:
                 synthetic = {"on": {"type": "answer.submitted", "sourceId": block_id}}
             elif block.get("type") == "video":
+                active_cue = next((cue for cue in video_cues.get(block_id, ()) if (block_id, f"cue-active:{cue}") in consumed_events), None)
                 cue_id = next((cue for cue in video_cues.get(block_id, ()) if (block_id, f"cue-shown:{cue}") not in consumed_events), None)
-                if block_id in playing_videos and cue_id is not None:
+                if block_id in playing_videos and active_cue is not None:
+                    synthetic = {"on": {"type": "video.interaction.completed", "sourceId": block_id, "interactionId": active_cue}}
+                elif block_id in playing_videos and cue_id is not None:
                     synthetic = {"on": {"type": "video.interaction.shown", "sourceId": block_id, "interactionId": cue_id}}
                 else:
                     event_type = "video.ended" if block_id in playing_videos else "video.started"
@@ -1029,7 +1063,11 @@ def validate_workflow_availability(course: dict, *, root: Path | None = None) ->
                 for visible, enabled in states[step["id"]]
                 for transition in _items(step.get("transitions"))
                 if isinstance(transition, dict) and isinstance(transition.get("on"), dict)
-                and transition["on"].get("sourceId") == block_id and transition["on"].get("type") in completion_events
+                and transition["on"].get("type") in completion_events
+                and _matcher_matches(
+                    transition["on"],
+                    (block_id, transition["on"].get("type"), block_id if transition["on"].get("type") == "interaction.completed" else None, None),
+                )
                 and _block_can_emit_event(block, transition["on"].get("type"), visible, enabled)
             ]
             if not transitions:

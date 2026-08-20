@@ -727,3 +727,85 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
         self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+
+    def test_video_wildcard_shown_binds_the_next_declared_cue(self):
+        write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}, {"id": "cue-2", "atSeconds": 2}]}})
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([
+            {"id": "video", "type": "video", "source": "materials/video.mp4", "interaction": {"source": "interactions/video/cues.json"}},
+            {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}},
+        ])
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["video"], "enabledBlockIds": ["video"]}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "cue"}]},
+            {"id": "cue", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.shown", "sourceId": "video"}, "to": "answer"}]},
+            {"id": "answer", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.completed", "sourceId": "video", "interactionId": "cue-1"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]}
+
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+
+    def test_video_cue_two_cannot_bypass_first_cue_transition(self):
+        write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}, {"id": "cue-2", "atSeconds": 2}]}})
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([{"id": "video", "type": "video", "source": "materials/video.mp4", "interaction": {"source": "interactions/video/cues.json"}}, {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}}])
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["video"], "enabledBlockIds": ["video"]}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "cues"}]},
+            {"id": "cues", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.shown", "sourceId": "video", "interactionId": "cue-1"}, "to": "dead"}, {"on": {"type": "video.interaction.shown", "sourceId": "video", "interactionId": "cue-2"}, "to": "reveal"}]},
+            {"id": "dead", "enterActions": [], "transitions": []},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]}
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+
+    def test_hiding_video_after_cue_shown_prevents_that_cue_completion(self):
+        write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}]}})
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([{"id": "video", "type": "video", "source": "materials/video.mp4", "interaction": {"source": "interactions/video/cues.json"}}, {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}}])
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["video"], "enabledBlockIds": ["video"]}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "cue"}]},
+            {"id": "cue", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.shown", "sourceId": "video", "interactionId": "cue-1"}, "to": "hidden"}]},
+            {"id": "hidden", "enterActions": [{"type": "hide", "targetId": "video"}], "transitions": [{"on": {"type": "video.interaction.completed", "sourceId": "video", "interactionId": "cue-1"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]}
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+
+    def test_ended_narration_can_replay_without_second_authored_play_action(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["narrations"] = [{"id": "intro", "text": "开场", "audio": "audio/intro.mp3"}]
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "first", "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []}, "steps": [
+            {"id": "first", "enterActions": [{"type": "playNarration", "narrationId": "intro"}], "transitions": [{"on": {"type": "narration.ended", "sourceId": "intro"}, "to": "replay"}]},
+            {"id": "replay", "enterActions": [], "transitions": [{"on": {"type": "narration.ended", "sourceId": "intro"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+        ]}
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course)})
+
+    def test_paused_or_stopped_narration_cannot_emit_ended_without_playing_again(self):
+        for action in ("pauseNarration", "stopNarration"):
+            course = course_document()
+            slice_data = course["course"]["parts"][0]["slices"][0]
+            slice_data["narrations"] = [{"id": "intro", "text": "开场", "audio": "audio/intro.mp3"}]
+            slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["reference-text"], "enabledBlockIds": []}, "steps": [
+                {"id": "play", "enterActions": [{"type": "playNarration", "narrationId": "intro"}], "transitions": [{"on": {"type": "student.continue"}, "to": "halted"}]},
+                {"id": "halted", "enterActions": [{"type": action, "narrationId": "intro"}], "transitions": [{"on": {"type": "narration.ended", "sourceId": "intro"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ]}
+
+            self.assertIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course)}, action)
+
+    def test_paused_video_emits_paused_after_play_started(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([{"id": "video", "type": "video", "source": "materials/video.mp4"}, {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}}])
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["video"], "enabledBlockIds": ["video"]}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "pause"}]},
+            {"id": "pause", "enterActions": [{"type": "pauseBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.paused", "sourceId": "video"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]}
+
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course)})
