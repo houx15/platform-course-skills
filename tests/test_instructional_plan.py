@@ -10,6 +10,8 @@ from unittest.mock import patch
 
 from course_toolkit.jsonio import load_json, write_json_atomic
 
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+
 
 def coverage_document():
     return {
@@ -142,6 +144,15 @@ def plan_document():
 
 
 def write_root(root: Path, *, plan=None, coverage=None, extracted=None):
+    """Create a fixture only inside an explicit temporary course root.
+
+    A prior manual test probe passed the repository directory here, leaving a
+    root-level ``.course-work`` fixture behind.  Keep the helper deliberately
+    unable to write into this repository so focused test reruns cannot repeat
+    that leak.
+    """
+    if root.resolve() == REPOSITORY_ROOT:
+        raise AssertionError("fixture root must not be the repository root")
     write_json_atomic(root / ".course-work/course-storyboard.json", plan or plan_document())
     write_json_atomic(root / ".course-work/source-coverage.json", coverage or coverage_document())
     write_json_atomic(root / ".course-work/materials-extracted.json", extracted or extracted_document())
@@ -158,6 +169,11 @@ class InstructionalPlanTests(unittest.TestCase):
         empty = plan_document()
         empty["parts"][0]["slices"] = []
         self.assertIn("part-slices-required", {issue.code for issue in self.api().validate_instructional_plan(empty, coverage_document())})
+
+    def test_fixture_writer_refuses_repository_root(self):
+        with self.assertRaisesRegex(AssertionError, "must not be the repository root"):
+            write_root(REPOSITORY_ROOT)
+        self.assertFalse((REPOSITORY_ROOT / ".course-work").exists())
 
     def test_duplicate_part_or_slice_identity_is_rejected(self):
         data = plan_document()
