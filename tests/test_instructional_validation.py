@@ -134,7 +134,7 @@ class InstructionalValidationTests(unittest.TestCase):
         issues = self.correspondence(course)
 
         self.assertIn(
-            (PATH, "deictic-reference-source-absent"),
+            (f"{PATH}/block:reference-text", "deictic-reference-source-absent"),
             {(issue.path, issue.code) for issue in issues},
         )
 
@@ -159,3 +159,106 @@ class InstructionalValidationTests(unittest.TestCase):
 
         self.assertIn((f"{PATH}/block:answer-block", "workflow-enable-before-reveal"), findings)
         self.assertIn((f"{PATH}/block:answer-block", "workflow-completion-unreachable"), findings)
+
+    def test_unreachable_completion_transition_does_not_satisfy_availability(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0",
+            "initialStepId": "start",
+            "initialState": {"visibleBlockIds": ["answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "start", "enterActions": [], "transitions": []},
+                {"id": "unreachable", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "complete"}]},
+                {"id": "complete", "enterActions": [{"type": "completeSlice"}], "transitions": []},
+            ],
+        }
+
+        findings = {(issue.path, issue.code) for issue in validate_workflow_availability(course)}
+
+        self.assertIn((f"{PATH}/block:answer-block", "workflow-completion-unreachable"), findings)
+
+    def test_plan_completion_event_must_match_a_reachable_transition(self):
+        plan = plan_document()
+        plan["parts"][0]["slices"][0]["completionEvidence"] = {"event": "answer.submitted"}
+        write_json_atomic(self.root / ".course-work/course-storyboard.json", plan)
+
+        findings = {(issue.path, issue.code) for issue in self.correspondence()}
+
+        self.assertIn((f"{PATH}/block:answer-block", "plan-completion-event-unreachable"), findings)
+
+    def test_branch_states_are_not_unioned_into_false_covisibility(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "start",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "start", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "reference-only"}, {"on": {"type": "timer.elapsed"}, "to": "answer-only"}]},
+                {"id": "reference-only", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "join"}]},
+                {"id": "answer-only", "enterActions": [{"type": "hide", "targetId": "source-pdf"}, {"type": "hide", "targetId": "source-image"}, {"type": "enable", "targetId": "answer-block"}], "transitions": [{"on": {"type": "student.continue"}, "to": "join"}]},
+                {"id": "join", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "complete"}]},
+                {"id": "complete", "enterActions": [{"type": "completeSlice"}], "transitions": []},
+            ],
+        }
+
+        findings = {(issue.path, issue.code) for issue in self.correspondence(course)}
+
+        self.assertIn((f"{PATH}/block:answer-block", "workflow-covisibility-unavailable"), findings)
+
+    def test_hiding_reference_before_answer_blocks_covisibility(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "hide-reference",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "hide-reference", "enterActions": [{"type": "hide", "targetId": "source-pdf"}, {"type": "hide", "targetId": "source-image"}], "transitions": [{"on": {"type": "student.continue"}, "to": "answer"}]},
+                {"id": "answer", "enterActions": [{"type": "enable", "targetId": "answer-block"}], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "complete"}]},
+                {"id": "complete", "enterActions": [{"type": "completeSlice"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn(
+            (f"{PATH}/block:answer-block", "workflow-covisibility-unavailable"),
+            {(issue.path, issue.code) for issue in self.correspondence(course)},
+        )
+
+    def test_show_then_enable_in_same_step_is_available(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "show-answer",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "show-answer", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "complete"}]},
+                {"id": "complete", "enterActions": [{"type": "completeSlice"}], "transitions": []},
+            ],
+        }
+
+        codes = {issue.code for issue in validate_workflow_availability(course)}
+
+        self.assertNotIn("workflow-enable-before-reveal", codes)
+        self.assertNotIn("workflow-answer-unavailable", codes)
+
+    def test_source_map_runtime_pointer_mismatch_blocks_correspondence(self):
+        write_json_atomic(
+            self.root / ".course-work/course-runtime-source-map.json",
+            {"mappings": [{"targetId": "block:source-pdf", "runtimePointer": "/course/parts/99/slices/99/blocks/99", "sourceIds": ["source-original"]}]},
+        )
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["blocks"] = [
+            block for block in course["course"]["parts"][0]["slices"][0]["blocks"] if block["id"] != "source-pdf"
+        ]
+        # Keep a source-mapped text target so correspondence cannot fall back to
+        # a typed asset path for the planned original.
+        course["course"]["parts"][0]["slices"][0]["blocks"].append({"id": "source-pdf", "type": "text", "content": "原文摘要"})
+
+        findings = {(issue.path, issue.code) for issue in self.correspondence(course)}
+
+        self.assertIn((f"{PATH}/block:source-pdf", "source-map-pointer-mismatch"), findings)
+
+    def test_invalid_slot_ids_are_reported_by_public_layout_check(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["layout"]["slots"][0]["id"] = "evidence"
+
+        self.assertIn(
+            (PATH, "layout-slot-ids-invalid"),
+            {(issue.path, issue.code) for issue in validate_layout_assignment(course)},
+        )

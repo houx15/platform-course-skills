@@ -526,6 +526,13 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
             if block is None:
                 blockers.append(_issue(binding_path, "binding-target-missing", "binding target does not exist in CourseDefinition 2.0"))
                 continue
+            if isinstance(supports_ids, list):
+                for support_index, support_id in enumerate(supports_ids):
+                    if not isinstance(support_id, str) or not ID_RE.fullmatch(support_id):
+                        continue  # The schema finding above is the authoritative shape error.
+                    support_destination = (identity[0], identity[1], support_id)
+                    if support_destination not in destinations:
+                        blockers.append(_issue(f"{binding_path}.supportsIds[{support_index}]", "binding-support-target-missing", "supportsIds target must be a real Block in the binding's Part and Slice"))
             # A typed CourseDefinition asset field is self-contained evidence.
             # Provenance claims are accepted only after the entire G5 artifact
             # set has been independently derived from the current Blueprint.

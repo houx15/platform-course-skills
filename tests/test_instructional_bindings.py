@@ -174,6 +174,23 @@ class InstructionalBindingTests(unittest.TestCase):
 
         self.assertIn("binding-supports-invalid", {issue.code for issue in issues})
 
+    def test_binding_support_ids_must_resolve_in_the_same_part_and_slice(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"].append(
+            {"id": "slice-other", "blocks": [{"id": "cross-slice-target", "type": "text", "content": "other"}]}
+        )
+        coverage = {"schemaVersion": "2.0", "items": [required_evidence()]}
+        coverage["items"][0]["bindings"][0]["supportsIds"] = ["missing-target", "cross-slice-target"]
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, coverage, course=course)
+
+            audit = self.api().audit_instructional_bindings(root)
+
+        findings = {(issue.path, issue.code) for issue in audit.blockers}
+        self.assertIn(("source-coverage.json.items[0].bindings[0].supportsIds[0]", "binding-support-target-missing"), findings)
+        self.assertIn(("source-coverage.json.items[0].bindings[0].supportsIds[1]", "binding-support-target-missing"), findings)
+
     def test_valid_real_binding_passes_when_source_map_binds_source_to_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

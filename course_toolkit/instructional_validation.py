@@ -14,7 +14,12 @@ from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
 from .course_asset_index import iter_asset_references
 from .errors import ValidationIssue
-from .instructional_bindings import collect_course_destinations
+from .instructional_bindings import (
+    _course_destination_pointers,
+    _g5_issue,
+    _source_map_matches,
+    collect_course_destinations,
+)
 from .instructional_plan import validate_instructional_plan
 from .jsonio import load_json
 
@@ -114,17 +119,6 @@ def _asset_sources(course: dict) -> Dict[Tuple[str, str, str], Set[str]]:
     return result
 
 
-def _source_map_has(source_map: object, source_id: str, block_id: str) -> bool:
-    if not isinstance(source_map, dict):
-        return False
-    for mapping in _items(source_map.get("mappings")):
-        if not isinstance(mapping, dict) or mapping.get("targetId") != f"block:{block_id}":
-            continue
-        if source_id in _items(mapping.get("sourceIds")):
-            return True
-    return False
-
-
 def _binding_supports(binding: dict, target_id: str) -> bool:
     supports = binding.get("supportsIds", [])
     return isinstance(supports, list) and target_id in supports
@@ -167,6 +161,14 @@ def _has_reference_surface(slice_data: dict, source_file: object) -> bool:
     return False
 
 
+def _source_can_complete(block: dict, visible: Set[str], enabled: Set[str]) -> bool:
+    """Whether a workflow state can actually emit this Block's completion event."""
+    block_id = block.get("id")
+    if not isinstance(block_id, str) or block_id not in visible:
+        return False
+    return block.get("type") not in {"singleChoice", "fillBlank", "interactiveHtml"} or block_id in enabled
+
+
 def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIssue]:
     """Compare current plan/coverage records with compiled Part/Slice/Block identities."""
     root = Path(root).absolute()
@@ -182,11 +184,19 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
 
     source_map, _ = _safe_load(root, ".course-work/course-runtime-source-map.json")
     destinations = collect_course_destinations(course)
+    destination_pointers = _course_destination_pointers(course)
     blocks = _block_index(course)
     source_assets = _asset_sources(course)
     sources = _coverage_index(coverage)
     course_slices = {(part_id, slice_id): data for part_id, slice_id, data in _slice_entries(course)}
     planned_slice_keys = {(part_id, slice_id) for part_id, slice_id, _ in _plan_slices(plan)}
+    source_map_verified: bool | None = None
+
+    def current_source_map() -> bool:
+        nonlocal source_map_verified
+        if source_map_verified is None:
+            source_map_verified = _g5_issue(root, course, source_map) is None
+        return source_map_verified
 
     for part_id, slice_id in sorted(set(course_slices).difference(planned_slice_keys)):
         issues.append(_issue(_target_path(part_id, slice_id), "course-slice-unplanned", "CourseDefinition Slice is absent from the approved page plan"))
@@ -221,7 +231,19 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
                 if not isinstance(block_id, str) or destination not in destinations:
                     issues.append(_issue(path, "plan-required-source-omitted", "planned source binding targets a Block omitted from CourseDefinition"))
                     continue
-                materialized = item.get("sourceFile") in source_assets.get(destination, set()) or _source_map_has(source_map, source_id, block_id)
+                direct_asset = item.get("sourceFile") in source_assets.get(destination, set())
+                source_referenced, pointer_mismatch = _source_map_matches(
+                    source_map,
+                    source_id,
+                    block_id,
+                    destination_pointers[destination],
+                )
+                if pointer_mismatch:
+                    issues.append(_issue(path, "source-map-pointer-mismatch", "source-map runtimePointer does not identify the bound Block"))
+                source_map_current = current_source_map() if (source_referenced or pointer_mismatch) else False
+                if source_referenced and not source_map_current:
+                    issues.append(_issue(path, "source-map-identity-invalid", "source-map cannot certify the current compiled CourseDefinition"))
+                materialized = direct_asset or (source_referenced and source_map_current and not pointer_mismatch)
                 if not materialized:
                     issues.append(_issue(path, "plan-source-unmaterialized", "bound Block does not retain the planned source path or current source-map identity"))
 
@@ -267,12 +289,37 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
                 and (binding.get("partId"), binding.get("sliceId")) == (part_id, slice_id)
                 and isinstance(binding.get("blockId"), str)
             }
-            states = _step_states(actual_slice)
+            states, _ = _effective_step_states(actual_slice)
             if not any(
                 source_block_ids.issubset(visible) and resolved_id in enabled
-                for visible, enabled in states.values()
+                for state_list in states.values()
+                for visible, enabled in state_list
             ):
                 issues.append(_issue(_target_path(part_id, slice_id, resolved_id), "workflow-covisibility-unavailable", "required reference Blocks are not visible when the answer target is enabled"))
+
+        action = plan_slice.get("learnerAction") if isinstance(plan_slice.get("learnerAction"), dict) else {}
+        action_target, _ = _resolve_target(action.get("targetId"), part_id=part_id, slice_id=slice_id, blocks=blocks)
+        completion = plan_slice.get("completionEvidence")
+        declared_event = completion.get("event") if isinstance(completion, dict) else None
+        if action_target is not None and isinstance(declared_event, str):
+            effective, _ = _effective_step_states(actual_slice)
+            steps = {
+                step.get("id"): step
+                for step in _items(actual_slice.get("workflow", {}).get("steps") if isinstance(actual_slice.get("workflow"), dict) else [])
+                if isinstance(step, dict) and isinstance(step.get("id"), str)
+            }
+            has_event = any(
+                isinstance(transition, dict)
+                and isinstance(transition.get("on"), dict)
+                and transition["on"].get("sourceId") == action_target
+                and transition["on"].get("type") == declared_event
+                for step_id in effective
+                for visible, enabled in effective[step_id]
+                if _source_can_complete(blocks[action_target][2], visible, enabled)
+                for transition in _items(steps[step_id].get("transitions"))
+            )
+            if not has_event:
+                issues.append(_issue(_target_path(part_id, slice_id, action_target), "plan-completion-event-unreachable", "approved completionEvidence event is not reachable from the learner action Block"))
 
         # A deictic reference such as “参考上面的原文” must have a real source
         # surface in this Slice.  This is lexical/identity checking, not an
@@ -283,19 +330,21 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
             } if isinstance(source_id, str)
         ]
         visible_source_files = [sources[source_id].get("sourceFile") for source_id in reference_sources if source_id in sources]
-        learner_text = []
+        learner_text: List[Tuple[str, str]] = []
         for block in _items(actual_slice.get("blocks")):
-            if not isinstance(block, dict):
+            if not isinstance(block, dict) or not isinstance(block.get("id"), str):
                 continue
             for field in ("content", "prompt"):
                 value = block.get(field)
                 if isinstance(value, str):
-                    learner_text.append(value)
-        if any(REFERENCE_TEXT.search(value) for value in learner_text) and (
+                    learner_text.append((block["id"], value))
+        if any(REFERENCE_TEXT.search(value) for _, value in learner_text) and (
             not visible_source_files
             or not all(_has_reference_surface(actual_slice, source_file) for source_file in visible_source_files)
         ):
-            issues.append(_issue(_target_path(part_id, slice_id), "deictic-reference-source-absent", "learner-facing reference language has no required source surface in the same Slice"))
+            for block_id, value in learner_text:
+                if REFERENCE_TEXT.search(value):
+                    issues.append(_issue(_target_path(part_id, slice_id, block_id), "deictic-reference-source-absent", "learner-facing reference language has no required source surface in the same Slice"))
 
     return _ordered(issues)
 
@@ -307,6 +356,30 @@ def validate_layout_assignment(course: dict) -> List[ValidationIssue]:
         blocks = [block for block in _items(slice_data.get("blocks")) if isinstance(block, dict) and isinstance(block.get("id"), str)]
         layout = slice_data.get("layout") if isinstance(slice_data.get("layout"), dict) else {}
         slots = _items(layout.get("slots"))
+        preset = layout.get("preset")
+        slot_ids = [slot.get("id") if isinstance(slot, dict) else None for slot in slots]
+        canonical_slots = {
+            "full": ["main"],
+            "split-horizontal": ["left", "right"],
+            "split-vertical": ["top", "bottom"],
+            "grid": ["cell-1", "cell-2", "cell-3", "cell-4"],
+        }
+        slice_path = _target_path(part_id, slice_id)
+        if preset not in canonical_slots:
+            issues.append(_issue(slice_path, "layout-preset-invalid", "layout preset is not part of the pinned CourseDefinition contract"))
+        else:
+            expected = canonical_slots[preset]
+            valid_slots = (
+                slot_ids == expected[:len(slot_ids)] and 2 <= len(slot_ids) <= 4
+                if preset == "grid"
+                else len(slot_ids) == len(expected) and set(slot_ids) == set(expected)
+            )
+            if not valid_slots:
+                issues.append(_issue(slice_path, "layout-slot-ids-invalid", "layout Slot IDs do not match the canonical preset shape"))
+            if preset in {"split-horizontal", "split-vertical"} and layout.get("ratio") not in {"1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"}:
+                issues.append(_issue(slice_path, "layout-ratio-invalid", "split layout requires a pinned ratio"))
+            if preset in {"full", "grid"} and layout.get("ratio") is not None:
+                issues.append(_issue(slice_path, "layout-ratio-invalid", "full and grid layouts may not declare a ratio"))
         assigned: Dict[str, List[int]] = {block["id"]: [] for block in blocks}
         for slot_index, slot in enumerate(slots):
             for block_id in _items(slot.get("blockIds") if isinstance(slot, dict) else None):
@@ -319,7 +392,7 @@ def validate_layout_assignment(course: dict) -> List[ValidationIssue]:
                 issues.append(_issue(path, "layout-block-unassigned", "Block is not assigned to a layout Slot"))
             elif len(locations) > 1:
                 issues.append(_issue(path, "layout-block-duplicated", "Block is assigned to more than one layout Slot"))
-        if layout.get("preset") not in {"split-horizontal", "split-vertical"}:
+        if preset not in {"split-horizontal", "split-vertical"}:
             continue
         empty_slots = [index for index, slot in enumerate(slots) if not _items(slot.get("blockIds") if isinstance(slot, dict) else None)]
         for slot_index in empty_slots:
@@ -344,45 +417,54 @@ def _initial_state(slice_data: dict) -> Tuple[Set[str], Set[str]]:
     return visible.intersection(block_ids), enabled.intersection(block_ids)
 
 
-def _step_states(slice_data: dict) -> Dict[str, Tuple[Set[str], Set[str]]]:
+def _effective_step_states(
+    slice_data: dict,
+) -> Tuple[Dict[str, List[Tuple[Set[str], Set[str]]]], List[ValidationIssue]]:
+    """Explore effective post-enter-action states without merging branches.
+
+    States are finite combinations of the Slice Block IDs.  Recording a state
+    only once per step both preserves path facts and terminates cycles safely.
+    """
     workflow = slice_data.get("workflow") if isinstance(slice_data.get("workflow"), dict) else {}
     steps = {step.get("id"): step for step in _items(workflow.get("steps")) if isinstance(step, dict) and isinstance(step.get("id"), str)}
     initial_id = workflow.get("initialStepId")
     if initial_id not in steps:
-        return {}
+        return {}, []
     visible, enabled = _initial_state(slice_data)
-    states: Dict[str, Tuple[Set[str], Set[str]]] = {initial_id: (visible, enabled)}
-    queue = deque([initial_id])
-    while queue:
-        step_id = queue.popleft()
+    pending = deque([(initial_id, frozenset(visible), frozenset(enabled))])
+    seen: Set[Tuple[str, frozenset, frozenset]] = set()
+    effective: Dict[str, List[Tuple[Set[str], Set[str]]]] = {}
+    issues: List[ValidationIssue] = []
+    max_states = 4096
+    while pending:
+        step_id, visible_state, enabled_state = pending.popleft()
+        state_key = (step_id, visible_state, enabled_state)
+        if state_key in seen:
+            continue
+        seen.add(state_key)
+        if len(seen) > max_states:
+            issues.append(_issue("workflow", "workflow-state-space-exceeded", "workflow has too many reachable visibility/enabled states to validate deterministically"))
+            break
         step = steps[step_id]
-        current_visible, current_enabled = states[step_id]
-        visible, enabled = set(current_visible), set(current_enabled)
+        visible, enabled = set(visible_state), set(enabled_state)
         for action in _items(step.get("enterActions")):
             if not isinstance(action, dict) or not isinstance(action.get("targetId"), str):
                 continue
             target = action["targetId"]
             if action.get("type") == "show": visible.add(target)
             elif action.get("type") == "hide": visible.discard(target)
-            elif action.get("type") == "enable": enabled.add(target)
+            elif action.get("type") == "enable":
+                if target not in visible:
+                    issues.append(_issue(f"block:{target}", "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
+                enabled.add(target)
             elif action.get("type") == "disable": enabled.discard(target)
+        effective.setdefault(step_id, []).append((set(visible), set(enabled)))
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
             if destination not in steps:
                 continue
-            candidate = (set(visible), set(enabled))
-            existing = states.get(destination)
-            # A finite union represents every monotonic reveal/enable state;
-            # hidden/disabled paths are diagnosed at the action that creates them.
-            if existing is None:
-                states[destination] = candidate
-                queue.append(destination)
-            else:
-                merged = (existing[0].union(candidate[0]), existing[1].union(candidate[1]))
-                if merged != existing:
-                    states[destination] = merged
-                    queue.append(destination)
-    return states
+            pending.append((destination, frozenset(visible), frozenset(enabled)))
+    return effective, issues
 
 
 def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
@@ -391,20 +473,18 @@ def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
     for part_id, slice_id, slice_data in _slice_entries(course):
         workflow = slice_data.get("workflow") if isinstance(slice_data.get("workflow"), dict) else {}
         steps = [step for step in _items(workflow.get("steps")) if isinstance(step, dict) and isinstance(step.get("id"), str)]
-        states = _step_states(slice_data)
+        states, state_issues = _effective_step_states(slice_data)
         block_by_id = {block["id"]: block for block in _items(slice_data.get("blocks")) if isinstance(block, dict) and isinstance(block.get("id"), str)}
-        for step in steps:
-            visible, _ = states.get(step["id"], _initial_state(slice_data))
-            for action_index, action in enumerate(_items(step.get("enterActions"))):
-                if not isinstance(action, dict) or action.get("type") != "enable" or not isinstance(action.get("targetId"), str):
-                    continue
-                if action["targetId"] not in visible:
-                    issues.append(_issue(_target_path(part_id, slice_id, action["targetId"]), "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
-                visible.add(action["targetId"])
+        for issue in state_issues:
+            if issue.path.startswith("block:"):
+                issues.append(_issue(_target_path(part_id, slice_id, issue.path.split(":", 1)[1]), issue.code, issue.message))
+            else:
+                issues.append(_issue(_target_path(part_id, slice_id), issue.code, issue.message))
 
         reachable_visible_enabled = {
             block_id
-            for visible, enabled in states.values()
+            for state_list in states.values()
+            for visible, enabled in state_list
             for block_id in visible.intersection(enabled)
         }
         for block_id, block in block_by_id.items():
@@ -418,7 +498,12 @@ def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
                 continue
             completion_events = COMPLETION_EVENT_TYPES[block["type"]]
             transitions = [
-                transition for step in steps for transition in _items(step.get("transitions"))
+                transition
+                for step in steps
+                if step["id"] in states
+                for visible, enabled in states[step["id"]]
+                if _source_can_complete(block, visible, enabled)
+                for transition in _items(step.get("transitions"))
                 if isinstance(transition, dict) and isinstance(transition.get("on"), dict)
                 and transition["on"].get("sourceId") == block_id and transition["on"].get("type") in completion_events
             ]
