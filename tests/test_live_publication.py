@@ -23,6 +23,7 @@ from course_toolkit.live_publication import (
     execute_live_publication,
     init_live_publish_state,
     prepare_live_preflight,
+    live_preflight_status,
 )
 from course_toolkit.mind_imprint_api import RemoteCourse
 from course_toolkit.mind_imprint_api import AmbiguousRemoteWrite
@@ -35,6 +36,7 @@ from course_toolkit.package_review import (
 from course_toolkit.preview_evidence import record_preview_evidence, verify_g7_preview
 from course_toolkit.workflow import (
     complete_gate,
+    G3_EVIDENCE_KEYS,
     load_session,
     new_session,
     reconcile_artifacts,
@@ -220,6 +222,28 @@ class LivePublicationTests(unittest.TestCase):
             preflight["catalogCover"]["sha256"],
         )
         self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G10")
+
+    def test_unproved_page_plan_blocks_live_preflight_before_remote_calls(self):
+        prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
+        self.approve_preflight()
+        session = load_session(self.root)
+        for key in G3_EVIDENCE_KEYS:
+            session.artifact_hashes.pop(key, None)
+        save_session(self.root, session)
+
+        status = live_preflight_status(self.root)
+
+        self.assertFalse(status["current"])
+        self.assertFalse(status["approved"])
+        self.assertIn("g8-not-current", status["staleReasons"])
+        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        calls_before = self.api.get_course_calls
+        with self.assertRaisesRegex(LivePublicationBlocked, "G8 final review"):
+            prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
+        self.assertEqual(self.api.get_course_calls, calls_before)
+        self.assertEqual(self.api.uploads, [])
+        self.assertEqual(self.api.saved, 0)
+        self.assertEqual(self.api.shipped, 0)
 
     def test_existing_canonical_remote_is_updated_instead_of_creating_a_duplicate(self):
         document = load_json(self.root / "course/course.json")

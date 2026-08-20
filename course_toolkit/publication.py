@@ -596,8 +596,8 @@ def _verify_review_evidence(
         session,
         datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
     )
-    if "G8" not in session.completed_gate_ids:
-        raise PublicationBlocked("G8 final review is not complete")
+    if "G8" not in session.completed_gate_ids or "G8" in session.invalidated_gate_ids:
+        raise PublicationBlocked("G8 final review is not complete and current")
     report_path = root / VALIDATION_REPORT_RELATIVE_PATH
     report = load_json(report_path)
     expected = {
@@ -726,6 +726,8 @@ def prepare_publication_preflight(
 
     session = load_session(root)
     reconcile_current_session(root, session, now)
+    if "G8" not in session.completed_gate_ids or "G8" in session.invalidated_gate_ids:
+        raise PublicationBlocked("G8 final review is not complete and current")
 
     candidates = []
     state = None
@@ -847,6 +849,8 @@ def publication_preflight_status(root: Path) -> dict:
     preflight = load_json(path)
     context_hash = canonical_json_hash(preflight)
     stale_reasons = []
+    if "G8" not in session.completed_gate_ids or "G8" in session.invalidated_gate_ids:
+        stale_reasons.append("g8-not-current")
     try:
         if preflight.get("schemaVersion") != PUBLICATION_PREFLIGHT_SCHEMA_VERSION:
             stale_reasons.append("unsupported-preflight-schema")

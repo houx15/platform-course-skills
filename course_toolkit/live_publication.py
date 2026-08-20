@@ -193,6 +193,10 @@ def prepare_live_preflight(
     root = root.resolve()
     if action not in {"save-preview", "publish"}:
         raise LivePublicationBlocked("action must be save-preview or publish")
+    session = load_session(root)
+    reconcile_current_session(root, session, now)
+    if "G8" not in session.completed_gate_ids or "G8" in session.invalidated_gate_ids:
+        raise LivePublicationBlocked("G8 final review is not complete and current")
     verify_g8_review(root)
     try:
         catalog_selection = load_confirmed_course_selection(root)
@@ -318,6 +322,8 @@ def live_preflight_status(root: Path) -> dict:
         raise LivePublicationBlocked("publication preflight is missing")
     preflight = load_json(path)
     stale = []
+    if "G8" not in session.completed_gate_ids or "G8" in session.invalidated_gate_ids:
+        stale.append("g8-not-current")
     if preflight.get("schemaVersion") != LIVE_SCHEMA_VERSION:
         stale.append("unsupported-preflight-schema")
     try:

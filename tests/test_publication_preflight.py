@@ -26,7 +26,9 @@ from course_toolkit.publication import (
 )
 from course_toolkit.workflow import (
     complete_gate,
+    G3_EVIDENCE_KEYS,
     hash_path,
+    load_session,
     new_session,
     save_session,
     verify_g5_compilation,
@@ -183,6 +185,29 @@ class PublicationPreflightTests(unittest.TestCase):
         status = publication_preflight_status(self.root)
         self.assertFalse(status["approved"])
         self.assertEqual(status["decisionStatus"], "pending")
+
+    def test_unproved_page_plan_makes_approved_preflight_not_current(self):
+        self.prepare()
+        decisions = DecisionStore.load(self.root / ".course-work/decisions.json")
+        decisions.confirm(
+            PUBLICATION_DECISION_ID,
+            {"choice": "approve", "rationale": "Approved exact preflight."},
+            NOW,
+        )
+        decisions.save()
+        session = load_session(self.root)
+        for key in G3_EVIDENCE_KEYS:
+            session.artifact_hashes.pop(key, None)
+        save_session(self.root, session)
+
+        status = publication_preflight_status(self.root)
+
+        self.assertFalse(status["current"])
+        self.assertFalse(status["approved"])
+        self.assertIn("g8-not-current", status["staleReasons"])
+        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        with self.assertRaisesRegex(PublicationBlocked, "G8 final review"):
+            self.prepare()
 
     def test_changed_course_after_approval_is_immediately_stale(self):
         self.prepare()
