@@ -804,9 +804,8 @@ def _effective_step_states(
                 consumed_events = {fact for fact in consumed_events if fact[0] != action["narrationId"]}
                 continue
             if action_type == "pauseNarration" and isinstance(action.get("narrationId"), str):
-                # Pause retains the controller's active identity and can later
-                # be resumed by an explicit play action; only stop detaches it
-                # permanently.  A paused track cannot itself emit ended.
+                # Pause retains the controller's active identity.  The learner
+                # can replay it later; only stop detaches it permanently.
                 if action["narrationId"] in active_narrations:
                     consumed_events.add((action["narrationId"], "narration.paused"))
                 continue
@@ -865,10 +864,7 @@ def _effective_step_states(
             if not isinstance(target, str):
                 continue
             if action_type == "show": visible.add(target)
-            elif action_type == "hide":
-                visible.discard(target)
-                if blocks.get(target, {}).get("type") == "video":
-                    consumed_events = {fact for fact in consumed_events if fact[0] != target or not fact[1].startswith("cue-active:")}
+            elif action_type == "hide": visible.discard(target)
             elif action_type == "enable":
                 if target not in visible:
                     issues.append(_issue(f"block:{target}", "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
@@ -946,13 +942,14 @@ def _effective_step_states(
             ):
                 pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
 
-        # Once playback has ended, the player retains its selected track and
-        # exposes replay.  Model that learner control as a new playing epoch
-        # (clear the ended fact), without treating pause as an automatic end.
-        # This is finite: the replay state is identical to the pre-ended state
-        # and therefore is deduplicated by ``seen``.
+        # Ended and paused tracks retain the selected narration and expose a
+        # learner replay/resume control.  Model that control as a new playing
+        # epoch (clear the lifecycle fact).  This does not make pause emit
+        # ended on its own: an external narration.ended transition follows
+        # only after the replay successor is explored.  The state is finite
+        # because the replay successor is deduplicated by ``seen``.
         for narration_id in sorted(active_narrations):
-            if (narration_id, "narration.ended") in consumed_events:
+            if any((narration_id, state) in consumed_events for state in ("narration.ended", "narration.paused")):
                 replayed = {fact for fact in consumed_events if fact[0] != narration_id}
                 pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(replayed), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events, False))
 
