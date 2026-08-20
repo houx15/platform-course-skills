@@ -415,3 +415,106 @@ class InstructionalValidationTests(unittest.TestCase):
             (f"{PATH}/block:answer-block", "workflow-answer-unavailable"),
             {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
         )
+
+    def test_graded_retries_keep_submitted_and_incorrect_reachable_until_max_attempts(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        answer = slice_data["blocks"][3]
+        answer["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        answer["completion"] = {"rule": "submit-correct-or-exhausted", "maxAttempts": 3}
+        slice_data["blocks"].append({"id": "followup", "type": "fillBlank", "prompt": "说明补救", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "first-submit",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "first-submit", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "first-outcome"}]},
+                {"id": "first-outcome", "enterActions": [], "transitions": [{"on": {"type": "answer.incorrect", "sourceId": "answer-block"}, "to": "remediate"}]},
+                {"id": "remediate", "enterActions": [], "transitions": [{"on": {"type": "student.continue"}, "to": "second-submit"}]},
+                {"id": "second-submit", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "second-outcome"}]},
+                {"id": "second-outcome", "enterActions": [], "transitions": [{"on": {"type": "answer.incorrect", "sourceId": "answer-block"}, "to": "reveal-followup"}]},
+                {"id": "reveal-followup", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_assessment_cascade_survives_a_submitted_transition_that_disables_source(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append({"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "submitted",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "submitted", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "disabled"}]},
+                {"id": "disabled", "enterActions": [{"type": "disable", "targetId": "answer-block"}], "transitions": [{"on": {"type": "block.completed", "sourceId": "answer-block"}, "to": "reveal-followup"}]},
+                {"id": "reveal-followup", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_assessment_submissions_do_not_reuse_past_max_attempts(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        answer = slice_data["blocks"][3]
+        answer["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        answer["completion"] = {"rule": "submit-correct-or-exhausted", "maxAttempts": 3}
+        slice_data["blocks"].append({"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}})
+        steps = [
+            {"id": "attempt-one", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "attempt-two"}]},
+            {"id": "attempt-two", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "attempt-three"}]},
+            {"id": "attempt-three", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "attempt-four"}]},
+            {"id": "attempt-four", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "attempt-one", "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]}, "steps": steps}
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_disabled_video_cannot_play_or_reveal_an_answer(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append({"id": "video", "type": "video", "source": "materials/video.mp4", "completion": {"rule": "video-ended"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "play",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "video"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_video_reset_rearms_playback_for_a_second_completion(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append({"id": "video", "type": "video", "source": "materials/video.mp4", "completion": {"rule": "video-ended"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "first-play",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "video"], "enabledBlockIds": ["video"]},
+            "steps": [
+                {"id": "first-play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "first-ended"}]},
+                {"id": "first-ended", "enterActions": [], "transitions": [{"on": {"type": "video.ended", "sourceId": "video"}, "to": "replay"}]},
+                {"id": "replay", "enterActions": [{"type": "resetBlock", "targetId": "video"}, {"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "second-ended"}]},
+                {"id": "second-ended", "enterActions": [], "transitions": [{"on": {"type": "video.ended", "sourceId": "video"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_repeated_timer_id_and_cancel_consume_one_handle_at_a_time(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "start",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "start", "enterActions": [{"type": "startTimer", "timerId": "same", "durationSeconds": 5}, {"type": "startTimer", "timerId": "same", "durationSeconds": 10}], "transitions": [{"on": {"type": "student.continue"}, "to": "cancel-one"}]},
+                {"id": "cancel-one", "enterActions": [{"type": "cancelTimer", "timerId": "same"}], "transitions": [{"on": {"type": "timer.elapsed", "sourceId": "same"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})

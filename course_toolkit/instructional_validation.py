@@ -231,23 +231,50 @@ def _block_can_emit_event(block: dict, event_type: object, visible: Set[str], en
     return block_type == "pdf" and event_type == "pdf.opened"
 
 
-def _transition_state_updates(
+def _matcher_matches(on: object, event: Tuple[str, str]) -> bool:
+    return isinstance(on, dict) and on.get("type") == event[1] and (on.get("sourceId") is None or on.get("sourceId") == event[0])
+
+
+def _assessment_cascades(block: dict, attempt: int) -> List[Tuple[Tuple[Tuple[str, str], ...], bool]]:
+    """Renderer event tails after one accepted assessment submission."""
+    block_id = block["id"]
+    assessment = block.get("assessment") if isinstance(block.get("assessment"), dict) else {}
+    mode = assessment.get("mode")
+    if mode in {"survey", "reflection"}:
+        return [(((block_id, "block.completed"),), True)]
+    if mode != "graded":
+        return []
+    completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+    rule = completion.get("rule")
+    # Correctness is learner-controlled, so preserve both renderer-real paths.
+    cascades = [(((block_id, "answer.correct"), (block_id, "block.completed")), True)]
+    if rule == "submit-any":
+        cascades.append((((block_id, "answer.incorrect"), (block_id, "block.completed")), True))
+    elif rule == "submit-correct":
+        cascades.append((((block_id, "answer.incorrect"),), False))
+    elif rule == "submit-correct-or-exhausted":
+        maximum = completion.get("maxAttempts")
+        if isinstance(maximum, int) and attempt >= maximum:
+            cascades.append((((block_id, "answer.attemptsExhausted"), (block_id, "block.completed")), True))
+        else:
+            cascades.append((((block_id, "answer.incorrect"),), False))
+    return cascades
+
+
+def _external_event_updates(
     transition: object,
     *,
     blocks: Mapping[str, dict],
     visible: Set[str],
     enabled: Set[str],
     active_narrations: Set[str],
-    active_timers: Set[str],
+    active_timers: Mapping[str, int],
     consumed_events: Set[Tuple[str, str]],
-) -> List[Tuple[Set[str], Set[str], Set[Tuple[str, str]]]]:
-    """Return deterministic successor producer states for a live event.
-
-    Each tuple is ``(active_narrations, active_timers, consumed_event_facts)``.
-    A matcher without a source id branches once per currently possible producer
-    rather than collapsing paths.  This preserves timers that did not fire and
-    prevents a one-shot renderer event from being reused later in the path.
-    """
+    attempts: Mapping[str, int],
+    locked_assessments: Set[str],
+    playing_videos: Set[str],
+) -> List[Tuple[Set[str], Dict[str, int], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
+    """Return successor runtime facts for one externally produced event."""
     on = transition.get("on") if isinstance(transition, dict) else None
     if not isinstance(on, dict):
         return []
@@ -256,14 +283,14 @@ def _transition_state_updates(
         return []
     producer = EVENT_PRODUCERS.get(event_type)
     if producer == "none":
-        return [(set(active_narrations), set(active_timers), set(consumed_events))]
+        return [(set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ())]
     if producer == "unsupported" or producer is None:
         return []
     if producer == "narration":
         source_id = on.get("sourceId")
         candidates = [source_id] if isinstance(source_id, str) else sorted(active_narrations)
         return [
-            (set(), set(active_timers), set(consumed_events))
+            (set(), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ())
             for narration_id in candidates
             if narration_id in active_narrations
         ]
@@ -272,24 +299,62 @@ def _transition_state_updates(
         if len(selected_ids) > 1:
             return []
         candidates = selected_ids if selected_ids else set(active_timers)
-        return [
-            (set(active_narrations), set(active_timers).difference({timer_id}), set(consumed_events))
-            for timer_id in sorted(candidates)
-            if timer_id in active_timers
-        ]
+        updates = []
+        for timer_id in sorted(candidates):
+            if active_timers.get(timer_id, 0) <= 0:
+                continue
+            next_timers = dict(active_timers)
+            next_timers[timer_id] -= 1
+            if next_timers[timer_id] == 0:
+                del next_timers[timer_id]
+            updates.append((set(active_narrations), next_timers, set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
+        return updates
     source_id = on.get("sourceId")
     candidates = [(source_id, blocks.get(source_id))] if isinstance(source_id, str) else sorted(blocks.items())
     updates = []
     for block_id, block in candidates:
         event_fact = (block_id, event_type)
-        if not isinstance(block, dict) or not _block_can_emit_event(block, event_type, visible, enabled):
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") in ASSESSMENT_TYPES:
+            if block_id in locked_assessments or not _block_can_emit_event(block, "answer.submitted", visible, enabled):
+                continue
+            next_attempts = dict(attempts)
+            attempt = next_attempts.get(block_id, 0) + 1
+            completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+            maximum = completion.get("maxAttempts")
+            if isinstance(maximum, int) and attempt > maximum:
+                continue
+            if event_type == "answer.submitted":
+                for pending, locks in _assessment_cascades(block, attempt):
+                    updates.append((set(active_narrations), dict(active_timers), set(consumed_events), {**next_attempts, block_id: attempt}, set(locked_assessments).union({block_id} if locks else set()), set(playing_videos), pending))
+                continue
+            # A workflow may ignore answer.submitted and match the later event
+            # directly; model that same submission and schedule its remaining
+            # synchronous renderer tail.
+            for pending, locks in _assessment_cascades(block, attempt):
+                if pending and pending[0] == event_fact:
+                    updates.append((set(active_narrations), dict(active_timers), set(consumed_events), {**next_attempts, block_id: attempt}, set(locked_assessments).union({block_id} if locks else set()), set(playing_videos), pending[1:]))
+                elif event_type == "block.completed" and pending and pending[-1] == event_fact:
+                    updates.append((set(active_narrations), dict(active_timers), set(consumed_events), {**next_attempts, block_id: attempt}, set(locked_assessments).union({block_id}), set(playing_videos), ()))
+            continue
+        if block.get("type") == "video":
+            if block_id not in visible or block_id not in enabled:
+                continue
+            if event_type == "video.started":
+                updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).union({block_id}), ()))
+            elif event_type == "video.ended" and block_id in playing_videos:
+                tail = ((block_id, "block.completed"),) if isinstance(block.get("completion"), dict) else ()
+                updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).difference({block_id}), tail))
+            continue
+        if not _block_can_emit_event(block, event_type, visible, enabled):
             continue
         if event_type in ONE_SHOT_BLOCK_EVENTS and event_fact in consumed_events:
             continue
         next_consumed = set(consumed_events)
         if event_type in ONE_SHOT_BLOCK_EVENTS:
             next_consumed.add(event_fact)
-        updates.append((set(active_narrations), set(active_timers), next_consumed))
+        updates.append((set(active_narrations), dict(active_timers), next_consumed, dict(attempts), set(locked_assessments), set(playing_videos), ()))
     return updates
 
 
@@ -571,14 +636,14 @@ def _effective_step_states(
     if initial_id not in steps:
         return {}, []
     visible, enabled = _initial_state(slice_data)
-    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), frozenset(), frozenset())])
-    seen: Set[Tuple[str, frozenset, frozenset, frozenset, frozenset, frozenset]] = set()
+    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), (), frozenset(), (), frozenset(), frozenset(), ())])
+    seen = set()
     effective: Dict[str, List[Tuple[Set[str], Set[str]]]] = {}
     issues: List[ValidationIssue] = []
     max_states = 4096
     while pending:
-        step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state = pending.popleft()
-        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state)
+        step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state = pending.popleft()
+        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state)
         if state_key in seen:
             continue
         seen.add(state_key)
@@ -587,7 +652,11 @@ def _effective_step_states(
             break
         step = steps[step_id]
         visible, enabled = set(visible_state), set(enabled_state)
-        active_narrations, active_timers, consumed_events = set(narrations_state), set(timers_state), set(consumed_state)
+        active_narrations = set(narrations_state)
+        active_timers = dict(timers_state)
+        consumed_events, attempts = set(consumed_state), dict(attempts_state)
+        locked_assessments, playing_videos = set(locked_state), set(playing_state)
+        pending_events = tuple(pending_events_state)
         for action in _items(step.get("enterActions")):
             if not isinstance(action, dict):
                 continue
@@ -603,17 +672,27 @@ def _effective_step_states(
                 active_narrations.discard(action["narrationId"])
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
-                active_timers.add(action["timerId"])
+                timer_id = action["timerId"]
+                active_timers[timer_id] = min(active_timers.get(timer_id, 0) + 1, 8)
                 continue
             if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
-                active_timers.discard(action["timerId"])
+                timer_id = action["timerId"]
+                if active_timers.get(timer_id, 0) > 1:
+                    active_timers[timer_id] -= 1
+                else:
+                    active_timers.pop(timer_id, None)
                 continue
             if action_type == "resetBlock":
-                # Do not clear consumed event facts: the renderer can reset
-                # media handles but assessments own local lock/attempt state,
-                # so a generic reset is insufficient proof that every event
-                # kind can fire again.  Failing closed avoids inventing a
-                # second completion event that the real UI may never emit.
+                if isinstance(target, str) and blocks.get(target, {}).get("type") == "video":
+                    playing_videos.discard(target)
+                    consumed_events = {fact for fact in consumed_events if fact[0] != target}
+                    pending_events = tuple(event for event in pending_events if event[0] != target)
+                continue
+            if action_type == "playBlock" and isinstance(target, str):
+                block = blocks.get(target)
+                if isinstance(block, dict) and block.get("type") == "video" and target in visible and target in enabled:
+                    playing_videos.add(target)
+                    pending_events = (*pending_events, (target, "video.started"))
                 continue
             if not isinstance(target, str):
                 continue
@@ -624,12 +703,26 @@ def _effective_step_states(
                     issues.append(_issue(f"block:{target}", "workflow-enable-before-reveal", "Workflow enables a Block before it is visible"))
                 enabled.add(target)
             elif action_type == "disable": enabled.discard(target)
-        effective.setdefault(step_id, []).append((set(visible), set(enabled)))
+        effective.setdefault(step_id, []).append((set(visible), set(enabled).difference(locked_assessments)))
+        # Renderer emissions from a submitted answer/video-ended callback are
+        # synchronous.  Later emissions remain live even when handling an
+        # earlier one changes the workflow step or disables the source Block.
+        while pending_events:
+            emitted = pending_events[0]
+            matched = next((transition for transition in _items(step.get("transitions")) if _matcher_matches(transition.get("on") if isinstance(transition, dict) else None, emitted)), None)
+            pending_events = pending_events[1:]
+            if matched is not None and matched.get("to") in steps:
+                pending.append((matched["to"], frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(consumed_events), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events))
+                break
+        else:
+            matched = None
+        if matched is not None:
+            continue
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
             if destination not in steps:
                 continue
-            for next_narrations, next_timers, next_consumed in _transition_state_updates(
+            for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
                 transition,
                 blocks=blocks,
                 visible=visible,
@@ -637,8 +730,11 @@ def _effective_step_states(
                 active_narrations=active_narrations,
                 active_timers=active_timers,
                 consumed_events=consumed_events,
+                attempts=attempts,
+                locked_assessments=locked_assessments,
+                playing_videos=playing_videos,
             ):
-                pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), frozenset(next_timers), frozenset(next_consumed)))
+                pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events))
     return effective, issues
 
 
