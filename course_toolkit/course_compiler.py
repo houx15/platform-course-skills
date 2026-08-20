@@ -58,6 +58,12 @@ class CompilationToolError(RuntimeError):
     pass
 
 
+class CompilationEvidenceError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
 ContractValidator = Callable[[dict], SharedContractResult]
 
 
@@ -189,6 +195,108 @@ def build_runtime_source_map(data: dict, document: dict) -> dict:
         "courseDefinitionHash": canonical_json_hash(document),
         "mappings": mappings,
     }
+
+
+def verify_compilation_evidence(
+    blueprint: object,
+    document: object,
+    source_map: object,
+    report: object,
+) -> None:
+    """Verify current G5 compilation facts without reading package paths."""
+    if not isinstance(blueprint, dict) or not isinstance(document, dict):
+        raise CompilationEvidenceError(
+            "compilation-evidence-invalid",
+            "G5 Blueprint and CourseDefinition must be objects",
+        )
+    if not isinstance(source_map, dict) or not isinstance(report, dict):
+        raise CompilationEvidenceError(
+            "compilation-evidence-invalid",
+            "G5 source map and compilation report must be objects",
+        )
+    if report.get("status") != "compiled" or report.get("issues") != []:
+        raise CompilationEvidenceError(
+            "compilation-report-invalid",
+            "G5 compilation report is not successful",
+        )
+    if report.get("compilerVersion") != COMPILER_VERSION:
+        raise CompilationEvidenceError(
+            "compilation-report-identity-invalid",
+            "G5 compilation report uses a stale compiler version",
+        )
+    if source_map.get("schemaVersion") != "1.0" or source_map.get(
+        "compilerVersion"
+    ) != COMPILER_VERSION:
+        raise CompilationEvidenceError(
+            "source-map-identity-invalid",
+            "G5 source map uses an invalid schema or stale compiler version",
+        )
+
+    expected_blueprint_hash = canonical_json_hash(blueprint)
+    if report.get("blueprintHash") != expected_blueprint_hash:
+        raise CompilationEvidenceError(
+            "compilation-report-blueprint-stale",
+            "G5 Blueprint hash does not match the compilation report",
+        )
+    if source_map.get("blueprintHash") != expected_blueprint_hash:
+        raise CompilationEvidenceError(
+            "source-map-blueprint-stale",
+            "G5 Blueprint hash does not match the source map",
+        )
+
+    expected_document_hash = canonical_json_hash(document)
+    if report.get("courseDefinitionHash") != expected_document_hash:
+        raise CompilationEvidenceError(
+            "compilation-report-definition-stale",
+            "G5 course definition hash does not match the compilation report",
+        )
+    if source_map.get("courseDefinitionHash") != expected_document_hash:
+        raise CompilationEvidenceError(
+            "source-map-stale",
+            "G5 course definition hash does not match the source map",
+        )
+    if report.get("sourceMapHash") != canonical_json_hash(source_map):
+        raise CompilationEvidenceError(
+            "compilation-report-source-map-mismatch",
+            "G5 source map hash does not match the compilation report",
+        )
+
+    compiler_hash = file_sha256(Path(__file__))
+    snapshot_hash = file_sha256(CONTRACT_SNAPSHOT)
+    if report.get("compilerHash") != compiler_hash:
+        raise CompilationEvidenceError(
+            "compilation-report-compiler-mismatch",
+            "G5 compilation report was produced by different compiler code",
+        )
+    if report.get("contractSnapshotHash") != snapshot_hash:
+        raise CompilationEvidenceError(
+            "compilation-report-contract-mismatch",
+            "G5 compilation report uses a different contract snapshot",
+        )
+    snapshot = _load_contract_snapshot()
+    expected_snapshot = {
+        "packageName": snapshot.get("packageName"),
+        "packageVersion": snapshot.get("packageVersion"),
+        "upstreamCommit": snapshot.get("upstreamCommit"),
+    }
+    if report.get("contractSnapshot") != expected_snapshot:
+        raise CompilationEvidenceError(
+            "compilation-report-contract-identity-mismatch",
+            "G5 shared contract identity does not match the snapshot",
+        )
+    contract_result = validate_with_shared_contract(document)
+    if not contract_result.ok:
+        first = contract_result.issues[0] if contract_result.issues else None
+        detail = first.message if first else "unknown contract failure"
+        raise CompilationEvidenceError(
+            "course-contract-invalid",
+            f"G5 shared course contract rejected the definition: {detail}",
+        )
+    if report.get("assetPaths") != sorted(contract_result.asset_paths):
+        raise CompilationEvidenceError(
+            "compilation-report-assets-mismatch",
+            "G5 asset paths do not match the shared course contract",
+        )
 
 
 def compile_blueprint(

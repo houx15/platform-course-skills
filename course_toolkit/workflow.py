@@ -9,10 +9,10 @@ from course_toolkit.issues import (
     make_registered_issue,
 )
 from course_toolkit.course_compiler import (
-    COMPILER_VERSION,
     CONTRACT_SNAPSHOT,
+    CompilationEvidenceError,
     canonical_json_hash,
-    validate_with_shared_contract,
+    verify_compilation_evidence,
 )
 from course_toolkit.jsonio import load_json, write_json_atomic
 
@@ -517,53 +517,15 @@ def verify_g5_compilation(root: Path) -> Dict[str, str]:
         relative_paths[".course-work/course-runtime-source-map.json"]
     )
     report = load_json(relative_paths[".course-work/compilation-report.json"])
-    snapshot = load_json(CONTRACT_SNAPSHOT)
-
-    if report.get("status") != "compiled" or report.get("issues") != []:
-        raise WorkflowError("G5 compilation report is not successful")
-    if report.get("compilerVersion") != COMPILER_VERSION:
-        raise WorkflowError("G5 compilation report uses a stale compiler version")
-    if source_map.get("compilerVersion") != COMPILER_VERSION:
-        raise WorkflowError("G5 source map uses a stale compiler version")
-
-    expected_blueprint_hash = canonical_json_hash(blueprint)
-    if report.get("blueprintHash") != expected_blueprint_hash:
-        raise WorkflowError("G5 Blueprint hash does not match the compilation report")
-    if source_map.get("blueprintHash") != expected_blueprint_hash:
-        raise WorkflowError("G5 Blueprint hash does not match the source map")
-
-    expected_document_hash = canonical_json_hash(document)
-    if report.get("courseDefinitionHash") != expected_document_hash:
-        raise WorkflowError("G5 course definition hash does not match the compilation report")
-    if source_map.get("courseDefinitionHash") != expected_document_hash:
-        raise WorkflowError("G5 course definition hash does not match the source map")
-
-    if report.get("sourceMapHash") != canonical_json_hash(source_map):
-        raise WorkflowError("G5 source map hash does not match the compilation report")
+    try:
+        verify_compilation_evidence(blueprint, document, source_map, report)
+    except CompilationEvidenceError as exc:
+        raise WorkflowError(str(exc)) from exc
 
     compiler_hash = hash_path(TOOLKIT_G5_ARTIFACTS["@toolkit/course-compiler"])
     snapshot_hash = hash_path(
         TOOLKIT_G5_ARTIFACTS["@toolkit/course-contract-snapshot"]
     )
-    if report.get("compilerHash") != compiler_hash:
-        raise WorkflowError("G5 compilation report was produced by different compiler code")
-    if report.get("contractSnapshotHash") != snapshot_hash:
-        raise WorkflowError("G5 compilation report uses a different contract snapshot")
-    expected_snapshot = {
-        "packageName": snapshot.get("packageName"),
-        "packageVersion": snapshot.get("packageVersion"),
-        "upstreamCommit": snapshot.get("upstreamCommit"),
-    }
-    if report.get("contractSnapshot") != expected_snapshot:
-        raise WorkflowError("G5 shared contract identity does not match the snapshot")
-
-    contract_result = validate_with_shared_contract(document)
-    if not contract_result.ok:
-        first = contract_result.issues[0] if contract_result.issues else None
-        detail = first.message if first else "unknown contract failure"
-        raise WorkflowError(f"G5 shared course contract rejected the definition: {detail}")
-    if report.get("assetPaths") != sorted(contract_result.asset_paths):
-        raise WorkflowError("G5 asset paths do not match the shared course contract")
 
     evidence = {label: hash_path(path) for label, path in relative_paths.items()}
     evidence["@toolkit/course-compiler"] = compiler_hash

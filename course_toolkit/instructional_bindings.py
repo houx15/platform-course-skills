@@ -1,10 +1,16 @@
 """Source-coverage v2 loading, migration, and CourseDefinition bindings."""
 
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
-from .course_compiler import canonical_json_hash
+from .course_compiler import (
+    CompilationEvidenceError,
+    CompilationToolError,
+    verify_compilation_evidence,
+)
+from .course_package_validation import iter_asset_references
 from .errors import ValidationIssue
 from .jsonio import load_json
 
@@ -34,18 +40,25 @@ def _course_payload(course: dict) -> dict:
     return payload if isinstance(payload, dict) else {}
 
 
+def _list_field(value: object, field: str) -> list:
+    if not isinstance(value, dict):
+        return []
+    items = value.get(field)
+    return items if isinstance(items, list) else []
+
+
 def collect_course_destinations(course: dict) -> Dict[Destination, dict]:
     """Collect only real CourseDefinition 2.0 Part/Slice/Block targets."""
     destinations: Dict[Destination, dict] = {}
-    for part in _course_payload(course).get("parts", []):
+    for part in _list_field(_course_payload(course), "parts"):
         if not isinstance(part, dict) or not isinstance(part.get("id"), str):
             continue
-        for slice_data in part.get("slices", []):
+        for slice_data in _list_field(part, "slices"):
             if not isinstance(slice_data, dict) or not isinstance(
                 slice_data.get("id"), str
             ):
                 continue
-            for block in slice_data.get("blocks", []):
+            for block in _list_field(slice_data, "blocks"):
                 if not isinstance(block, dict) or not isinstance(block.get("id"), str):
                     continue
                 destinations[(part["id"], slice_data["id"], block["id"])] = block
@@ -54,15 +67,15 @@ def collect_course_destinations(course: dict) -> Dict[Destination, dict]:
 
 def _course_destination_pointers(course: dict) -> Dict[Destination, str]:
     pointers: Dict[Destination, str] = {}
-    for part_index, part in enumerate(_course_payload(course).get("parts", [])):
+    for part_index, part in enumerate(_list_field(_course_payload(course), "parts")):
         if not isinstance(part, dict) or not isinstance(part.get("id"), str):
             continue
-        for slice_index, slice_data in enumerate(part.get("slices", [])):
+        for slice_index, slice_data in enumerate(_list_field(part, "slices")):
             if not isinstance(slice_data, dict) or not isinstance(
                 slice_data.get("id"), str
             ):
                 continue
-            for block_index, block in enumerate(slice_data.get("blocks", [])):
+            for block_index, block in enumerate(_list_field(slice_data, "blocks")):
                 if not isinstance(block, dict) or not isinstance(block.get("id"), str):
                     continue
                 destination = (part["id"], slice_data["id"], block["id"])
@@ -82,6 +95,42 @@ def _coverage_path(root: Path) -> Path:
 
 def _source_map_path(root: Path) -> Path:
     return root / ".course-work" / "course-runtime-source-map.json"
+
+
+def _safe_json_load(
+    root: Path,
+    relative: str,
+    *,
+    required: bool,
+) -> Tuple[Optional[object], Optional[ValidationIssue]]:
+    current = root.absolute()
+    for part in Path(relative).parts:
+        current = current / part
+        if current.is_symlink():
+            return None, _issue(relative, "symlink-file", "JSON evidence may not be a symlink")
+    if not current.is_file():
+        if required:
+            return None, _issue(relative, "missing-file", "required JSON evidence is missing")
+        return None, None
+    try:
+        return load_json(current), None
+    except ValueError as exc:
+        return None, _issue(relative, "invalid-json", str(exc))
+
+
+def _course_shape_issue(document: object) -> Optional[ValidationIssue]:
+    if not isinstance(document, dict):
+        return _issue("course/course.json", "invalid-shape", "course document must be an object")
+    if document.get("schemaVersion") != "2.0":
+        return _issue("course/course.json", "invalid-shape", "course schemaVersion must be 2.0")
+    course = document.get("course")
+    if not isinstance(course, dict) or not isinstance(course.get("parts"), list):
+        return _issue(
+            "course/course.json",
+            "invalid-shape",
+            "course document must contain a course.parts list",
+        )
+    return None
 
 
 def _nonempty_string(value: object) -> bool:
@@ -113,12 +162,19 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
     """Return a v2 coverage document without discarding source locators."""
     if not isinstance(document, dict):
         raise ValueError("source coverage must be an object")
+    if document.get("schemaVersion") == "2.0":
+        return deepcopy(document)
+    if document.get("schemaVersion") != "1.0":
+        raise ValueError("source coverage schemaVersion must be 1.0 or 2.0")
+    if not isinstance(document.get("items"), list):
+        raise ValueError("source coverage v1 items must be a list")
     destinations = collect_course_destinations(course)
     migrated_items = []
     for item in document.get("items", []):
         if not isinstance(item, dict):
-            migrated_items.append(item)
+            migrated_items.append(deepcopy(item))
             continue
+        migrated = deepcopy(item)
         status = item.get("status")
         approval_complete = (
             status == "discard-approved"
@@ -134,24 +190,29 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
             # A legacy unresolved/discard-proposed item remains an auditable,
             # unresolved proposal instead of being silently treated as excluded.
             disposition = "exclude-proposed"
-        migrated = {
-            key: item[key]
-            for key in ("sourceId", "sourceFile", "location", "summary")
-            if key in item
-        }
+        migrated.pop("status", None)
         migrated["disposition"] = disposition
         if isinstance(status, str):
             migrated["legacyStatus"] = status
         if disposition == "required-core":
-            bindings = [
-                binding
-                for destination in item.get("destinations", [])
-                if (binding := _v1_binding(destination, destinations)) is not None
-            ]
+            raw_destinations = item.get("destinations")
+            legacy_destinations = (
+                deepcopy(raw_destinations) if isinstance(raw_destinations, list) else []
+            )
+            bindings = []
+            unmatched = []
+            for destination in legacy_destinations:
+                binding = _v1_binding(destination, destinations)
+                if binding is None:
+                    unmatched.append(destination)
+                else:
+                    bindings.append(binding)
             migrated["bindings"] = bindings
-        for key in ("reason", "decisionId", "teacherConfirmed"):
-            if key in item:
-                migrated[key] = item[key]
+            if unmatched:
+                migrated["migrationIssues"] = [
+                    {"code": "unmatched-legacy-destination", "destination": value}
+                    for value in unmatched
+                ]
         if disposition == "exclude-proposed":
             migration_reason = (
                 "Legacy source-coverage status needs resolution before publication: "
@@ -161,12 +222,17 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
                 migrated["reason"] = migration_reason
             migrated["migrationReason"] = migration_reason
         migrated_items.append(migrated)
-    return {"schemaVersion": "2.0", "items": migrated_items}
+    migrated_document = deepcopy(document)
+    migrated_document["schemaVersion"] = "2.0"
+    migrated_document["items"] = migrated_items
+    return migrated_document
 
 
 def load_instructional_coverage(root: Path) -> dict:
-    root = root.resolve()
-    coverage = load_json(_coverage_path(root))
+    root = Path(root).absolute()
+    coverage, issue = _safe_json_load(root, ".course-work/source-coverage.json", required=True)
+    if issue is not None:
+        raise ValueError(f"{issue.code}: {issue.path}")
     if not isinstance(coverage, dict):
         raise ValueError("source coverage must be an object")
     version = coverage.get("schemaVersion")
@@ -174,21 +240,29 @@ def load_instructional_coverage(root: Path) -> dict:
         return coverage
     if version != "1.0":
         raise ValueError(f"unsupported source coverage schemaVersion: {version}")
-    course = load_json(_course_document_path(root))
+    course, course_issue = _safe_json_load(root, "course/course.json", required=True)
+    if course_issue is not None:
+        raise ValueError(f"{course_issue.code}: {course_issue.path}")
     if not isinstance(course, dict):
         raise ValueError("course document must be an object")
     return migrate_coverage_v1(coverage, course)
 
 
-def _walk_strings(value: object) -> Iterable[str]:
-    if isinstance(value, str):
-        yield value
-    elif isinstance(value, dict):
-        for child in value.values():
-            yield from _walk_strings(child)
-    elif isinstance(value, list):
-        for child in value:
-            yield from _walk_strings(child)
+def _asset_sources_by_destination(course: dict) -> Dict[Destination, Set[str]]:
+    indexed: Dict[Destination, Set[str]] = {}
+    for reference in iter_asset_references(course):
+        if not all(
+            isinstance(value, str) and value
+            for value in (reference.part_id, reference.slice_id, reference.block_id)
+        ):
+            continue
+        destination = (
+            reference.part_id,
+            reference.slice_id,
+            reference.block_id,
+        )
+        indexed.setdefault(destination, set()).add(reference.source)
+    return indexed
 
 
 def _source_map_matches(
@@ -196,11 +270,8 @@ def _source_map_matches(
     source_id: object,
     block_id: str,
     expected_pointer: str,
-    expected_hash: str,
 ) -> Tuple[bool, bool]:
     if not isinstance(source_map, dict) or not isinstance(source_id, str):
-        return False, False
-    if source_map.get("courseDefinitionHash") != expected_hash:
         return False, False
     mappings = source_map.get("mappings")
     if not isinstance(mappings, list):
@@ -221,23 +292,21 @@ def _source_map_matches(
 
 def _binding_references_source(
     item: dict,
-    block: dict,
+    identity: Destination,
+    block_id: str,
+    asset_sources: Dict[Destination, Set[str]],
     source_map: object,
     expected_pointer: str,
-    expected_hash: str,
 ) -> Tuple[bool, bool]:
     source_file = item.get("sourceFile")
-    if isinstance(source_file, str) and source_file in set(_walk_strings(block)):
+    if isinstance(source_file, str) and source_file in asset_sources.get(identity, set()):
         return True, False
     source_id = item.get("sourceId")
-    if isinstance(source_id, str) and source_id in set(_walk_strings(block)):
-        return True, False
     return _source_map_matches(
         source_map,
         source_id,
-        block.get("id", ""),
+        block_id,
         expected_pointer,
-        expected_hash,
     )
 
 
@@ -245,49 +314,95 @@ def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return ValidationIssue(path, code, message)
 
 
-def _load_optional_json(path: Path, blockers: List[ValidationIssue], code: str) -> object:
-    if not path.is_file():
-        return None
+def _g5_issue(
+    root: Path,
+    course: dict,
+    source_map: object,
+) -> Optional[ValidationIssue]:
+    blueprint, blueprint_issue = _safe_json_load(
+        root, ".course-work/course-blueprint.json", required=True
+    )
+    if blueprint_issue is not None:
+        return blueprint_issue
+    report, report_issue = _safe_json_load(
+        root, ".course-work/compilation-report.json", required=True
+    )
+    if report_issue is not None:
+        return report_issue
     try:
-        return load_json(path)
-    except ValueError as exc:
-        blockers.append(_issue(str(path), code, str(exc)))
-        return None
+        verify_compilation_evidence(blueprint, course, source_map, report)
+    except CompilationEvidenceError as exc:
+        if exc.code.startswith("source-map"):
+            path = ".course-work/course-runtime-source-map.json"
+        elif exc.code.startswith("compilation-report"):
+            path = ".course-work/compilation-report.json"
+        elif exc.code == "compilation-evidence-invalid":
+            path = ".course-work/compilation-report.json"
+        else:
+            path = "course/course.json"
+        return _issue(path, exc.code, str(exc))
+    except CompilationToolError as exc:
+        return _issue(
+            ".course-work/compilation-report.json",
+            "g5-evidence-unverifiable",
+            str(exc),
+        )
+    return None
 
 
 def audit_instructional_bindings(root: Path) -> BindingAudit:
-    root = root.resolve()
+    root = Path(root).absolute()
     blockers: List[ValidationIssue] = []
     warnings: List[ValidationIssue] = []
-    try:
-        coverage = load_instructional_coverage(root)
-    except ValueError as exc:
+    coverage, coverage_issue = _safe_json_load(
+        root, ".course-work/source-coverage.json", required=True
+    )
+    if coverage_issue is not None:
+        return BindingAudit((coverage_issue,), ())
+    if not isinstance(coverage, dict):
         return BindingAudit(
-            blockers=(_issue("source-coverage.json", "coverage-unavailable", str(exc)),),
-            warnings=(),
+            (_issue(".course-work/source-coverage.json", "invalid-shape", "coverage must be an object"),),
+            (),
         )
-    course = _load_optional_json(
-        _course_document_path(root), blockers, "course-document-unavailable"
-    )
-    source_map = _load_optional_json(
-        _source_map_path(root), blockers, "source-map-invalid"
-    )
-    destinations = collect_course_destinations(course) if isinstance(course, dict) else {}
-    destination_pointers = (
-        _course_destination_pointers(course) if isinstance(course, dict) else {}
-    )
-    expected_hash = canonical_json_hash(course) if isinstance(course, dict) else ""
-    if source_map is not None and (
-        not isinstance(source_map, dict)
-        or source_map.get("courseDefinitionHash") != expected_hash
-    ):
-        blockers.append(
-            _issue(
-                "course-runtime-source-map.json",
-                "source-map-stale",
-                "source map does not match the current CourseDefinition hash",
+    version = coverage.get("schemaVersion")
+    if version not in {"1.0", "2.0"}:
+        return BindingAudit(
+            (_issue(".course-work/source-coverage.json", "invalid-version", "coverage schemaVersion must be 1.0 or 2.0"),),
+            (),
+        )
+    course, course_issue = _safe_json_load(root, "course/course.json", required=True)
+    if course_issue is not None:
+        return BindingAudit((course_issue,), ())
+    course_shape_issue = _course_shape_issue(course)
+    if course_shape_issue is not None:
+        return BindingAudit((course_shape_issue,), ())
+    assert isinstance(course, dict)
+    if version == "1.0":
+        try:
+            coverage = migrate_coverage_v1(coverage, course)
+        except ValueError as exc:
+            return BindingAudit(
+                (_issue(".course-work/source-coverage.json", "invalid-shape", str(exc)),),
+                (),
             )
-        )
+    source_map, source_map_issue = _safe_json_load(
+        root, ".course-work/course-runtime-source-map.json", required=False
+    )
+    if source_map_issue is not None:
+        blockers.append(source_map_issue)
+    destinations = collect_course_destinations(course)
+    destination_pointers = _course_destination_pointers(course)
+    asset_sources = _asset_sources_by_destination(course)
+    g5_checked = False
+    g5_issue: Optional[ValidationIssue] = None
+
+    def ensure_g5() -> Optional[ValidationIssue]:
+        nonlocal g5_checked, g5_issue
+        if not g5_checked:
+            g5_checked = True
+            g5_issue = _g5_issue(root, course, source_map)
+        return g5_issue
+
     items = coverage.get("items") if isinstance(coverage, dict) else None
     if not isinstance(items, list):
         blockers.append(
@@ -360,10 +475,11 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
                 continue
             source_referenced, pointer_mismatch = _binding_references_source(
                 item,
-                block,
+                identity,  # type: ignore[arg-type]
+                block["id"],
+                asset_sources,
                 source_map,
                 destination_pointers[identity],  # type: ignore[index]
-                expected_hash,
             )
             if pointer_mismatch:
                 blockers.append(
@@ -373,6 +489,13 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
                         "source-map runtimePointer does not identify the bound Block",
                     )
                 )
+            if source_referenced and (
+                item.get("sourceFile") not in asset_sources.get(identity, set())
+            ):
+                evidence_issue = ensure_g5()
+                if evidence_issue is not None:
+                    blockers.append(evidence_issue)
+                    source_referenced = False
             if not source_referenced:
                 blockers.append(_issue(binding_path, "binding-source-unreferenced", "target Block does not contain or reference the declared source"))
     return BindingAudit(tuple(blockers), tuple(warnings))
