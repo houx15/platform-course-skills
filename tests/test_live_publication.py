@@ -34,6 +34,8 @@ from course_toolkit.package_review import (
 from course_toolkit.preview_evidence import record_preview_evidence, verify_g7_preview
 from course_toolkit.workflow import (
     complete_gate,
+    G3_EVIDENCE_KEYS,
+    G4_EVIDENCE_KEYS,
     load_session,
     new_session,
     reconcile_artifacts,
@@ -133,8 +135,18 @@ def prepare_g8(root: Path):
     })
     write_v2_review_report(root, approve(prepare_v2_review(root)))
     session = new_session(document["course"]["id"], [], NOW)
-    for gate in ("G0", "G1", "G2", "G3", "G4"):
+    for gate in ("G0", "G1", "G2"):
         complete_gate(session, gate, NOW)
+    complete_gate(
+        session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+    )
+    complete_gate(
+        session, "G4", NOW, gate_evidence={key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+    )
+    # This publication fixture predates the Task 3 page-plan artifacts. Keep it
+    # readable as a legacy session rather than fabricating current G3/G4 proof.
+    for key in (*G3_EVIDENCE_KEYS, *G4_EVIDENCE_KEYS):
+        session.artifact_hashes.pop(key, None)
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))
     complete_gate(session, "G7", NOW, gate_evidence=verify_g7_preview(root))

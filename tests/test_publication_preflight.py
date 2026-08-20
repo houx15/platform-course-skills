@@ -25,6 +25,8 @@ from course_toolkit.publication import (
 )
 from course_toolkit.workflow import (
     complete_gate,
+    G3_EVIDENCE_KEYS,
+    G4_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
     G8_EVIDENCE_KEYS,
     hash_path,
@@ -39,8 +41,14 @@ from tests.test_publication_manifest import NOW, prepare_g6
 
 def complete_through_g8(root: Path) -> None:
     session = new_session("course-local-a", [], NOW)
-    for gate_id in ("G0", "G1", "G2", "G3", "G4"):
+    for gate_id in ("G0", "G1", "G2"):
         complete_gate(session, gate_id, NOW)
+    complete_gate(
+        session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+    )
+    complete_gate(
+        session, "G4", NOW, gate_evidence={key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+    )
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))
     complete_gate(

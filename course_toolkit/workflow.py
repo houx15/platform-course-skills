@@ -10,10 +10,18 @@ from course_toolkit.issues import (
 from course_toolkit.course_compiler import (
     CONTRACT_SNAPSHOT,
     CompilationEvidenceError,
-    canonical_json_hash,
     verify_compilation_evidence,
 )
-from course_toolkit.hashing import hash_path
+from course_toolkit.hashing import canonical_json_hash, hash_path
+from course_toolkit.instructional_plan import (
+    COVERAGE_RELATIVE_PATH,
+    PLAN_RELATIVE_PATH,
+    PlanApprovalError,
+    PlanValidationError,
+    plan_content_hash,
+    validate_plan_at_root,
+    verify_plan_approval,
+)
 from course_toolkit.jsonio import load_json, write_json_atomic
 
 
@@ -81,8 +89,10 @@ class ArtifactRule:
 ARTIFACT_GATE_RULES = (
     ArtifactRule("materials/", "G1"),
     ArtifactRule(".course-work/course-brief.json", "G2"),
-    ArtifactRule(".course-work/course-blueprint.json", "G3"),
+    ArtifactRule(".course-work/source-coverage.json", "G3"),
     ArtifactRule(".course-work/media/", "G4"),
+    ArtifactRule(".course-work/media-design.json", "G4"),
+    ArtifactRule(".course-work/course-blueprint.json", "G5"),
     ArtifactRule("course/course.json", "G5"),
     ArtifactRule(".course-work/course-runtime-source-map.json", "G5"),
     ArtifactRule(".course-work/compilation-report.json", "G5"),
@@ -98,6 +108,17 @@ ARTIFACT_GATE_RULES = (
     ArtifactRule(".course-work/remote-discovery.json", "G9"),
     ArtifactRule(".course-work/publication-preflight.json", "G9"),
     ArtifactRule(".course-work/publication-operation.json", "G10"),
+)
+
+G3_EVIDENCE_KEYS = (
+    ".course-work/source-coverage.json",
+    ".course-work/course-storyboard.json",
+)
+
+G4_EVIDENCE_KEYS = (
+    ".course-work/course-storyboard.json",
+    ".course-work/media-design.json",
+    "@decision/course-plan-approval",
 )
 
 G5_EVIDENCE_KEYS = (
@@ -313,53 +334,22 @@ def complete_gate(
         raise WorkflowError(
             f"{gate_id} has a pending teacher decision: {effective_pending[0]}"
         )
-    if gate_id == "G5":
+    evidence_requirements = {
+        "G3": (G3_EVIDENCE_KEYS, "current page-plan evidence"),
+        "G4": (G4_EVIDENCE_KEYS, "current approved page-plan and media-design evidence"),
+        "G5": (G5_EVIDENCE_KEYS, "current compilation evidence"),
+        "G6": (G6_EVIDENCE_KEYS, "current package validation evidence"),
+        "G7": (G7_EVIDENCE_KEYS, "current renderer preview evidence"),
+        "G8": (G8_EVIDENCE_KEYS, "current independent review evidence"),
+        "G9": (G9_EVIDENCE_KEYS, "current publication preflight evidence"),
+        "G10": (G10_EVIDENCE_KEYS, "current remote verification evidence"),
+    }
+    if gate_id in evidence_requirements:
+        required_keys, label = evidence_requirements[gate_id]
         evidence = gate_evidence or {}
-        missing = [key for key in G5_EVIDENCE_KEYS if key not in evidence]
+        missing = [key for key in required_keys if key not in evidence]
         if missing:
-            raise WorkflowError(
-                f"G5 requires current compilation evidence: {missing[0]}"
-            )
-        session.artifact_hashes.update(evidence)
-    if gate_id == "G6":
-        evidence = gate_evidence or {}
-        missing = [key for key in G6_EVIDENCE_KEYS if key not in evidence]
-        if missing:
-            raise WorkflowError(
-                f"G6 requires current package validation evidence: {missing[0]}"
-            )
-        session.artifact_hashes.update(evidence)
-    if gate_id == "G7":
-        evidence = gate_evidence or {}
-        missing = [key for key in G7_EVIDENCE_KEYS if key not in evidence]
-        if missing:
-            raise WorkflowError(
-                f"G7 requires current renderer preview evidence: {missing[0]}"
-            )
-        session.artifact_hashes.update(evidence)
-    if gate_id == "G8":
-        evidence = gate_evidence or {}
-        missing = [key for key in G8_EVIDENCE_KEYS if key not in evidence]
-        if missing:
-            raise WorkflowError(
-                f"G8 requires current independent review evidence: {missing[0]}"
-            )
-        session.artifact_hashes.update(evidence)
-    if gate_id == "G9":
-        evidence = gate_evidence or {}
-        missing = [key for key in G9_EVIDENCE_KEYS if key not in evidence]
-        if missing:
-            raise WorkflowError(
-                f"G9 requires current publication preflight evidence: {missing[0]}"
-            )
-        session.artifact_hashes.update(evidence)
-    if gate_id == "G10":
-        evidence = gate_evidence or {}
-        missing = [key for key in G10_EVIDENCE_KEYS if key not in evidence]
-        if missing:
-            raise WorkflowError(
-                f"G10 requires current remote verification evidence: {missing[0]}"
-            )
+            raise WorkflowError(f"{gate_id} requires {label}: {missing[0]}")
         session.artifact_hashes.update(evidence)
     if gate_id not in session.completed_gate_ids:
         session.completed_gate_ids.append(gate_id)
@@ -455,6 +445,74 @@ def workflow_summary(session: CourseProductionSession) -> dict:
         "pendingDecisions": list(session.pending_decision_ids),
         "pendingAnnotations": list(session.pending_annotation_ids),
         "nextAction": next_action,
+    }
+
+
+def _plan_validation_error(gate_id: str, issues: Sequence[object]) -> WorkflowError:
+    first = issues[0] if issues else None
+    code = getattr(first, "code", "invalid-plan")
+    return WorkflowError(f"{gate_id} page plan is invalid: {code}")
+
+
+def _safe_json_object(root: Path, relative_path: str, *, gate_id: str) -> Tuple[Path, dict]:
+    path = _safe_course_path(root, relative_path)
+    if path.is_symlink() or not path.is_file():
+        raise WorkflowError(f"{gate_id} evidence is missing: {relative_path}")
+    try:
+        document = load_json(path)
+    except ValueError as exc:
+        raise WorkflowError(f"{gate_id} evidence is invalid JSON: {relative_path}") from exc
+    if not isinstance(document, dict):
+        raise WorkflowError(f"{gate_id} evidence must be a JSON object: {relative_path}")
+    return path, document
+
+
+def verify_g3_plan(root: Path) -> Dict[str, str]:
+    """Verify the current semantic Part/Slice plan and source coverage for G3."""
+    root = root.resolve()
+    try:
+        issues = validate_plan_at_root(root)
+    except PlanValidationError as exc:
+        raise _plan_validation_error("G3", exc.issues) from exc
+    if issues:
+        raise _plan_validation_error("G3", issues)
+    _, plan = _safe_json_object(root, PLAN_RELATIVE_PATH, gate_id="G3")
+    coverage_path, _ = _safe_json_object(root, COVERAGE_RELATIVE_PATH, gate_id="G3")
+    return {
+        ".course-work/source-coverage.json": hash_path(coverage_path),
+        # Do not use the raw storyboard bytes: approval metadata is not plan content.
+        ".course-work/course-storyboard.json": plan_content_hash(plan),
+    }
+
+
+def _approval_evidence_hash(root: Path) -> Optional[str]:
+    """Return current approval identity, or None when it is absent or stale."""
+    try:
+        approval = verify_plan_approval(root)
+    except (PlanApprovalError, PlanValidationError):
+        return None
+    return canonical_json_hash(approval)
+
+
+def verify_g4_media_design(root: Path) -> Dict[str, str]:
+    """Verify G4's approved plan identity and strict local media-design object."""
+    root = root.resolve()
+    plan_evidence = verify_g3_plan(root)
+    try:
+        approval = verify_plan_approval(root)
+    except PlanValidationError as exc:
+        raise _plan_validation_error("G4", exc.issues) from exc
+    except PlanApprovalError as exc:
+        raise WorkflowError(f"G4 page-plan approval is {exc.code}: {exc}") from exc
+    media_path, _ = _safe_json_object(
+        root, ".course-work/media-design.json", gate_id="G4"
+    )
+    return {
+        ".course-work/course-storyboard.json": plan_evidence[
+            ".course-work/course-storyboard.json"
+        ],
+        ".course-work/media-design.json": hash_path(media_path),
+        "@decision/course-plan-approval": canonical_json_hash(approval),
     }
 
 
@@ -791,6 +849,67 @@ def reconcile_artifacts(
             session.artifact_hashes.pop(rule.path, None)
         else:
             session.artifact_hashes[rule.path] = current_hash
+
+    # The storyboard file contains approval metadata alongside the teacher's
+    # plan. Track its Task 2 semantic projection instead of its raw bytes, so
+    # recording or refreshing approval cannot invalidate G3.
+    plan_artifact_id = ".course-work/course-storyboard.json"
+    previous_plan_hash = session.artifact_hashes.get(plan_artifact_id)
+    try:
+        _, current_plan = _safe_json_object(root, PLAN_RELATIVE_PATH, gate_id="G3")
+        current_plan_hash = plan_content_hash(current_plan)
+    except WorkflowError:
+        current_plan_hash = None
+    plan_change_issue = make_registered_issue(
+        code="workflow-artifact-changed",
+        source="workflow",
+        message=f"Tracked course artifact changed: {plan_artifact_id}",
+        gate_id="G3",
+        seen_at=now,
+        target={"path": plan_artifact_id},
+        remediation="Re-check the page plan and complete G3 again.",
+    )
+    if previous_plan_hash is None:
+        if current_plan_hash is not None:
+            session.artifact_hashes[plan_artifact_id] = current_plan_hash
+            _resolve_recurring_issue(issue_store, plan_change_issue, now)
+    elif current_plan_hash == previous_plan_hash:
+        _resolve_recurring_issue(issue_store, plan_change_issue, now)
+    else:
+        changed_paths.append(plan_artifact_id)
+        changed_gate_ids.append("G3")
+        issue_store.upsert(plan_change_issue)
+        if current_plan_hash is None:
+            session.artifact_hashes.pop(plan_artifact_id, None)
+        else:
+            session.artifact_hashes[plan_artifact_id] = current_plan_hash
+
+    approval_artifact_id = "@decision/course-plan-approval"
+    previous_approval_hash = session.artifact_hashes.get(approval_artifact_id)
+    current_approval_hash = _approval_evidence_hash(root)
+    approval_change_issue = make_registered_issue(
+        code="workflow-artifact-changed",
+        source="workflow",
+        message=f"Tracked course artifact changed: {approval_artifact_id}",
+        gate_id="G4",
+        seen_at=now,
+        target={"path": approval_artifact_id},
+        remediation="Confirm the current page plan again and complete G4.",
+    )
+    if previous_approval_hash is None:
+        if current_approval_hash is not None:
+            session.artifact_hashes[approval_artifact_id] = current_approval_hash
+            _resolve_recurring_issue(issue_store, approval_change_issue, now)
+    elif current_approval_hash == previous_approval_hash:
+        _resolve_recurring_issue(issue_store, approval_change_issue, now)
+    else:
+        changed_paths.append(approval_artifact_id)
+        changed_gate_ids.append("G4")
+        issue_store.upsert(approval_change_issue)
+        if current_approval_hash is None:
+            session.artifact_hashes.pop(approval_artifact_id, None)
+        else:
+            session.artifact_hashes[approval_artifact_id] = current_approval_hash
 
     for artifact_id, artifact in TOOLKIT_G5_ARTIFACTS.items():
         previous_hash = session.artifact_hashes.get(artifact_id)

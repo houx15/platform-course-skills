@@ -8,6 +8,8 @@ from pathlib import Path
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.workflow import (
+    G3_EVIDENCE_KEYS,
+    G4_EVIDENCE_KEYS,
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
@@ -17,6 +19,8 @@ from course_toolkit.workflow import (
     load_session,
     save_session,
 )
+from course_toolkit.instructional_plan import approve_plan
+from tests.test_instructional_plan import write_root
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -63,6 +67,19 @@ class WorkflowCliTests(unittest.TestCase):
             *extra,
             "--json",
         )
+
+    def prepare_approved_page_plan(self, *, media: bool = True) -> None:
+        write_root(self.root)
+        approve_plan(
+            self.root,
+            decision_id="decision-plan-1",
+            approved_at="2026-08-21T00:00:00Z",
+        )
+        if media:
+            (self.root / ".course-work" / "media-design.json").write_text(
+                json.dumps({"schemaVersion": "1.0", "designId": "media-design-1"}),
+                encoding="utf-8",
+            )
 
     def test_init_creates_session_and_stable_json_summary(self):
         material = self.root / "materials" / "a.md"
@@ -122,6 +139,62 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(payload["completedGates"], ["G0"])
         self.assertEqual(payload["phase"], "material-review")
 
+    def test_g3_and_g4_complete_from_current_plan_evidence(self):
+        self.init()
+        write_root(self.root)
+        for gate_id in ("G0", "G1", "G2"):
+            completed = self.run_cli("complete-gate", self.root, gate_id, "--json")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+        missing_plan, missing_plan_payload = self.json_result(
+            "complete-gate", self.root, "G3", "--json"
+        )
+        self.assertEqual(missing_plan.returncode, 0, missing_plan.stderr)
+        self.assertEqual(missing_plan_payload["completedGates"][-1], "G3")
+
+        missing_approval, missing_approval_payload = self.json_result(
+            "complete-gate", self.root, "G4", "--json"
+        )
+        self.assertEqual(missing_approval.returncode, 2)
+        self.assertIn("approval-missing", missing_approval_payload["error"]["message"])
+        self.assertNotIn(str(self.root), missing_approval_payload["error"]["message"])
+
+        approve_plan(
+            self.root,
+            decision_id="decision-plan-1",
+            approved_at="2026-08-21T00:00:00Z",
+        )
+        missing_media, missing_media_payload = self.json_result(
+            "complete-gate", self.root, "G4", "--json"
+        )
+        self.assertEqual(missing_media.returncode, 2)
+        self.assertIn("media-design.json", missing_media_payload["error"]["message"])
+
+        (self.root / ".course-work" / "media-design.json").write_text(
+            json.dumps({"schemaVersion": "1.0", "designId": "media-design-1"}),
+            encoding="utf-8",
+        )
+        completed, payload = self.json_result("complete-gate", self.root, "G4", "--json")
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["completedGates"][-1], "G4")
+
+    def test_g4_reports_stale_approval_with_stable_error(self):
+        self.init()
+        self.prepare_approved_page_plan()
+        for gate_id in ("G0", "G1", "G2", "G3"):
+            completed = self.run_cli("complete-gate", self.root, gate_id, "--json")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+        storyboard_path = self.root / ".course-work" / "course-storyboard.json"
+        storyboard = json.loads(storyboard_path.read_text(encoding="utf-8"))
+        storyboard["parts"][0]["slices"][0]["teachingPurpose"] = "审批后更新"
+        storyboard_path.write_text(json.dumps(storyboard), encoding="utf-8")
+
+        completed, payload = self.json_result("complete-gate", self.root, "G4", "--json")
+
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("approval-stale", payload["error"]["message"])
+        self.assertNotIn(str(self.root), payload["error"]["message"])
+
     def test_set_status_persists_waiting_for_teacher(self):
         self.init()
 
@@ -154,7 +227,11 @@ class WorkflowCliTests(unittest.TestCase):
         self.init()
         for index in range(10):
             session = load_session(self.root)
-            if index == 5:
+            if index == 3:
+                evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+            elif index == 4:
+                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+            elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
@@ -185,7 +262,11 @@ class WorkflowCliTests(unittest.TestCase):
         self.init()
         session = load_session(self.root)
         for index in range(9):
-            if index == 5:
+            if index == 3:
+                evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+            elif index == 4:
+                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+            elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
@@ -215,7 +296,11 @@ class WorkflowCliTests(unittest.TestCase):
         self.init()
         session = load_session(self.root)
         for index in range(7):
-            if index == 5:
+            if index == 3:
+                evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+            elif index == 4:
+                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+            elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
                 evidence = {key: "b" * 64 for key in G6_EVIDENCE_KEYS}
@@ -238,6 +323,7 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g5_cannot_complete_without_current_compilation_outputs(self):
         self.init()
+        self.prepare_approved_page_plan()
         for index in range(5):
             completed = self.run_cli(
                 "complete-gate", self.root, f"G{index}", "--json"
@@ -253,6 +339,7 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g6_cannot_complete_without_current_validation_report(self):
         self.init()
+        self.prepare_approved_page_plan()
         blueprint = self.root / ".course-work/course-blueprint.json"
         blueprint.write_bytes(APPROVED.read_bytes())
         for index in range(6):
@@ -279,6 +366,7 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g6_completes_from_current_validator_evidence(self):
         self.init()
+        self.prepare_approved_page_plan()
         blueprint = self.root / ".course-work/course-blueprint.json"
         blueprint.write_bytes(APPROVED.read_bytes())
         for index in range(6):

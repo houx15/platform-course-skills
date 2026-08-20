@@ -20,6 +20,8 @@ from course_toolkit.workflow import (
     reconcile_artifacts,
     save_session,
     set_phase_status,
+    verify_g3_plan,
+    verify_g4_media_design,
     verify_g5_compilation,
     verify_g6_validation,
     verify_g9_publication_preflight,
@@ -216,7 +218,11 @@ def execute(args: argparse.Namespace) -> tuple:
             )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
-        if args.gate_id == "G5":
+        if args.gate_id == "G3":
+            gate_evidence = verify_g3_plan(root)
+        elif args.gate_id == "G4":
+            gate_evidence = verify_g4_media_design(root)
+        elif args.gate_id == "G5":
             gate_evidence = verify_g5_compilation(root)
         elif args.gate_id == "G6":
             gate_evidence = verify_g6_validation(root)
