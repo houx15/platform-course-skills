@@ -166,6 +166,14 @@ class InstructionalBindingTests(unittest.TestCase):
 
         self.assertEqual(loaded["items"][0]["location"], "page:7/figure:2")
 
+    def test_binding_support_ids_are_an_additive_stable_provenance_field(self):
+        coverage = {"schemaVersion": "2.0", "items": [required_evidence()]}
+        coverage["items"][0]["bindings"][0]["supportsIds"] = ["answer-target", "answer-target"]
+
+        issues = self.api().validate_instructional_coverage(coverage)
+
+        self.assertIn("binding-supports-invalid", {issue.code for issue in issues})
+
     def test_valid_real_binding_passes_when_source_map_binds_source_to_target(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

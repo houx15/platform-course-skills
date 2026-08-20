@@ -11,6 +11,7 @@ from .course_compiler import (
     verify_compilation_evidence,
 )
 from .course_asset_index import iter_asset_references
+from .blueprint import ID_RE
 from .errors import ValidationIssue
 from .jsonio import load_json
 
@@ -301,6 +302,14 @@ def validate_instructional_coverage(coverage: object) -> List[ValidationIssue]:
             binding_path = f"{path}.bindings[{binding_index}]"
             if not isinstance(binding, dict) or not all(_nonempty_string(binding.get(field)) for field in ("partId", "sliceId", "blockId")):
                 issues.append(_issue(binding_path, "binding-target-missing", "binding must name a Part, Slice, and Block"))
+                continue
+            supports_ids = binding.get("supportsIds")
+            if supports_ids is not None and (
+                not isinstance(supports_ids, list)
+                or not all(isinstance(target_id, str) and ID_RE.fullmatch(target_id) for target_id in supports_ids)
+                or len(set(supports_ids)) != len(supports_ids)
+            ):
+                issues.append(_issue(f"{binding_path}.supportsIds", "binding-supports-invalid", "supportsIds must be unique stable CourseDefinition Block IDs"))
     return issues
 
 
@@ -506,6 +515,13 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
             if not all(isinstance(value, str) and value for value in identity):
                 blockers.append(_issue(binding_path, "binding-target-missing", "binding must name a Part, Slice, and Block"))
                 continue
+            supports_ids = binding.get("supportsIds")
+            if supports_ids is not None and (
+                not isinstance(supports_ids, list)
+                or not all(isinstance(target_id, str) and ID_RE.fullmatch(target_id) for target_id in supports_ids)
+                or len(set(supports_ids)) != len(supports_ids)
+            ):
+                blockers.append(_issue(f"{binding_path}.supportsIds", "binding-supports-invalid", "supportsIds must be unique stable CourseDefinition Block IDs"))
             block = destinations.get(identity)  # type: ignore[arg-type]
             if block is None:
                 blockers.append(_issue(binding_path, "binding-target-missing", "binding target does not exist in CourseDefinition 2.0"))

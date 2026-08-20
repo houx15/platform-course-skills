@@ -13,6 +13,12 @@ from course_toolkit.course_compiler import (
 )
 from course_toolkit.errors import ValidationIssue
 from course_toolkit.html_validation import validate_interactive_html_v2
+from course_toolkit.instructional_bindings import audit_instructional_bindings
+from course_toolkit.instructional_validation import (
+    validate_layout_assignment,
+    validate_plan_correspondence,
+    validate_workflow_availability,
+)
 from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.pdf_validation import validate_pdf_file
 from course_toolkit.video_interactions import inspect_video_file
@@ -42,8 +48,12 @@ VIDEO_INTERACTION_VALIDATOR = (
 )
 VALIDATOR_ARTIFACTS = (
     ROOT / "course_toolkit" / "course_asset_index.py",
+    ROOT / "course_toolkit" / "blueprint.py",
     ROOT / "course_toolkit" / "course_package_validation.py",
     ROOT / "course_toolkit" / "html_validation.py",
+    ROOT / "course_toolkit" / "instructional_bindings.py",
+    ROOT / "course_toolkit" / "instructional_plan.py",
+    ROOT / "course_toolkit" / "instructional_validation.py",
     ROOT / "course_toolkit" / "mp4.py",
     ROOT / "course_toolkit" / "pdf_validation.py",
     ROOT / "course_toolkit" / "video_interactions.py",
@@ -563,43 +573,69 @@ def _media_evidence(root: Path, document: dict) -> dict:
 
 
 def _layout_findings(document: dict) -> List[ValidationIssue]:
-    issues: List[ValidationIssue] = []
-    course = document.get("course")
-    if not isinstance(course, dict):
-        return issues
-    for part_index, part in enumerate(course.get("parts", [])):
-        if not isinstance(part, dict):
-            continue
-        for slice_index, slice_data in enumerate(part.get("slices", [])):
-            if not isinstance(slice_data, dict):
-                continue
-            layout = slice_data.get("layout")
-            if not isinstance(layout, dict) or layout.get("preset") not in {
-                "split-horizontal",
-                "split-vertical",
-            }:
-                continue
-            slots = layout.get("slots")
-            if not isinstance(slots, list):
-                continue
-            for slot_index, slot in enumerate(slots):
-                block_ids = slot.get("blockIds") if isinstance(slot, dict) else None
-                if not isinstance(block_ids, list) or not block_ids:
-                    issues.append(
-                        ValidationIssue(
-                            path=(
-                                f"course.parts[{part_index}].slices[{slice_index}]"
-                                f".layout.slots[{slot_index}].blockIds"
-                            ),
-                            code="layout-empty-slot",
-                            message=(
-                                "Split layout Slots must be non-empty. Use full for one "
-                                "focused Block, redistribute content across both sides, "
-                                "or split the teaching sequence into separate Slices."
-                            ),
-                        )
-                    )
-    return issues
+    return validate_layout_assignment(document)
+
+
+def _instructional_layers(root: Path, document: dict) -> Tuple[dict, List[ValidationIssue], List[ValidationIssue]]:
+    """Collect optional staged-authoring evidence without breaking legacy packages.
+
+    A pre-staged package has neither record and remains contract-valid.  Once a
+    plan exists, correspondence findings are blocking; a lone in-progress
+    coverage record is retained as a layer finding for the workflow gate to
+    surface, rather than silently treating an old fixture as an approved plan.
+    """
+    coverage_path = root / ".course-work" / "source-coverage.json"
+    plan_path = root / ".course-work" / "course-storyboard.json"
+    has_coverage = coverage_path.is_file() and not coverage_path.is_symlink()
+    has_plan = plan_path.is_file() and not plan_path.is_symlink()
+    empty_layer = {"status": "not-applicable", "issues": [], "warnings": []}
+    layers = {
+        "instructionalBinding": dict(empty_layer),
+        "planCorrespondence": dict(empty_layer),
+        "layoutWorkflow": {"status": "clear", "issues": [], "warnings": []},
+    }
+    blockers: List[ValidationIssue] = []
+    warnings: List[ValidationIssue] = []
+
+    layout_workflow = [*validate_layout_assignment(document), *validate_workflow_availability(document)]
+    layers["layoutWorkflow"] = {
+        "status": "blocked" if layout_workflow else "clear",
+        "issues": [issue.as_dict() for issue in layout_workflow],
+        "warnings": [],
+    }
+    blockers.extend(layout_workflow)
+
+    if has_coverage:
+        binding = audit_instructional_bindings(root)
+        layers["instructionalBinding"] = {
+            "status": "blocked" if binding.blockers else "warnings" if binding.warnings else "clear",
+            "issues": [issue.as_dict() for issue in binding.blockers],
+            "warnings": [issue.as_dict() for issue in binding.warnings],
+        }
+        blockers.extend(binding.blockers)
+        warnings.extend(binding.warnings)
+
+    if has_plan:
+        correspondence = validate_plan_correspondence(root, document)
+        layers["planCorrespondence"] = {
+            "status": "blocked" if correspondence else "clear",
+            "issues": [issue.as_dict() for issue in correspondence],
+            "warnings": [],
+        }
+        blockers.extend(correspondence)
+    elif has_coverage:
+        layers["planCorrespondence"] = {
+            "status": "not-current",
+            "issues": [
+                ValidationIssue(
+                    ".course-work/course-storyboard.json",
+                    "plan-evidence-missing",
+                    "source coverage exists but the current approved page plan is missing",
+                ).as_dict()
+            ],
+            "warnings": [],
+        }
+    return layers, blockers, warnings
 
 
 def build_course_validation_report(root: Path) -> dict:
@@ -616,7 +652,6 @@ def build_course_validation_report(root: Path) -> dict:
         compilation_report.get("assetPaths", []),
     )
     issues = list(asset_result.issues)
-    issues.extend(_layout_findings(document))
     specialized_issues, warnings = _specialized_asset_findings(
         delivery_root,
         document,
@@ -625,6 +660,11 @@ def build_course_validation_report(root: Path) -> dict:
     )
     issues.extend(specialized_issues)
     warnings.extend(_completeness_findings(document))
+    layers, instructional_issues, instructional_warnings = _instructional_layers(root, document)
+    issues.extend(instructional_issues)
+    warnings.extend(instructional_warnings)
+    issues.sort(key=lambda issue: (issue.path, issue.code, issue.message))
+    warnings.sort(key=lambda issue: (issue.path, issue.code, issue.message))
     assets = _asset_evidence(delivery_root, asset_result.references)
     part_count = len(document["course"]["parts"])
     slices = [
@@ -650,6 +690,7 @@ def build_course_validation_report(root: Path) -> dict:
         },
         "assets": assets,
         "mediaEvidence": _media_evidence(delivery_root, document),
+        "layers": layers,
         "issues": [issue.as_dict() for issue in issues],
         "warnings": [warning.as_dict() for warning in warnings],
         "browserCheckRequired": True,

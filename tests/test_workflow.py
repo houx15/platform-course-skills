@@ -84,7 +84,59 @@ def legacy_without_page_plan_evidence(session):
 
 
 def bind_current_page_plan_evidence(root, session):
-    write_root(root)
+    # Package-validation fixtures already contain a compiled CourseDefinition.
+    # Bind their G3/G4 records to that definition so the Task-4 correspondence
+    # layer is testing a current plan rather than an intentionally unrelated
+    # standalone page-plan fixture.
+    if (root / "course/course.json").is_file():
+        part_id = "part-evidence-check"
+        slice_id = "slice-read-and-answer"
+        coverage = {
+            "schemaVersion": "2.0",
+            "items": [
+                {
+                    "sourceId": "source-1",
+                    "sourceFile": "materials/claim.md",
+                    "location": "paragraph:1",
+                    "summary": "回答题目的主张证据",
+                    "disposition": "required-core",
+                    "bindings": [{
+                        "partId": part_id,
+                        "sliceId": slice_id,
+                        "blockId": "claim-text",
+                        "role": "question-reference",
+                        "supportsIds": ["evidence-question"],
+                    }],
+                }
+            ],
+        }
+        plan = {
+            "schemaVersion": "2.0",
+            "title": "当前课程计划",
+            "parts": [{"partId": part_id, "title": "证据", "slices": [{
+                "partId": part_id,
+                "sliceId": slice_id,
+                "title": "看主张作答",
+                "teachingPurpose": "在主张证据支持下完成回答。",
+                "sourceUses": [{"sourceId": "source-1", "locator": "paragraph:1", "materialRole": "回答证据"}],
+                "learnerSees": "主张和题目。",
+                "learnerAction": {"kind": "answer", "description": "查看主张后作答。", "referencePolicy": "co-visible", "referenceSourceIds": ["source-1"], "targetId": "question:evidence-question"},
+                "completionEvidence": {"event": "block.completed"},
+                "layoutIntent": {"preset": "full"},
+                "coVisibleRequirements": [{"sourceId": "source-1", "targetId": "question:evidence-question", "reason": "作答时需要主张证据。"}],
+                "imageRelationships": [],
+                "unresolvedBlockers": [],
+                "proposedExclusions": [],
+            }]}],
+        }
+        extracted = {
+            "schemaVersion": "1.0",
+            "items": [{"sourceId": "source-1", "sourceFile": "materials/claim.md", "location": "paragraph:1", "kind": "file", "text": "回答题目的主张证据"}],
+            "ignored": [], "unsupported": [], "errors": [],
+        }
+        write_root(root, plan=plan, coverage=coverage, extracted=extracted)
+    else:
+        write_root(root)
     approve_plan(root, decision_id="decision-plan-fixture", approved_at=NOW)
     write_valid_media_design(root)
     session.artifact_hashes.update(verify_g3_plan(root))
@@ -857,8 +909,8 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         )
 
     def test_asset_change_invalidates_g6_and_downstream(self):
-        self.validate()
         session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
+        self.validate()
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         (self.root / "course/assets/images/diagram.png").write_bytes(b"changed")
@@ -872,8 +924,8 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         self.assertEqual(result.earliest_invalidated_gate_id, "G6")
 
     def test_revalidated_asset_resolves_prior_change_warning(self):
-        self.validate()
         session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
+        self.validate()
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         asset = self.root / "course/assets/images/diagram.png"
@@ -887,8 +939,8 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         self.assertFalse(any(issue.target == target for issue in second.active_issues))
 
     def test_unchanged_course_asset_does_not_invalidate_g6(self):
-        self.validate()
         session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
+        self.validate()
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
 
@@ -902,8 +954,8 @@ class PackageValidationEvidenceTests(unittest.TestCase):
         self.assertIn("G6", session.completed_gate_ids)
 
     def test_validator_hash_change_invalidates_g6(self):
-        self.validate()
         session = bind_current_page_plan_evidence(self.root, fully_gated_through("G7"))
+        self.validate()
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         session.artifact_hashes["@toolkit/course-package-validator"] = "0" * 64

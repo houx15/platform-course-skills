@@ -350,6 +350,17 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertNotIn("timestamp", json.dumps(first))
 
+    def test_report_keeps_existing_findings_and_adds_instructional_layers(self):
+        report = build_course_validation_report(self.root)
+
+        self.assertEqual(
+            set(report["layers"]),
+            {"instructionalBinding", "planCorrespondence", "layoutWorkflow"},
+        )
+        self.assertEqual(report["layers"]["instructionalBinding"]["status"], "not-applicable")
+        self.assertEqual(report["layers"]["planCorrespondence"]["status"], "not-applicable")
+        self.assertEqual(report["layers"]["layoutWorkflow"]["issues"], [])
+
     def test_report_is_independent_of_absolute_course_root(self):
         first = build_course_validation_report(self.root)
         with tempfile.TemporaryDirectory() as temporary:
