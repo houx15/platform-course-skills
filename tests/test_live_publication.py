@@ -1,13 +1,20 @@
 import copy
+import json
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest import mock
 
 from course_toolkit.course_catalog import confirm_course_selection
-from course_toolkit.course_cover import build_cover_prompt, confirm_cover_candidate, register_cover_candidate
+from course_toolkit.course_compiler import compile_blueprint, write_compilation_outputs_atomic
+from course_toolkit.course_package_validation import (
+    build_course_validation_report,
+    sync_validation_issues,
+    write_current_validation_report,
+)
 from course_toolkit.decisions import DecisionStore
-from course_toolkit.jsonio import load_json
+from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.live_publication import (
     DECISION_ID,
     LivePublicationBlocked,
@@ -40,7 +47,7 @@ from tests.test_publication_manifest import NOW, prepare_g6
 
 class FakeMindApi:
     api_base = "https://mind-api.example.test"
-    supports_generated_course_cover = True
+    supports_course_asset_cover = True
 
     def __init__(self):
         self.remote = None
@@ -91,18 +98,26 @@ class FakeMindApi:
         self.remote = RemoteCourse(slug, "published", "b" * 64, self.remote.definition)
         return {"slug": slug, "status": "published", "narrationsGenerated": 1}
 
-    def verify_published_cover(self, slug, local_path, expected_sha256):
-        self.cover_verifications.append((slug, local_path, expected_sha256))
+    def verify_published_cover(self, slug, expected_sha256):
+        self.cover_verifications.append((slug, expected_sha256))
         return {
             "coverUrlPresent": True,
             "sha256": expected_sha256,
-            "sizeBytes": local_path.stat().st_size,
+            "sizeBytes": 123,
         }
 
 
 def prepare_g8(root: Path):
     prepare_g6(root, full=True)
-    from course_toolkit.jsonio import write_json_atomic
+    blueprint_path = root / ".course-work/course-blueprint.json"
+    blueprint = load_json(blueprint_path)
+    blueprint["course"]["id"] = "course-01"
+    blueprint["course"]["title"] = "把争议放回证据里：立场光谱与视角对照矩阵"
+    write_json_atomic(blueprint_path, blueprint)
+    write_compilation_outputs_atomic(root, compile_blueprint(blueprint))
+    report = build_course_validation_report(root)
+    write_current_validation_report(root, report)
+    sync_validation_issues(root, report, NOW)
     write_json_atomic(root / ".course-work/source-coverage.json", {"schemaVersion": "1.0", "items": []})
     write_json_atomic(root / ".course-work/decisions.json", {"schemaVersion": "1.0", "decisions": []})
     write_json_atomic(root / ".course-work/unresolved.json", {"schemaVersion": "1.0", "items": []})
@@ -134,29 +149,13 @@ class LivePublicationTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         prepare_g8(self.root)
         self.slug = load_json(self.root / "course/course.json")["course"]["id"]
-        init_live_publish_state(self.root, self.slug)
         confirm_course_selection(
             self.root,
             "course-01",
             teacher_response="确认，这是第一门课。",
             confirmed_at=NOW,
         )
-        candidate = self.root / ".course-work/cover-candidates/course-01.webp"
-        candidate.parent.mkdir(parents=True)
-        candidate.write_bytes(b"RIFF\x00\x00\x00\x00WEBPcandidate")
-        with mock.patch(
-            "course_toolkit.course_cover._probe_webp",
-            return_value={"width": 1600, "height": 900},
-        ):
-            register_cover_candidate(
-                self.root,
-                candidate,
-                prompt=build_cover_prompt(self.root),
-                generator="imagegen2-subagent",
-                quality=100,
-                created_at=NOW,
-            )
-        confirm_cover_candidate(self.root, teacher_response="确认采用封面", confirmed_at=NOW)
+        init_live_publish_state(self.root)
         self.api = FakeMindApi()
 
     def tearDown(self):
@@ -172,15 +171,20 @@ class LivePublicationTests(unittest.TestCase):
 
     def test_publish_uses_stable_slug_relative_paths_and_readback(self):
         preflight = prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="Demo", now=NOW
+            self.root, self.api, action="publish", now=NOW
         )
         self.assertEqual(preflight["mode"], "create")
         self.assertEqual(preflight["catalog"]["catalogId"], "course-01")
         self.assertEqual(preflight["options"]["category"], "stance-value")
         self.assertEqual(preflight["options"]["cardIds"], ["belief-spectrum", "perspective-matrix"])
-        self.assertEqual(preflight["generatedCover"]["relativePath"], "cover/course-cover.webp")
+        self.assertEqual(preflight["catalogCover"]["relativePath"], "cover/course-cover.webp")
+        self.assertEqual(
+            preflight["catalogCover"]["objectKey"],
+            "courses/course-01/cover/course-cover.webp",
+        )
+        self.assertEqual(preflight["options"]["blurb"], preflight["options"]["introduction"]["whatYouDo"])
         self.assertTrue(all(item["objectKey"] == f"courses/{self.slug}/{item['relativePath']}" for item in preflight["assets"]["upload"]))
-        self.assertIn(
+        self.assertNotIn(
             "cover/course-cover.webp",
             [item["relativePath"] for item in preflight["assets"]["upload"]],
         )
@@ -195,56 +199,72 @@ class LivePublicationTests(unittest.TestCase):
         self.assertIn("hook", self.api.last_definition_options["introduction"])
         self.assertEqual(self.api.last_cover_asset_path, "cover/course-cover.webp")
         self.assertEqual(len(self.api.cover_verifications), 1)
-        self.assertEqual(result["generatedCoverVerification"]["coverUrlPresent"], True)
+        self.assertEqual(result["coverVerification"]["coverUrlPresent"], True)
         self.assertEqual(
-            result["generatedCoverVerification"]["sha256"],
-            preflight["generatedCover"]["sha256"],
+            result["coverVerification"]["sha256"],
+            preflight["catalogCover"]["sha256"],
         )
         self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G10")
+
+    def test_existing_canonical_remote_is_updated_instead_of_creating_a_duplicate(self):
+        document = load_json(self.root / "course/course.json")
+        self.api.remote = RemoteCourse(self.slug, "preview", "a" * 64, document)
+
+        preflight = prepare_live_preflight(
+            self.root, self.api, action="publish", now=NOW
+        )
+
+        self.assertEqual(preflight["mode"], "update")
+        self.assertEqual(preflight["slug"], self.slug)
+
+    def test_init_state_cli_derives_identity_without_accepting_a_free_form_slug(self):
+        (self.root / ".course-work/publish-state.json").unlink()
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(Path(__file__).resolve().parents[1] / "scripts/publish-course.py"),
+                "init-state",
+                str(self.root),
+                "--json",
+            ],
+            cwd=Path(__file__).resolve().parents[1],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(json.loads(completed.stdout)["slug"], "course-01")
 
     def test_old_course_without_catalog_binding_is_blocked_before_remote_discovery(self):
         (self.root / ".course-work/course-catalog-selection.json").unlink()
 
         with self.assertRaisesRegex(LivePublicationBlocked, "33-course catalog"):
             prepare_live_preflight(
-                self.root, self.api, action="publish", blurb="Demo", now=NOW
+                self.root, self.api, action="publish", now=NOW
             )
 
         self.assertEqual(self.api.get_course_calls, 0)
 
-    def test_adapter_without_v1_4_cover_support_is_blocked_before_generated_cover_publish(self):
-        self.api.supports_generated_course_cover = False
+    def test_adapter_without_v1_4_cover_support_is_blocked_before_fixed_cover_publish(self):
+        self.api.supports_course_asset_cover = False
 
-        with self.assertRaisesRegex(LivePublicationBlocked, "cannot bind the generated OSS WebP"):
+        with self.assertRaisesRegex(LivePublicationBlocked, "cannot bind the fixed catalog WebP"):
             prepare_live_preflight(
-                self.root, self.api, action="publish", blurb="Demo", now=NOW
+                self.root, self.api, action="publish", now=NOW
             )
 
         self.assertIsNone(self.api.remote)
 
-    def test_publish_can_defer_cover_for_central_generation(self):
-        (self.root / ".course-work/course-cover.json").unlink()
-        self.api.supports_generated_course_cover = False
+    def test_fixed_catalog_cover_is_never_a_teacher_upload_asset(self):
+        preflight = prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
 
-        preflight = prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="Demo", now=NOW
-        )
-
-        self.assertIsNone(preflight["generatedCover"])
-        self.assertIsNone(preflight["options"]["coverAssetPath"])
-        self.assertNotIn(
-            "cover/course-cover.webp",
-            [item["relativePath"] for item in preflight["assets"]["upload"]],
-        )
-        self.approve_preflight()
-        result = execute_live_publication(self.root, self.api, now=NOW)
-
-        self.assertEqual(result["status"], "published")
-        self.assertIsNone(self.api.last_cover_asset_path)
-        self.assertEqual(self.api.cover_verifications, [])
+        all_assets = preflight["assets"]["upload"] + preflight["assets"]["reuse"]
+        self.assertNotIn("cover/course-cover.webp", [item["relativePath"] for item in all_assets])
+        self.assertEqual(preflight["options"]["coverAssetPath"], "cover/course-cover.webp")
 
     def test_successful_local_upload_proof_is_reused_by_path_and_hash(self):
-        prepare_live_preflight(self.root, self.api, action="publish", blurb="Demo", now=NOW)
+        prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
         self.approve_preflight()
         execute_live_publication(self.root, self.api, now=NOW)
         manifest = build_live_asset_manifest(self.root, load_json(self.root / ".course-work/publish-state.json"))
@@ -252,7 +272,7 @@ class LivePublicationTests(unittest.TestCase):
         self.assertTrue(all(entry["state"] == "reuse-local-proof" for entry in manifest["entries"]))
 
     def test_server_upload_limit_blocks_before_sending_asset_bytes(self):
-        prepare_live_preflight(self.root, self.api, action="publish", blurb="Demo", now=NOW)
+        prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
         self.approve_preflight()
         self.api.max_bytes = 0
 
@@ -263,7 +283,7 @@ class LivePublicationTests(unittest.TestCase):
 
     def test_resume_reuses_each_verified_asset_after_ambiguous_save(self):
         preflight = prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="Demo", now=NOW
+            self.root, self.api, action="publish", now=NOW
         )
         self.approve_preflight()
         self.api.fail_save_once = True
@@ -285,13 +305,13 @@ class LivePublicationTests(unittest.TestCase):
 
     def test_repeated_publish_refreshes_gate_evidence_without_false_invalidation(self):
         prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="First", now=NOW
+            self.root, self.api, action="publish", now=NOW
         )
         self.approve_preflight()
         execute_live_publication(self.root, self.api, now=NOW)
 
         prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="Second", now=NOW
+            self.root, self.api, action="publish", now=NOW
         )
         self.approve_preflight()
         second = execute_live_publication(self.root, self.api, now=NOW)
@@ -302,7 +322,7 @@ class LivePublicationTests(unittest.TestCase):
 
     def test_catalog_selection_change_invalidates_publication_approval(self):
         prepare_live_preflight(
-            self.root, self.api, action="publish", blurb="Demo", now=NOW
+            self.root, self.api, action="publish", now=NOW
         )
         self.approve_preflight()
         confirm_course_selection(

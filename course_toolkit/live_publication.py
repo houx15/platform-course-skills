@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Optional
 
 from course_toolkit.course_catalog import CourseCatalogError, load_confirmed_course_selection
-from course_toolkit.course_cover import CourseCoverError, load_confirmed_cover
 from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore
@@ -76,13 +75,21 @@ def _empty_state(course_local_id: str, slug: str) -> dict:
     }
 
 
-def init_live_publish_state(root: Path, slug: str) -> dict:
+def init_live_publish_state(root: Path) -> dict:
     root = root.resolve()
-    slug = _slug(slug)
+    try:
+        selection = load_confirmed_course_selection(root)
+    except CourseCatalogError as exc:
+        raise LivePublicationBlocked(str(exc)) from exc
+    slug = _slug(selection["slug"])
     session = load_session(root)
     document = load_json(root / "course/course.json")
-    if document.get("course", {}).get("id") != slug:
-        raise LivePublicationBlocked("course.id must equal the stable publication slug")
+    course = document.get("course", {})
+    if course.get("id") != slug or course.get("title") != selection["title"]:
+        raise LivePublicationBlocked(
+            "CourseDefinition identity must match the selected fixed catalog slug and title; "
+            "update the Blueprint, then recompile, validate, preview, and review before publication"
+        )
     path = root / STATE_PATH
     if path.is_file():
         state = load_json(path)
@@ -112,6 +119,12 @@ def build_live_asset_manifest(root: Path, state: dict) -> dict:
     validation = load_json(root / ".course-work/course-validation-report.json")
     definition = load_json(root / "course/course.json")
     slug = state["slug"]
+    try:
+        catalog_selection = load_confirmed_course_selection(root)
+    except CourseCatalogError as exc:
+        raise LivePublicationBlocked(str(exc)) from exc
+    if catalog_selection["slug"] != slug:
+        raise LivePublicationBlocked("publish state does not match the selected fixed catalog slug")
     prior = state.get("uploadedAssets", {})
     entries = []
     for asset in validation.get("assets", []):
@@ -142,40 +155,8 @@ def build_live_asset_manifest(root: Path, state: dict) -> dict:
                 "state": "reuse-local-proof" if reusable else "upload-required",
             }
         )
-    cover_record_path = root / ".course-work/course-cover.json"
-    if cover_record_path.is_file():
-        try:
-            cover = load_confirmed_cover(root)
-        except CourseCoverError as exc:
-            raise LivePublicationBlocked(str(exc)) from exc
-        source = cover["relativePath"]
-        if source not in {entry["relativePath"] for entry in entries}:
-            local = root / cover["localPath"]
-            sha256 = cover["sha256"]
-            size = local.stat().st_size
-            object_key = f"courses/{slug}/{source}"
-            previous = prior.get(source) if isinstance(prior, dict) else None
-            reusable = (
-                isinstance(previous, dict)
-                and previous.get("slug") == slug
-                and previous.get("relativePath") == source
-                and previous.get("sha256") == sha256
-                and previous.get("objectKey") == object_key
-                and isinstance(previous.get("uploadedAt"), str)
-            )
-            entries.append(
-                {
-                    "slug": slug,
-                    "relativePath": source,
-                    "localPath": cover["localPath"],
-                    "sha256": sha256,
-                    "sizeBytes": size,
-                    "contentType": "image/webp",
-                    "objectKey": object_key,
-                    "state": "reuse-local-proof" if reusable else "upload-required",
-                    "role": "course-cover",
-                }
-            )
+    if catalog_selection["cover"]["relativePath"] in {entry["relativePath"] for entry in entries}:
+        raise LivePublicationBlocked("course content must not define the reserved catalog cover path")
     manifest = {
         "schemaVersion": LIVE_SCHEMA_VERSION,
         "slug": slug,
@@ -205,36 +186,25 @@ def prepare_live_preflight(
     api: MindImprintAuthoringApi,
     *,
     action: str,
-    blurb: str,
     now: str,
 ) -> dict:
     root = root.resolve()
     if action not in {"save-preview", "publish"}:
         raise LivePublicationBlocked("action must be save-preview or publish")
-    if not isinstance(blurb, str):
-        raise LivePublicationBlocked("blurb must be a string")
     verify_g8_review(root)
     try:
         catalog_selection = load_confirmed_course_selection(root)
     except CourseCatalogError as exc:
         raise LivePublicationBlocked(str(exc)) from exc
-    generated_cover = None
-    cover_record_path = root / ".course-work/course-cover.json"
-    if action == "publish" and cover_record_path.is_file():
-        try:
-            generated_cover = load_confirmed_cover(root)
-        except CourseCoverError as exc:
-            raise LivePublicationBlocked(str(exc)) from exc
-        if not getattr(api, "supports_generated_course_cover", False):
-            raise LivePublicationBlocked(
-                "the configured student authoring API cannot bind the generated OSS WebP as the visible course cover; "
-                "a documented course-asset cover reference is required before final publish"
-            )
+    if action == "publish" and not getattr(api, "supports_course_asset_cover", False):
+        raise LivePublicationBlocked(
+            "the configured student authoring API cannot bind the fixed catalog WebP cover"
+        )
     state = _load_state(root)
+    if state["slug"] != catalog_selection["slug"]:
+        raise LivePublicationBlocked("publish state does not match the selected fixed catalog slug")
     manifest = build_live_asset_manifest(root, state)
     remote = api.get_course(state["slug"])
-    if not state["remoteKnown"] and remote is not None:
-        raise LivePublicationBlocked("a remote course already uses this slug; refusing blind adoption")
     if state["remoteKnown"] and remote is None:
         raise LivePublicationBlocked("the previously verified remote course is missing")
     if remote is not None and state.get("remoteDefinitionHash") not in {None, remote.definition_hash}:
@@ -244,6 +214,9 @@ def prepare_live_preflight(
     discovery = _remote_record(remote, now)
     write_json_atomic(root / DISCOVERY_PATH, {"schemaVersion": LIVE_SCHEMA_VERSION, **discovery})
     definition = load_json(root / "course/course.json")
+    course = definition.get("course", {})
+    if course.get("id") != catalog_selection["slug"] or course.get("title") != catalog_selection["title"]:
+        raise LivePublicationBlocked("CourseDefinition identity differs from the selected fixed catalog course")
     uploads = [entry for entry in manifest["entries"] if entry["state"] == "upload-required"]
     reuse = [entry for entry in manifest["entries"] if entry["state"] == "reuse-local-proof"]
     review_evidence = load_json(root / REVIEW_EVIDENCE_PATH)
@@ -260,27 +233,17 @@ def prepare_live_preflight(
             "title": catalog_selection["title"],
             "catalogHash": catalog_selection["catalogHash"],
         },
-        "generatedCover": (
-            {
-                "relativePath": generated_cover["relativePath"],
-                "localPath": generated_cover["localPath"],
-                "sha256": generated_cover["sha256"],
-                "width": generated_cover["width"],
-                "height": generated_cover["height"],
-                "format": generated_cover["format"],
-                "qualitySetting": generated_cover["qualitySetting"],
-                "teacherConfirmed": generated_cover["teacherConfirmed"],
-            }
-            if generated_cover is not None
-            else None
-        ),
+        "catalogCover": {
+            key: catalog_selection["cover"][key]
+            for key in ("relativePath", "objectKey", "sha256", "sizeBytes", "contentType")
+        },
         "options": {
-            "blurb": blurb,
+            "blurb": catalog_selection["blurb"],
             "cardIds": catalog_selection["cardIds"],
             "category": catalog_selection["category"],
             "introduction": catalog_selection["introduction"],
             "cover": "",
-            "coverAssetPath": generated_cover["relativePath"] if generated_cover is not None else None,
+            "coverAssetPath": catalog_selection["cover"]["relativePath"] if action == "publish" else None,
         },
         "remote": discovery,
         "assets": {"upload": uploads, "reuse": reuse},
@@ -291,11 +254,6 @@ def prepare_live_preflight(
             "reviewEvidenceHash": canonical_json_hash(review_evidence),
             "assetManifestHash": hash_path(root / MANIFEST_PATH),
             "catalogSelectionHash": hash_path(root / ".course-work/course-catalog-selection.json"),
-            **(
-                {"courseCoverHash": hash_path(root / ".course-work/course-cover.json")}
-                if generated_cover is not None
-                else {}
-            ),
         },
         "risks": {
             "productionOnly": True,
@@ -303,8 +261,8 @@ def prepare_live_preflight(
             "publishedSaveMutatesLiveBytes": remote is not None and remote.status == "published",
             "shipRegeneratesTTS": action == "publish",
             "assetReuseUsesLocalProofOnly": bool(reuse),
-            "coverGenerationDeferred": action == "publish" and generated_cover is None,
-            "generatedCoverRequiresCourseAssetPathSupport": generated_cover is not None,
+            "fixedCatalogCover": True,
+            "catalogCoverRequiresCourseAssetPathSupport": action == "publish",
         },
         "preparedAt": now,
     }
@@ -365,8 +323,6 @@ def live_preflight_status(root: Path) -> dict:
             "assetManifestHash": hash_path(root / MANIFEST_PATH),
             "catalogSelectionHash": hash_path(root / ".course-work/course-catalog-selection.json"),
         }
-        if "courseCoverHash" in preflight.get("evidence", {}):
-            checks["courseCoverHash"] = hash_path(root / ".course-work/course-cover.json")
         if preflight["definition"]["sha256"] != checks.pop("definition"):
             stale.append("course-definition-changed")
         for key, value in checks.items():
@@ -416,11 +372,6 @@ def verify_live_preflight(root: Path) -> dict:
         ),
         "@toolkit/course-publisher": live_publisher_hash(),
     }
-    cover_record = root / ".course-work/course-cover.json"
-    cover_delivery = root / ".course-work/cover-delivery"
-    if cover_record.is_file():
-        evidence[".course-work/course-cover.json"] = hash_path(cover_record)
-        evidence[".course-work/cover-delivery/"] = hash_path(cover_delivery)
     return evidence
 
 
@@ -551,20 +502,19 @@ def execute_live_publication(
             raise LivePublicationBlocked("remote course did not reach published status")
     elif saved.status != "preview":
         raise LivePublicationBlocked("save-preview did not leave the remote course in preview")
-    generated_cover_verification = None
-    if preflight["action"] == "publish" and preflight.get("generatedCover") is not None:
-        generated_cover = preflight["generatedCover"]
-        generated_cover_verification = api.verify_published_cover(
+    cover_verification = None
+    if preflight["action"] == "publish":
+        catalog_cover = preflight["catalogCover"]
+        cover_verification = api.verify_published_cover(
             slug,
-            root / generated_cover["localPath"],
-            generated_cover["sha256"],
+            catalog_cover["sha256"],
         )
     operation_id = canonical_json_hash(
         {
             "preflightHash": canonical_json_hash(preflight),
             "remoteHash": saved.definition_hash,
             "status": saved.status,
-            "generatedCoverVerification": generated_cover_verification,
+            "coverVerification": cover_verification,
         }
     )
     state.update(
@@ -597,7 +547,7 @@ def execute_live_publication(
                 *resumed_reused_paths,
             }
         ),
-        "generatedCoverVerification": generated_cover_verification,
+        "coverVerification": cover_verification,
         "verifiedAt": now,
     }
     write_json_atomic(root / OPERATION_PATH, operation)

@@ -2,6 +2,7 @@ import json
 import os
 import http.client
 import hashlib
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -45,7 +46,7 @@ class RemoteCourse:
 
 class MindImprintAuthoringApi:
     # course-authoring-v1.4.0 supports a safe course-relative WebP cover path.
-    supports_generated_course_cover = True
+    supports_course_asset_cover = True
 
     def __init__(self, api_base: str, admin_key: str, *, timeout: float = 30.0):
         parsed = urllib.parse.urlsplit(api_base)
@@ -233,8 +234,8 @@ class MindImprintAuthoringApi:
 
     def ship(self, slug: str, *, cover: str, cover_asset_path: Optional[str] = None) -> dict:
         if cover and cover_asset_path:
-            raise MindImprintApiError("stock cover and generated coverAssetPath are mutually exclusive")
-        if cover_asset_path and not self.supports_generated_course_cover:
+            raise MindImprintApiError("stock cover and coverAssetPath are mutually exclusive")
+        if cover_asset_path and not self.supports_course_asset_cover:
             raise MindImprintApiError(
                 "the pinned student authoring API cannot bind a generated course cover"
             )
@@ -244,7 +245,7 @@ class MindImprintAuthoringApi:
             or ".." in cover_asset_path.split("/")
             or cover_asset_path.startswith("/")
         ):
-            raise MindImprintApiError("generated coverAssetPath must be a safe cover/*.webp relative path")
+            raise MindImprintApiError("coverAssetPath must be a safe cover/*.webp relative path")
         body = {"cover": cover}
         if cover_asset_path:
             body["coverAssetPath"] = cover_asset_path
@@ -261,20 +262,16 @@ class MindImprintAuthoringApi:
     def verify_published_cover(
         self,
         slug: str,
-        local_path: Path,
         expected_sha256: str,
     ) -> dict:
-        if local_path.is_symlink() or not local_path.is_file():
-            raise MindImprintApiError("local generated cover is missing or unsafe")
-        local_sha256 = hashlib.sha256(local_path.read_bytes()).hexdigest()
-        if local_sha256 != expected_sha256:
-            raise MindImprintApiError("local generated cover does not match the approved hash")
+        if not isinstance(expected_sha256, str) or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+            raise MindImprintApiError("fixed catalog cover hash is invalid")
         matching = [course for course in self.list_courses() if isinstance(course, dict) and course.get("slug") == slug]
         if len(matching) != 1:
             raise MindImprintApiError("published course summary could not be identified uniquely")
         cover_url = matching[0].get("coverUrl")
         if not isinstance(cover_url, str) or not cover_url:
-            raise MindImprintApiError("published course summary has no generated coverUrl")
+            raise MindImprintApiError("published course summary has no fixed coverUrl")
         parsed = urllib.parse.urlsplit(cover_url)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
             raise MindImprintApiError("published course coverUrl is invalid")

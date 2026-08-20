@@ -305,7 +305,7 @@ class SkillPackageTests(unittest.TestCase):
         self.assertNotIn("Recommend opening a 新会话", director)
         self.assertNotIn("不得生成、剪辑、转码或修改 MP4", skill)
 
-    def test_course_catalog_is_fixed_and_cover_generation_is_deferred(self):
+    def test_course_catalog_identity_metadata_and_preseeded_covers_are_fixed(self):
         director = (ROOT / "skills/build-platform-course/SKILL.md").read_text(encoding="utf-8")
         publisher = (ROOT / "skills/publish-platform-course/SKILL.md").read_text(encoding="utf-8")
         api_contract = (
@@ -322,12 +322,13 @@ class SkillPackageTests(unittest.TestCase):
             "structured `introduction`",
             "`cardIds`",
             "featured_rank",
-            "Cover generation is deferred",
-            "do not call image generation",
-            "does not block preview or publication",
+            "canonical `course-01` through `course-33` slug",
+            "preseeded once",
+            "Do not call image generation",
+            "never a teacher upload",
             "The teacher makes only one catalog decision",
             "selects the human-readable course name",
-            "Do not ask the teacher to review or approve category, cardIds, or introduction separately",
+            "Do not ask the teacher to review or approve any of those fields separately",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)

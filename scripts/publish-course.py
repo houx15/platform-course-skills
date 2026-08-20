@@ -31,12 +31,10 @@ def build_parser() -> argparse.ArgumentParser:
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init-state")
     init.add_argument("root", type=Path)
-    init.add_argument("--slug", required=True)
     init.add_argument("--json", action="store_true")
     preflight = commands.add_parser("preflight")
     preflight.add_argument("root", type=Path)
     preflight.add_argument("--action", choices=("save-preview", "publish"), required=True)
-    preflight.add_argument("--blurb", default="")
     preflight.add_argument("--api-base", default=DEFAULT_API_BASE)
     preflight.add_argument("--json", action="store_true")
     status = commands.add_parser("status")
@@ -55,7 +53,7 @@ def main() -> int:
     try:
         load_publication_env(args.root)
         if args.command == "init-state":
-            state = init_live_publish_state(args.root, args.slug)
+            state = init_live_publish_state(args.root)
             payload = {"ok": True, "status": "initialized", "slug": state["slug"]}
         elif args.command == "status":
             payload = {"ok": True, **live_preflight_status(args.root)}
@@ -65,7 +63,6 @@ def main() -> int:
                 args.root,
                 api,
                 action=args.action,
-                blurb=args.blurb,
                 now=utc_now(),
             )
             payload = {
@@ -90,7 +87,7 @@ def main() -> int:
                 "definitionHash": operation["remoteDefinitionHash"],
                 "uploadedCount": len(operation["uploadedPaths"]),
                 "reusedCount": len(operation["reusedPaths"]),
-                "generatedCoverVerification": operation.get("generatedCoverVerification"),
+                "coverVerification": operation.get("coverVerification"),
             }
         if as_json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))

@@ -62,12 +62,43 @@ def _validate_introduction(value: Any, *, catalog_id: str) -> None:
         raise CourseCatalogError(f"{catalog_id} has invalid alignment entries")
 
 
+def _validate_catalog_cover(course: dict) -> None:
+    cover = course.get("cover")
+    catalog_id = course.get("catalogId", "unknown course")
+    if not isinstance(cover, dict) or set(cover) != {
+        "sourcePath",
+        "relativePath",
+        "objectKey",
+        "contentType",
+        "sha256",
+        "sizeBytes",
+    }:
+        raise CourseCatalogError(f"{catalog_id} has an invalid fixed cover")
+    source = cover.get("sourcePath")
+    if not isinstance(source, str) or not source:
+        raise CourseCatalogError(f"{catalog_id} has an invalid fixed cover path")
+    relative = Path(source)
+    if relative.is_absolute() or ".." in relative.parts:
+        raise CourseCatalogError(f"{catalog_id} has an unsafe fixed cover path")
+    if (
+        cover.get("relativePath") != "cover/course-cover.webp"
+        or cover.get("objectKey") != f"courses/{course.get('slug')}/cover/course-cover.webp"
+        or cover.get("contentType") != "image/webp"
+        or not isinstance(cover.get("sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", cover["sha256"]) is None
+        or not isinstance(cover.get("sizeBytes"), int)
+        or isinstance(cover.get("sizeBytes"), bool)
+        or cover["sizeBytes"] <= 0
+    ):
+        raise CourseCatalogError(f"{catalog_id} fixed cover metadata does not match its canonical OSS object")
+
+
 def load_course_catalog() -> dict:
     try:
         catalog = load_json(CATALOG_PATH)
     except ValueError as exc:
         raise CourseCatalogError(str(exc)) from exc
-    if not isinstance(catalog, dict) or catalog.get("schemaVersion") != "1.0":
+    if not isinstance(catalog, dict) or catalog.get("schemaVersion") != "2.0":
         raise CourseCatalogError("the 33-course catalog has an unsupported schema")
     if catalog.get("studentAuthoringTag") != "course-authoring-v1.4.0":
         raise CourseCatalogError("the 33-course catalog is not pinned to course-authoring-v1.4.0")
@@ -86,11 +117,18 @@ def load_course_catalog() -> dict:
             raise CourseCatalogError(f"{catalog_id} has an invalid category")
         if not isinstance(course.get("title"), str) or not course["title"].strip():
             raise CourseCatalogError(f"{catalog_id} has an invalid title")
+        if course.get("slug") != catalog_id:
+            raise CourseCatalogError(f"{catalog_id} must use its catalogId as the fixed slug")
+        if not isinstance(course.get("blurb"), str) or not course["blurb"].strip():
+            raise CourseCatalogError(f"{catalog_id} has an invalid fixed blurb")
         if not isinstance(course.get("aliases"), list) or not all(isinstance(item, str) for item in course["aliases"]):
             raise CourseCatalogError(f"{catalog_id} has invalid aliases")
         if not isinstance(course.get("cardIds"), list) or not course["cardIds"] or not all(isinstance(item, str) for item in course["cardIds"]):
             raise CourseCatalogError(f"{catalog_id} has invalid cardIds")
         _validate_introduction(course.get("introduction"), catalog_id=catalog_id)
+        if course["blurb"] != course["introduction"]["whatYouDo"]:
+            raise CourseCatalogError(f"{catalog_id} fixed blurb drifted from whatYouDo")
+        _validate_catalog_cover(course)
     return catalog
 
 
@@ -144,10 +182,13 @@ def confirm_course_selection(
     selection = {
         "schemaVersion": "1.0",
         "catalogId": course["catalogId"],
+        "slug": course["slug"],
         "title": course["title"],
+        "blurb": course["blurb"],
         "category": course["category"],
         "cardIds": deepcopy(course["cardIds"]),
         "introduction": deepcopy(course["introduction"]),
+        "cover": deepcopy(course["cover"]),
         "catalogHash": _entry_hash(course),
         "teacherConfirmed": True,
         "teacherResponse": teacher_response.strip(),
@@ -169,10 +210,13 @@ def load_confirmed_course_selection(root: Path) -> dict:
         raise CourseCatalogError("the 33-course catalog selection is not teacher-confirmed")
     course = _find_course(selection.get("catalogId"))
     expected = {
+        "slug": course["slug"],
         "title": course["title"],
+        "blurb": course["blurb"],
         "category": course["category"],
         "cardIds": course["cardIds"],
         "introduction": course["introduction"],
+        "cover": course["cover"],
         "catalogHash": _entry_hash(course),
     }
     if any(selection.get(key) != value for key, value in expected.items()):

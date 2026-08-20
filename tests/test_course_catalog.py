@@ -29,12 +29,34 @@ class CourseCatalogTests(unittest.TestCase):
         module = self.catalog_module()
         catalog = module.load_course_catalog()
 
-        self.assertEqual(catalog["schemaVersion"], "1.0")
+        self.assertEqual(catalog["schemaVersion"], "2.0")
         self.assertEqual(catalog["studentAuthoringTag"], "course-authoring-v1.4.0")
         self.assertEqual(len(catalog["courses"]), 33)
         self.assertEqual(len({course["catalogId"] for course in catalog["courses"]}), 33)
         self.assertEqual(len({course["title"] for course in catalog["courses"]}), 33)
         self.assertEqual({course["category"] for course in catalog["courses"]}, EXPECTED_CATEGORIES)
+        self.assertEqual(
+            [course["slug"] for course in catalog["courses"]],
+            [f"course-{number:02d}" for number in range(1, 34)],
+        )
+
+        for course in catalog["courses"]:
+            with self.subTest(course=course["catalogId"]):
+                self.assertEqual(course["slug"], course["catalogId"])
+                self.assertEqual(course["blurb"], course["introduction"]["whatYouDo"])
+                self.assertEqual(course["cover"]["relativePath"], "cover/course-cover.webp")
+                self.assertEqual(course["cover"]["contentType"], "image/webp")
+                self.assertEqual(
+                    course["cover"]["objectKey"],
+                    f"courses/{course['slug']}/cover/course-cover.webp",
+                )
+                cover = ROOT / course["cover"]["sourcePath"]
+                self.assertTrue(cover.is_file())
+                self.assertFalse(cover.is_symlink())
+                self.assertEqual(course["cover"]["sha256"], hashlib.sha256(cover.read_bytes()).hexdigest())
+                self.assertEqual(course["cover"]["sizeBytes"], cover.stat().st_size)
+                self.assertTrue(cover.read_bytes().startswith(b"RIFF"))
+                self.assertEqual(cover.read_bytes()[8:12], b"WEBP")
 
         first = catalog["courses"][0]
         self.assertEqual(first["catalogId"], "course-01")
@@ -91,6 +113,12 @@ class CourseCatalogTests(unittest.TestCase):
         self.assertTrue(loaded["teacherConfirmed"])
         self.assertEqual(loaded["category"], "stance-value")
         self.assertEqual(loaded["cardIds"], ["belief-spectrum", "perspective-matrix"])
+        self.assertEqual(loaded["slug"], "course-01")
+        self.assertEqual(loaded["blurb"], loaded["introduction"]["whatYouDo"])
+        self.assertEqual(loaded["cover"]["relativePath"], "cover/course-cover.webp")
+        self.assertEqual(loaded["cover"]["objectKey"], "courses/course-01/cover/course-cover.webp")
+        self.assertNotIn("localPath", loaded["cover"])
+        self.assertFalse((root / ".course-work/catalog-cover").exists())
         self.assertIn("introduction", loaded)
         self.assertEqual(len(loaded["catalogHash"]), 64)
 

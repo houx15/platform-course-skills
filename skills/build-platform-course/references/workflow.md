@@ -184,12 +184,12 @@ Exit: the independent report is publishable for exactly the reviewed hashes.
 
 Inputs: approved definition hash, current G6 validation, renderer-backed G8 review evidence, relative-path asset manifest, stable slug/publish state, and bearer readback of that slug.
 
-Require `.course-work/course-catalog-selection.json` even for a legacy course made before catalog support. It must still match the pinned 33-course dictionary; its category, structured introduction, and card IDs are the only values sent in the v1.4.0 authoring envelope. Cover generation is deferred to the platform administrator and its absence does not block G9. If an already confirmed cover record exists, its hash joins the approval evidence and any later change invalidates G9; otherwise publication proceeds without a new cover.
+Require `.course-work/course-catalog-selection.json` even for a legacy course made before catalog support. It must match the pinned 33-course dictionary and supplies the only permitted slug, title, blurb, category, structured introduction, card IDs, and fixed cover record. A teacher selects only the course name. The 33 covers are preseeded once at their code-fixed OSS keys; they never enter the teacher asset manifest or teacher upload counts.
 
 Invoke `publish-platform-course`. Initialize publish state once; this command refuses to replace a different existing identity:
 
 ```bash
-python scripts/publish-course.py init-state ROOT --slug SLUG --json
+python scripts/publish-course.py init-state ROOT --json
 ```
 
 Prepare the exact production dry run only from current G8 evidence:
@@ -197,13 +197,12 @@ Prepare the exact production dry run only from current G8 evidence:
 ```bash
 python scripts/publish-course.py preflight ROOT \
   --action publish \
-  --blurb "BLURB" \
   --json
 ```
 
-The deterministic `.course-work/publication-preflight.json` shows create versus update, stable slug, remote status/hash, changed versus locally proven unchanged paths, exact options, and production limitations. Existing slugs are never silently adopted. The backend has no revision, visibility option, remote asset inventory, or optimistic concurrency; the preflight states these limits directly.
+The deterministic `.course-work/publication-preflight.json` shows create versus update, canonical catalog slug, remote status/hash, changed versus locally proven unchanged teacher assets, exact fixed options, and production limitations. An existing canonical slug is always the same course and therefore update mode; an absent canonical slug is create mode. A teacher never chooses or replaces the slug. The backend has no revision, visibility option, remote asset inventory, or optimistic concurrency; the preflight states these limits directly.
 
-At authoring API v1.4.0, send the approved generated WebP only as `coverAssetPath: "cover/course-cover.webp"` with an empty stock `cover`. The server derives and validates the course-namespaced OSS object; never send an object key, URL, cross-course path, or `asset:` value.
+At authoring API v1.4.0, send the fixed catalog WebP only as `coverAssetPath: "cover/course-cover.webp"` with an empty stock `cover`. The teacher workflow does not upload it. The server derives and validates the course-namespaced OSS object; never send an object key, URL, cross-course path, or `asset:` value.
 
 Present this readable summary and obtain the exact teacher decision with a real rationale through `course-workflow.py confirm-decision`. Check it with `python scripts/publish-course.py status ROOT --json`. A changed definition, evidence, asset manifest, remote observation, identity, options, or API base makes approval non-current.
 
@@ -213,7 +212,7 @@ The live execute command completes G9 immediately before its first external muta
 
 Inputs: results from `python scripts/publish-course.py execute ROOT --json`.
 
-Checks: upload each changed relative path and persist every successful PUT for resume; reuse only the same slug/path/SHA-256 local proof; save through the same slug-keyed PUT for create and update; after an ambiguous response, read before retry; read the remote definition back; verify slug, exact definition, remote hash, and final status; then require a non-empty signed `coverUrl` and verify that it resolves to the exact uploaded bytes before updating verified local state.
+Checks: upload each changed teacher-asset relative path and persist every successful PUT for resume; reuse only the same slug/path/SHA-256 local proof; never upload the fixed cover; save through the same slug-keyed PUT for create and update; after an ambiguous response, read before retry; read the remote definition back; verify slug, exact definition, remote hash, and final status; then require a non-empty signed `coverUrl` and verify that it resolves to the fixed catalog hash before updating verified local state.
 
 Fake adapters never complete G10. G10 requires an operation explicitly recorded as using the live publication adapter. Exit only after post-write bearer readback verifies the expected remote result.
 

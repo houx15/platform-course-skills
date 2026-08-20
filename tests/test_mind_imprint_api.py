@@ -114,7 +114,7 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         self.thread.join(timeout=2)
 
     def test_bearer_discovery_write_upload_and_readback_contract(self):
-        self.assertTrue(self.api.supports_generated_course_cover)
+        self.assertTrue(self.api.supports_course_asset_cover)
         self.assertEqual(self.api.list_courses(), [])
         self.assertIsNone(self.api.get_course("missing"))
         plan = self.api.plan_asset_upload("demo", "assets/file.json", "application/json", 3)
@@ -145,14 +145,10 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         self.assertEqual(self.api.get_course("demo").definition, definition)
         self.api.ship("demo", cover="", cover_asset_path="cover/course-cover.webp")
         self.assertEqual(self.api.get_course("demo").status, "published")
-        with tempfile.TemporaryDirectory() as temporary:
-            cover = Path(temporary) / "course-cover.webp"
-            cover.write_bytes(FakeAuthoringHandler.cover_bytes)
-            proof = self.api.verify_published_cover(
-                "demo",
-                cover,
-                hashlib.sha256(FakeAuthoringHandler.cover_bytes).hexdigest(),
-            )
+        proof = self.api.verify_published_cover(
+            "demo",
+            hashlib.sha256(FakeAuthoringHandler.cover_bytes).hexdigest(),
+        )
         self.assertEqual(proof, {
             "coverUrlPresent": True,
             "sha256": hashlib.sha256(FakeAuthoringHandler.cover_bytes).hexdigest(),
@@ -198,20 +194,17 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
     def test_cover_verification_rejects_missing_url_and_mismatched_bytes(self):
         cover_bytes = FakeAuthoringHandler.cover_bytes
         expected = hashlib.sha256(cover_bytes).hexdigest()
-        with tempfile.TemporaryDirectory() as temporary:
-            cover = Path(temporary) / "course-cover.webp"
-            cover.write_bytes(cover_bytes)
-            FakeAuthoringHandler.definition = {"schemaVersion": "2.0"}
-            with self.assertRaisesRegex(MindImprintApiError, "no generated coverUrl"):
-                self.api.verify_published_cover("demo", cover, expected)
+        FakeAuthoringHandler.definition = {"schemaVersion": "2.0"}
+        with self.assertRaisesRegex(MindImprintApiError, "no fixed coverUrl"):
+            self.api.verify_published_cover("demo", expected)
 
-            FakeAuthoringHandler.cover_asset_path = "cover/course-cover.webp"
-            FakeAuthoringHandler.cover_bytes = b"RIFF-different-WEBP-bytes"
-            try:
-                with self.assertRaisesRegex(MindImprintApiError, "do not match"):
-                    self.api.verify_published_cover("demo", cover, expected)
-            finally:
-                FakeAuthoringHandler.cover_bytes = cover_bytes
+        FakeAuthoringHandler.cover_asset_path = "cover/course-cover.webp"
+        FakeAuthoringHandler.cover_bytes = b"RIFF-different-WEBP-bytes"
+        try:
+            with self.assertRaisesRegex(MindImprintApiError, "do not match"):
+                self.api.verify_published_cover("demo", expected)
+        finally:
+            FakeAuthoringHandler.cover_bytes = cover_bytes
 
     def test_ship_rejects_ambiguous_or_unsafe_generated_cover_without_network(self):
         with self.assertRaisesRegex(MindImprintApiError, "mutually exclusive"):

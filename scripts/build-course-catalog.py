@@ -14,6 +14,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "docs/2026-08-19-courses.md"
 OUTPUT = ROOT / "course_toolkit/course_catalog.json"
+COVER_ROOT = ROOT / "docs/course-covers-webp"
+
+# These three approved filenames intentionally differ from the public course title.
+# Every other cover filename is exactly "<course title>.webp".
+COVER_FILENAME_OVERRIDES = {
+    12: "SIFT 信息横向调查：从一条微信到一篇有立场的议论文.webp",
+    30: "问得好，AI才会答得妙：提示词如何写.webp",
+    33: "AI 公司的“焚书坑儒”.webp",
+}
 
 CATEGORY_SLUGS = {
     "立场与价值": "stance-value",
@@ -162,6 +171,23 @@ def parse_course_sections(text: str, rows: dict[int, dict]) -> list[dict]:
             "alignment": parse_alignment(body[alignment_marker.start():]),
             "keywords": parse_keywords(body[alignment_marker.start():]),
         }
+        cover_filename = COVER_FILENAME_OVERRIDES.get(number, f"{course['title']}.webp")
+        cover_path = COVER_ROOT / cover_filename
+        if cover_path.is_symlink() or not cover_path.is_file():
+            raise ValueError(f"course {number} is missing its fixed WebP cover: {cover_filename}")
+        cover_bytes = cover_path.read_bytes()
+        if not cover_bytes.startswith(b"RIFF") or cover_bytes[8:12] != b"WEBP":
+            raise ValueError(f"course {number} fixed cover is not WebP: {cover_filename}")
+        course["slug"] = course["catalogId"]
+        course["blurb"] = course["introduction"]["whatYouDo"]
+        course["cover"] = {
+            "sourcePath": cover_path.relative_to(ROOT).as_posix(),
+            "relativePath": "cover/course-cover.webp",
+            "objectKey": f"courses/{course['slug']}/cover/course-cover.webp",
+            "contentType": "image/webp",
+            "sha256": hashlib.sha256(cover_bytes).hexdigest(),
+            "sizeBytes": len(cover_bytes),
+        }
         courses.append(course)
     return courses
 
@@ -174,7 +200,7 @@ def main() -> int:
     text = SOURCE.read_text(encoding="utf-8")
     rows = parse_classification(text)
     catalog = {
-        "schemaVersion": "1.0",
+        "schemaVersion": "2.0",
         "studentAuthoringTag": "course-authoring-v1.4.0",
         "source": {
             "path": "docs/2026-08-19-courses.md",

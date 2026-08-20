@@ -12,7 +12,7 @@
 2. **开始一门新课程**：使用唯一教师入口 `build-platform-course`，盘点原始材料和真正阻塞项，再按 G0–G10 自动推进到预览。
 3. **继续已有课程**：先读取 `.course-work/session.json` 并核对当前文件变化，告诉老师上次停留阶段、失效证据、未解决问题和下一项需要决定的事情；不要从头重新生成。
 
-课程目录中存在 `.course-work/session.json` 时默认按继续处理。除非老师在理解现有进度将被分离后明确要求新建，否则不得覆盖既有课程身份或进度。
+课程目录中存在 `.course-work/session.json` 时默认按继续处理。`.course-work` 必须放在当前课程内容所在的独立文件夹下面；如果新课程目前只是一个新文件，先为它创建新的课程文件夹，再在该文件夹内初始化 `.course-work`。除非老师在理解现有进度将被分离后明确要求新建，否则不得覆盖既有课程身份或进度。
 
 如果信息不足，只向老师询问以下必要内容：
 
@@ -25,7 +25,7 @@
 接手课程后，Agent 必须：
 
 - 采用预览优先流程，默认连续工作到首次完整预览；
-- 根据课程名称从 33 门正式课程目录中提出最可能的课程，但不得替老师自动确认；老师可以在开始时确认，也可以先完成预览、在提交前确认。确认后分类、完整介绍和工具卡由目录自动带入，老师不需要填写内部字段；
+- 根据课程名称从 33 门正式课程目录中提出最可能的课程，但不得替老师自动确认。老师确认课程名称后，固定 slug、封面 OSS key、分类、短介绍、完整介绍和工具卡全部由目录自动带入，老师不填写或审核这些内部字段；
 - 自动盘点材料，并从现有文件识别视频、独立 HTML 和完整 PDF；只有用途确实无法判断时才集中提问；
 - 自行生成课程目标、课程首尾、完整 Part/Slice、layout、Blocks、narrations、workflow、导航和完成规则的 AI 初稿；
 - 自行编译、验证、启动真实 renderer 预览，并引导老师逐页操作和写批注；
@@ -49,7 +49,7 @@
 
 - 选择或确认课程名称。
 
-分类、Cards 和 Introduction 是平台预先定稿的课程配置。Agent 不要求老师分别审核、确认或改写，也不能把它们变成第三类选择。
+固定 slug、封面、分类、短介绍、Cards 和 Introduction 是平台预先定稿的课程配置。Agent 不要求老师分别审核、确认或改写，也不能把它们变成额外选择。
 
 ### 先提议课程，再由老师确认
 
@@ -61,11 +61,11 @@
 我判断这最可能是《把争议放回证据里：立场光谱与视角对照矩阵》。请确认；也可以先完成课程预览，提交前再确认。
 ```
 
-不得把模糊匹配第一名静默写成最终选择。不要让老师选择 `catalogId`、填写分类、抄写 Cards 或编辑介绍 JSON。老师确认课程名称后，调用 `manage-course-catalog.py confirm` 保存绑定。
+不得把模糊匹配第一名静默写成最终选择。不要让老师选择 `catalogId` 或 slug、挑选封面、填写分类、抄写 Cards 或编辑介绍 JSON。老师确认课程名称后，调用 `manage-course-catalog.py confirm` 保存绑定。
 
-老师可以在开始时确认，也可以推迟到提交前。任何 `save-preview` 或 `publish` 之前都必须存在当前有效的确认记录。旧版本制作的课程也不能跳过。正式目录、别名或对应字段变化后，要求老师重新确认。
+老师应在课程身份确定后尽早确认名称；任何 `save-preview` 或 `publish` 之前都必须存在当前有效的确认记录。旧版本制作的课程也不能跳过。正式目录、别名或对应字段变化后，要求老师重新确认。
 
-确认后，从固定目录原样取得 `category`、`cardIds` 和完整 `introduction`。这些值是平台定稿，不要求老师分别审核、确认或改写。不要让 AI 根据课程材料重新猜测或改写这些字段。完整介绍固定包含 `hook`、`whatYouDo`、`takeaways`、`alignment` 和 `keywords`。不要提交 `featured_rank` 或 `featuredRank`。
+确认后，从固定目录原样取得 `slug`、`blurb`、`category`、`cardIds`、完整 `introduction` 和封面记录。封面记录固定包含 `cover/course-cover.webp`、完整 OSS key、WebP 哈希和大小。所有值都是平台定稿，不要求老师分别审核、确认或改写。不要让 AI 根据课程材料重新猜测或改写这些字段。完整介绍固定包含 `hook`、`whatYouDo`、`takeaways`、`alignment` 和 `keywords`。不要提交 `featured_rank` 或 `featuredRank`。
 
 ### 把目录字段提交到正确接口
 
@@ -95,11 +95,11 @@ Cards 不属于 `CourseDefinition`。Cards 不通过 `ship` 提交。将目录�
 
 这里的 `cardIds`、`category` 和 `introduction` 必须全部来自同一条已确认目录记录。学生端查询结果可能把 Cards 返回为 `card_ids`；教师工具提交时仍使用 `cardIds`。
 
-### Cover 延后由管理员统一处理
+### 33 张固定封面由管理员一次性预置
 
-封面由管理员后续统一生成。教师的 Agent 本轮不调用图片生成工具，也不要求老师挑选或审核封面；没有图片生成能力也不得阻塞课程检查、本地预览、`save-preview` 或 `publish`。
+教师工作流不生成封面，不调用图片生成工具，不要求老师选择或确认封面，也不把封面复制进课程工程。33 张定稿 WebP 由平台管理员一次性上传到代码固定的 OSS key：`courses/course-01/cover/course-cover.webp` 至 `courses/course-33/cover/course-cover.webp`。
 
-如果课程目录中已经存在管理员提供并确认过的 `.course-work/course-cover.json`，发布工具会继续验证并复用对应的 WebP：上传为课程相对路径 `cover/course-cover.webp`，在 ship 请求中使用 `coverAssetPath: "cover/course-cover.webp"`，并核对发布后的 `coverUrl` 是否解析为相同字节。没有该记录时，发布请求保持 `cover` 和 `coverAssetPath` 为空；更新已有课程时不会借此清除远端原封面。
+老师反复保存或发布时，封面不进入教师素材上传清单。发布工具只向 ship 发送 `coverAssetPath: "cover/course-cover.webp"`，学生端根据固定 slug 推导完整 key；随后工具下载短期 `coverUrl` 并核对其字节哈希与目录记录一致。封面从同一条固定目录记录自动取得，不生成封面，不要求老师确认封面。
 
 ## 老师如何使用
 
@@ -115,7 +115,7 @@ Cards 不属于 `CourseDefinition`。Cards 不通过 `ship` 提交。将目录�
 
 ### 第一步：准备课程文件夹
 
-为每门课准备一个独立文件夹，把现有材料原样放进去。Word、Markdown、文本、PDF、PPT、图片、MP4、字幕和独立 HTML 都可以混合存在，不需要提前整理成统一格式。
+为每门课准备一个独立文件夹，把现有材料原样放进去。一个人可以同时处理多门课，但 `.course-work` 必须位于对应课程内容的文件夹下面；如果新课程目前只是一个新文件，Agent 必须先创建新的课程文件夹。Word、Markdown、文本、PDF、PPT、图片、MP4、字幕和独立 HTML 都可以混合存在，不需要提前整理成统一格式。
 
 建议增加一个 `index.md`，简单写清楚：
 
@@ -283,7 +283,7 @@ Agent 会先展示精确 dry run。确认课程 ID、创建或更新、素材数
 
 任何课程内容、素材、远端状态或发布选项变化都会使旧批准失效。修改同一门课时始终使用相同课程 ID；未改变的素材会根据相同课程 ID、相对路径和文件哈希复用。
 
-封面不属于教师本轮课程生产任务，由管理员后续统一生成。缺少封面不会阻止提交。若管理员已经提供了经过确认的 WebP，学生端 authoring API v1.4.0 会使用课程相对路径 `coverAssetPath: "cover/course-cover.webp"` 绑定，并由工具自动核对 `coverUrl` 返回的字节；否则本次提交不携带封面。
+封面不属于教师素材上传。33 张定稿 WebP 由管理员一次性预置在固定 OSS key；学生端 authoring API v1.4.0 使用课程相对路径 `coverAssetPath: "cover/course-cover.webp"` 绑定，工具自动核对 `coverUrl` 返回字节与固定目录哈希一致。老师重复保存或发布不会重新上传封面。
 
 第一次需要真实提交时，老师可以把管理员提供的 `OSS_ADMIN_KEY` 交给 Agent。Agent 会把它写入课程目录的本地 `.env`，同时确认 `/.env` 已加入 `.gitignore`；老师不需要执行命令，也不需要设置系统环境变量。Git 中只保留值为空的 `.env.example`。进程环境变量优先于 `.env`，方便部署环境覆盖本地设置。
 
@@ -379,7 +379,7 @@ python3 scripts/install-skills.py --target both --replace
 9. `apply-preview-feedback` 将批注分为文案机械修改、明确的语义修改和学生端 runtime bug；精确批注直接执行，修改 Blueprint 后重新编译、校验和预览。
 10. 独立终审通过后，才准备精确发布 dry run。教师确认后上传必要 OSS 素材，保存同一稳定 slug 的课程，并按要求 ship。
 
-课程在开始或提交前还会绑定到正式的 33 门课程目录。老师只确认课程名称；绑定记录固定决定学生端的七类分类、结构化介绍和工具卡，旧课程也不能跳过。封面由管理员后续统一生成，不进入教师本轮确认流程。
+课程会绑定到正式的 33 门课程目录。老师只确认课程名称；绑定记录固定决定 slug、封面 OSS key、短介绍、七类分类、结构化介绍和工具卡，旧课程也不能跳过。封面不进入教师确认或教师素材上传流程。
 
 任何输入、Blueprint、素材、renderer、批注或终审证据变化，都会使相应下游证据失效。文件存在不代表质量门已经通过。
 
@@ -408,7 +408,7 @@ python3 scripts/install-skills.py --target both --replace
 
 ## 预览、批注与修改
 
-`preview-platform-course` 只绑定 `127.0.0.1`，这个本地预览链接只能在当前电脑查看；需要他人预览时必须保存或发布到学生端。页面使用真实学生端 renderer、内存 session adapter 和本地素材解析。批注 UI 位于 renderer 外部，并绑定 Course、Part、Slice、Block、图片 item 或 workflow Step 的稳定 ID；不会把 CSS selector、坐标或 DOM 结构当作修改目标。
+`preview-platform-course` 只绑定 `127.0.0.1`，这个本地预览链接只能在当前电脑查看。需要同事或其他老师预览时，应在明确批准后发布到学生端并分享学生端页面；不要发送课程工程让对方重新上传。页面使用真实学生端 renderer、内存 session adapter 和本地素材解析。批注 UI 位于 renderer 外部，并绑定 Course、Part、Slice、Block、图片 item 或 workflow Step 的稳定 ID；不会把 CSS selector、坐标或 DOM 结构当作修改目标。
 
 批注模式可以打开或关闭。关闭时页面保持正常学生交互；打开时直接点击组件即可选定批注目标，且不会误触该组件。批注可以修改、删除、标记已完成或重新打开。
 
@@ -418,12 +418,14 @@ python3 scripts/install-skills.py --target both --replace
 
 发布只由 `publish-platform-course` 执行，并要求当前 G8 终审证据与一份教师明确批准的 production dry run。
 
-- 课程身份使用与 `course.id` 相同的稳定 slug；修改同一门课不会创建新课程。
+- 33 门课程分别使用代码固定的 `course-01` 至 `course-33`；老师不能自定义 slug。同一课程永远使用同一个固定 slug，远端已存在时只能更新，不会再次创建。
 - 素材使用 `courses/<slug>/<relativePath>` 的确定路径。
-- 本地复用证明必须同时匹配 slug、相对路径和 SHA-256，避免重复上传；服务端当前没有素材 checksum/existence 查询，因此不会把未验证的远端对象当作已存在。
+- 本地复用证明必须同时匹配 slug、相对路径和 SHA-256，避免重复上传；固定封面从不进入教师上传清单。同一工程反复保存不会重传未变化素材。若 `.course-work` 被删除、复制或丢失，由于服务端当前没有素材 checksum/existence 查询，工具会保守地把同一字节重新 PUT 到同一固定 key：会产生重复传输，但不会产生多个对象 key。
 - 创建和更新都使用同一个 slug-keyed definition PUT；发布后再调用 ship 并读取课程状态和完整 definition 验证。
 - published 课程的 definition PUT 会先改变线上字节，ship 会重新生成 TTS；dry run 会明确提示这两个风险。
 - 接口为 last-writer-wins，当前没有 revision/optimistic concurrency。远端状态在批准后变化会阻止执行。
+
+以上规则阻止今后为同一门目录课程创建新 slug。历史上已经使用任意 slug 创建出的重复课程不会被工具自动删除或合并，因为系统目前无法仅凭课程标题安全判定哪一条应保留；这类旧记录需要另做一次只读清点，再由管理员明确决定如何处理。
 
 `OSS_ADMIN_KEY` 可以通过进程环境变量或被 Git 忽略的课程目录 `.env` 提供，且进程环境变量优先。工具不会把它写入参数、课程文件、`.course-work`、Git 或普通输出；Bearer 只发送给学生端管理 API，不会发送到预签名 OSS URL。构建、检查、预览或批注请求都不构成上传或发布授权。
 
@@ -444,6 +446,14 @@ python3 -m unittest discover -s tests -v
 python3 scripts/validate-course-v2.py COURSE_ROOT --json
 python3 scripts/review-course-v2.py COURSE_ROOT --json
 ```
+
+33 张封面的一次性 OSS 预置先运行只读计划；它校验源 WebP、哈希、大小和 33 个固定 object key，不会上传：
+
+```bash
+python3 maintenance/seed-course-catalog-covers.py
+```
+
+只有管理员对这份完整计划明确批准后，才可在仓库根目录被 Git 忽略的 `.env` 中提供 `OSS_ADMIN_KEY` 并执行 `--execute`。该维护脚本不会安装到老师的 `_course-toolkit`，教师保存或发布课程也不会调用它。重复执行只会覆盖相同的 33 个固定 key，不会创建新的 object key，但仍会产生重复传输，因此不应把它当作日常发布步骤。
 
 真实预览：
 

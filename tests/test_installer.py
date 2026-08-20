@@ -44,9 +44,11 @@ class InstallerTests(unittest.TestCase):
         self.assertTrue((runtime / "course_toolkit" / "package_review.py").is_file())
         self.assertTrue((runtime / "course_toolkit" / "course_catalog.json").is_file())
         self.assertTrue((runtime / "course_toolkit" / "course_catalog.py").is_file())
-        self.assertTrue((runtime / "course_toolkit" / "course_cover.py").is_file())
         self.assertTrue((runtime / "scripts" / "manage-course-catalog.py").is_file())
-        self.assertTrue((runtime / "scripts" / "manage-course-cover.py").is_file())
+        self.assertFalse((runtime / "course_toolkit" / "course_cover.py").exists())
+        self.assertFalse((runtime / "scripts" / "manage-course-cover.py").exists())
+        if not runtime.is_symlink():
+            self.assertFalse((runtime / "docs" / "course-covers-webp").exists())
         self.assertTrue((runtime / "course_toolkit" / "runtime_dist" / "preview" / "index.html").is_file())
         self.assertTrue((runtime / "scripts" / "preview-course.py").is_file())
         self.assertTrue((runtime / "scripts" / "review-course-v2.py").is_file())
@@ -164,7 +166,7 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
 
-    def test_readme_teaches_agents_catalog_binding_deferred_cover_and_card_submission(self):
+    def test_readme_teaches_agents_fixed_catalog_cover_identity_and_card_submission(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
 
         required = (
@@ -174,16 +176,21 @@ class InstallerTests(unittest.TestCase):
             "代码提议课程名称，老师只确认课程名称",
             "不得把模糊匹配第一名静默写成最终选择",
             "从固定目录原样取得",
-            "`category`、`cardIds` 和完整 `introduction`",
+            "`slug`、`blurb`、`category`、`cardIds`、完整 `introduction` 和封面记录",
             "不要求老师分别审核、确认或改写",
             "旧版本制作的课程也不能跳过",
             "`PUT /api/v1/admin/courses/{slug}/definition`",
             '"cardIds": ["belief-spectrum", "perspective-matrix"]',
             "Cards 不属于 `CourseDefinition`",
             "Cards 不通过 `ship` 提交",
-            "封面由管理员后续统一生成",
-            "没有图片生成能力也不得阻塞",
-            "本轮不调用图片生成工具",
+            "封面从同一条固定目录记录自动取得",
+            "不生成封面",
+            "不要求老师确认封面",
+            "同一课程永远使用同一个固定 slug",
+            "远端已存在时只能更新",
+            "`.course-work` 必须位于对应课程内容的文件夹下面",
+            "如果新课程目前只是一个新文件",
+            "不要发送课程工程让对方重新上传",
         )
         for phrase in required:
             with self.subTest(phrase=phrase):

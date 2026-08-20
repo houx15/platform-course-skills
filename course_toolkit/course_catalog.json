@@ -1,5 +1,5 @@
 {
-  "schemaVersion": "1.0",
+  "schemaVersion": "2.0",
   "studentAuthoringTag": "course-authoring-v1.4.0",
   "source": {
     "path": "docs/2026-08-19-courses.md",
@@ -41,6 +41,16 @@
           "同一把尺子也要用于我方来源",
           "矩阵判断不是喜欢谁，而是证据位置"
         ]
+      },
+      "slug": "course-01",
+      "blurb": "用 X 轴定位一个主张在立场光谱上的位置；用 Y 轴判断发言者在该议题上的证据权重；两轴合起来，认出假专家、伪对称和来源错配。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/把争议放回证据里：立场光谱与视角对照矩阵.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-01/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "f18d92e40042663e988818fb618d425886e219ddc5a761004521a19449e4ebd0",
+        "sizeBytes": 80856
       }
     },
     {
@@ -79,6 +89,16 @@
           "AI 检测器不能替代档案核查",
           "纪念动机不等于史料资格"
         ]
+      },
+      "slug": "course-02",
+      "blurb": "用查来源、拆主张、下结论三步核查历史图像；区分背景史实、人物身份、故事细节和图像证据各自的射程；说明为什么纪念动机不能替代档案来源。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/当 AI 重写历史：历史图像的证据核查.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-02/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "c043964a8d8890cfe95bccd3062e5734b306234a1e0ae7409e577ca3107bf048",
+        "sizeBytes": 192528
       }
     },
     {
@@ -115,6 +135,16 @@
           "准确性要能追到来源",
           "偏见不是直接淘汰理由，而是判断使用边界"
         ]
+      },
+      "slug": "course-03",
+      "blurb": "用 CRRAAB 各维度判断一份材料是否适合自己的研究问题；说清\"看起来相关\"和\"真正切中问题\"的差别；把可信度、相关性、权威性、准确性、偏见转成可操作的取舍。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/信息过滤神器：从 CRAAP 到 CRRAAB.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-03/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "7db093d6033383d74c5314892fd51fbc7ea86bdc710bf2c3ad923b77a2ddc102",
+        "sizeBytes": 203664
       }
     },
     {
@@ -151,6 +181,16 @@
           "纠错行为比立场更可靠",
           "核查有射程，工具用错地方不会自动报错"
         ]
+      },
+      "slug": "course-04",
+      "blurb": "识别假专家、逻辑谬误、不可能期待、挑樱桃、阴谋论五类手法；对被核查方和核查方用同一套标准；判断哪些主张超出了 FLICC 的射程。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/科学否认的五种手法：用 FLICC 拆两段气候视频.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-04/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "5feaaf7fc1b74857acd073d3aa2caec3230f28473a43401a7491a07ad293b8f4",
+        "sizeBytes": 199012
       }
     },
     {
@@ -187,6 +227,16 @@
           "发送端证据不等于接收端反应",
           "档案记录本身也可以被 OPCVL"
         ]
+      },
+      "slug": "course-05",
+      "blurb": "从 Origin、Purpose、Content 推出 Value 与 Limitation，而不是分栏填空；随新信息出现连续修订同一份史料的判断；把 1915 原图与 2018 改写图区分为不同年代、不同目的的两份证据。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/一张图，四次翻案：OPCVL 史料评估.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-05/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "765200b6b0e420a14215b057000fe13db15ae2e72df41745fed8e35700cdf82d",
+        "sizeBytes": 130672
       }
     },
     {
@@ -223,6 +273,16 @@
           "价值判断要说清标准",
           "反对之前先复述对方真正看重什么"
         ]
+      },
+      "slug": "course-06",
+      "blurb": "区分三类判断并说明各自的处理动作；在论文案例中定位证据范围、理由强弱和价值标准；通过复述测试提出更具体、更有资格的反对。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/事实、观点，还是价值判断？.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-06/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "8585be5ced27cfdfeb695139313c541a0995c193b9004df5579565e5ccb3dbd1",
+        "sizeBytes": 139168
       }
     },
     {
@@ -260,6 +320,16 @@
           "不同来源回答不同问题",
           "好的判断要留下继续核查的入口"
         ]
+      },
+      "slug": "course-07",
+      "blurb": "把一个公共争议拆成事实、利益、风险和价值四类问题；比较不同来源的信息角色与证据边界；在信息不完整时，写出下一步要追问的具体问题。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/信息交互能力工具包.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-07/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "b365b5892230b3f21c7c64f79c296d0b7fca3f3d6d084b9d708cf6d27e17fcd1",
+        "sizeBytes": 283868
       }
     },
     {
@@ -299,6 +369,16 @@
           "写作不是堆材料，而是让证据和推理扣住主张",
           "信息自主来自主动横向核实和追溯原始来源"
         ]
+      },
+      "slug": "course-08",
+      "blurb": "把权威发言转成可检验的具体问题；用三个格子规划多源核查；判断证据是否可靠、相关、能互相支撑；用三明治结构写出一个有证据有推理的段落；说明主动核查如何突破信息茧房。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/信息素养：从一句权威主张到多源核查写作.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-08/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "66aed4853f13d5a7806b5237e9736785fa9c84c0febbdacc41ce8971b3f636d2",
+        "sizeBytes": 170030
       }
     },
     {
@@ -336,6 +416,16 @@
           "偏见要看脚印，不靠自我感觉",
           "真元认知要说出具体修订证据"
         ]
+      },
+      "slug": "course-09",
+      "blurb": "校准把握度并说明为什么不是更高或更低；挖出判断背后的隐藏前提并检验；检查自己的视角、语言、信源、群体归属如何影响判断；用\"反过来还信吗\"\"最强反方\"\"想清反证\"三问检验结论。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/元认知：我怎么知道我没被自己骗？.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-09/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "e065ff654bb34f1d55940fd1a6f24bf46274f1dffb5048f03b070255900e9df8",
+        "sizeBytes": 121186
       }
     },
     {
@@ -372,6 +462,16 @@
           "检查范围、尺度与测量方式",
           "区分真冲突、假冲突和未回答问题"
         ]
+      },
+      "slug": "course-10",
+      "blurb": "在判断谁对谁错之前先做可比性检查；用对象、数据构成、范围尺度、测量方式四类条件解释表面冲突；把这套检查迁移到新的论文、新闻和 AI 答案上。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/可比性检验：先查四格，再判断.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-10/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "f8e24e22a14ae0947476543e7ba58cd4b35968465a05da9833300bf8def5e186",
+        "sizeBytes": 119542
       }
     },
     {
@@ -409,6 +509,16 @@
           "价值与局限要写成推理",
           "综合时也要指出缺席的声音"
         ]
+      },
+      "slug": "course-11",
+      "blurb": "用 OPCVL 读四份来源不同的史料；说明每份材料适合证明什么、不能证明什么；写出一段有证据、有保留、点出缺席声音的历史评价。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/哥伦布：英雄还是恶棍？OPCVL 多源综合.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-11/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "ffdeef590671c8a0fca450e558e6d59e46eb3c0d04708766e621be4e9cc58fed",
+        "sizeBytes": 242620
       }
     },
     {
@@ -449,6 +559,16 @@
           "加上「多大程度上」，是非题才变得可以论证",
           "让步段是以退为进"
         ]
+      },
+      "slug": "course-12",
+      "blurb": "用 SIFT 四个动作核查来源存疑的信息，并分清转载文章与原始出处；分辨多方独立证实与同源回声；用文献精读法读一篇英文论文并回原文核对数据；拆解漏斗式论证；用 To what extent 限定问题，写出让步段。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/SIFT 信息横向调查：从一条微信到一篇有立场的议论文.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-12/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "4be8ffbd8c93603cac04dd5a0974463e2019a2ad5bf0825eae9f45389efaefa6",
+        "sizeBytes": 90956
       }
     },
     {
@@ -490,6 +610,16 @@
           "谁没出现在片子里，和谁出现了一样重要",
           "强的论述会主动把最有力的反对搬上台面"
         ]
+      },
+      "slug": "course-13",
+      "blurb": "从纪录片里取出指得到具体人物和场景的证据，并把\"片中出现过的\"和\"我推测的\"分开；用同一套十一个维度对三个方案分别取证；说出同一行动对不同群体各自意味着什么，判断谁有能力拦下它；逐句认出论述里每半句承担什么；按\"表明推荐→支持理由→驳倒其余→回应反对→收束\"写出完整推荐。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/威尼斯三选一：把一部纪录片写成一份站得住的建议.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-13/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "0f824eb9e369395c4000602dc1b4b121b96b5c2213ad9b9b91ae6b74167a4069",
+        "sizeBytes": 178254
       }
     },
     {
@@ -531,6 +661,16 @@
           "AI 可以辅助，学术责任仍由作者承担",
           "引用规范是学术诚信的基础"
         ]
+      },
+      "slug": "course-14",
+      "blurb": "识别学术写作的核心特征与 thesis statement 的统领作用；写出摘要、引言、文献综述的骨架；区分方法、结果、讨论、结论、反思各自的功能边界；把口语句改写成学术表达；判断 AI 使用、剽窃风险和 APA 格式问题。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/英文学术写作：从论文结构到引用规范.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-14/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "062a5e2bfb05e82b3a764cbe5c6c63499c61345ec5b2022275ab36df6793202f",
+        "sizeBytes": 192392
       }
     },
     {
@@ -567,6 +707,16 @@
           "不显著不等于没有关系",
           "语气要对齐证据强度"
         ]
+      },
+      "slug": "course-15",
+      "blurb": "区分样本计数、统计推断、解释框架、外推结论和价值判断各自的确定度；读懂论文里的星号、显著性、分母、零结果和限制段；把结论改写成更经得起核查的表达。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/我们能多确定？证据语言的校准.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-15/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "711380155f6406ce59a8c86a458e06d38b7748d29d60544a9dbf7f51ce8d3f13",
+        "sizeBytes": 165974
       }
     },
     {
@@ -603,6 +753,16 @@
           "再查比较对象与刻度",
           "最后查因果和混杂变量"
         ]
+      },
+      "slug": "course-16",
+      "blurb": "追问数据从哪来、样本和测量方式是否可靠；检查跟什么比较、分母刻度区间是否清楚；判断结论有没有越过证据边界。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/当数字想骗你：数据三问.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-16/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "dea6a2650b6691c68dad88634c45c2dcfeae4271777469c05ea20a0b86c92392",
+        "sizeBytes": 147240
       }
     },
     {
@@ -643,6 +803,16 @@
           "结果段落要写清不能确定的地方",
           "AI 不能代替数据核对与学术责任"
         ]
+      },
+      "slug": "course-17",
+      "blurb": "判断研究问题属于描述、比较还是关系分析，并说明设计能支持的结论边界；为小型研究建数据字典，识别变量、编码、缺失值和清理记录；按问题选图表或统计方法并解释能说明什么；写出含样本、发现、证据强度和局限的结果段落。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/数据分析：从研究问题到结果段落.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-17/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "1eef7fbac1331af8492f4704f760fd61ab2b5c9218d925be92c18667fd4a2a8f",
+        "sizeBytes": 108494
       }
     },
     {
@@ -681,6 +851,16 @@
           "资源是否能用要看时效、相关性、权威性、准确性和发布目的",
           "不同资源承担不同作用"
         ]
+      },
+      "slug": "course-18",
+      "blurb": "判断研究过程中什么时候需要查资料，并说清查找目的；按问题需求匹配信息类型与渠道；把文献检索写成从关键词到全文入口的可复查路径；用 CRAAP 五维评估并形成资源记录。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/查找信息：从搜索入口到可用资源.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-18/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "5f7e76de2cdc884cdbdf7ef617111cfd8086875b668e6a1abad7f9a4a5a96d5d",
+        "sizeBytes": 212308
       }
     },
     {
@@ -718,6 +898,16 @@
           "指控、提案、评分和判决不能混为一谈",
           "漂绿判断要有证据、有分类、有边界"
         ]
+      },
+      "slug": "course-19",
+      "blurb": "把企业 ESG 宣传拆成可核查的事实问题；横向比较 E/S/G 三个维度的证据；用 GONE 框架整理漂绿风险的解释链条。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/识别企业漂绿：Tesla ESG 证据链.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-19/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "5b6a1e186815c1a494435dc3d288498c5263a3658ec82f5c57c56b3dc17dfd3b",
+        "sizeBytes": 163398
       }
     },
     {
@@ -755,6 +945,16 @@
           "工具检测只能辅助判断",
           "情绪冲击可能降低核查意识"
         ]
+      },
+      "slug": "course-20",
+      "blurb": "结合来源、原文、视觉线索和元数据核查多模态材料；区分外证、内证、工具检测和情绪警报各自的作用；对报告、图片、视频作出有依据的可信判断。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/生成式 AI 时代的多模态信息甄别与可信判断.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-20/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "1839e3acb3e2af914e836d9f53760c6e3ec426c311cb918eea24256f0ba2480a",
+        "sizeBytes": 187000
       }
     },
     {
@@ -796,6 +996,16 @@
           "时间是证据的一部分",
           "可以有立场，但要写出它不能单独推出什么"
         ]
+      },
+      "slug": "course-21",
+      "blurb": "区分行政分类、组织认可、赛事设项、协会自我定义与条件性话语；在英文原文中找出模态、类别名词与评价词，说明改动会移动哪条边界；追踪官方文本进入新闻后的删除与强化；区分概念论证、回应性评论、问卷实证与质性治理研究各自的射程；写出一句可复核、可反驳的结论。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/电竞是不是体育？.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-21/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "24db99bbbfa9b971defe6f811059374a102a951a63e3694a8b2b72576172e179",
+        "sizeBytes": 158538
       }
     },
     {
@@ -834,6 +1044,16 @@
           "不同工具回答不同类型的问题",
           "分析和质量检查要在收集前规划"
         ]
+      },
+      "slug": "course-22",
+      "blurb": "把研究问题、证据、来源、方法和结论边界连成一条方法链；用文献研究、AI 检索核验和案例研究进入已有资料；为问卷、访谈、观察或实验设计样本、伦理、工具和流程；用有效性、可靠性、偏差与多来源检查控制结论范围；形成一张可执行的方法计划卡。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/研究方法：从问题到可执行计划.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-22/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "f4e7d549883837f75b73f7e81c271d05cebfc2216edd499de384e50c94040b06",
+        "sizeBytes": 134640
       }
     },
     {
@@ -871,6 +1091,16 @@
           "缺席也是证据",
           "镜头语言有倾向 ≠ 内容有问题"
         ]
+      },
+      "slug": "course-23",
+      "blurb": "把一个镜头拆成\"我看到的／通常意味着／我的推论\"三层，压成一句\"因为＿，所以＿\"；说出同一组画面为什么会被读出不同结论；认出\"风格当证据\"；用同一把尺子查两方——数时长、查缺席、追画面来源；分开回答\"我的感觉变了吗\"和\"我掌握的证据变了吗\"。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/影像侦探局：镜头在替谁说话.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-23/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "0bb07f9c2fac47c9ed90667820fe5a0c5aabc793bd3bb7435d0ff80002c8b75f",
+        "sizeBytes": 83690
       }
     },
     {
@@ -908,6 +1138,16 @@
           "强证据要求调整论点边界",
           "好的让步段让论点变得更准确"
         ]
+      },
+      "slug": "course-24",
+      "blurb": "区分装饰性让步和功能性让步；用删除测试判断让步段是否改变了论点；在反方强证据进入后，把原论点修正为更可辩护的表达。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/删得掉的让步段，不是让步段.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-24/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "6bcc69307082dad9994930796b8c907aa3b3a2f98be11bf76d516980cca6571f",
+        "sizeBytes": 144342
       }
     },
     {
@@ -945,6 +1185,16 @@
           "破案之后必须修理原论证",
           "立案书要写出我改了什么"
         ]
+      },
+      "slug": "course-25",
+      "blurb": "把一句证词拆成主张、理由、前提和推理跳步；识别常见谬误并说明它错在哪一步；判断\"可疑但无罪\"的论证，避免把不喜欢的观点都判成谬误；用主张、证据、桥梁、范围、强反方和修订六个零件搭建自己的论证。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/逻辑侦探局：从拆案到立案的论证训练.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-25/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "9ef2bc69c379d1619570fc30c2b24b0dafb8f07a4f34fb5e0482bfb1504d0b12",
+        "sizeBytes": 177024
       }
     },
     {
@@ -982,6 +1232,16 @@
           "预设先单独检验",
           "主语选择在分配责任"
         ]
+      },
+      "slug": "course-26",
+      "blurb": "识别措辞如何预先框定事件性质；比较委婉、中性和加重表达之间的情绪落差；说明隐喻如何铺设推理路径，并换一个隐喻观察判断变化；找出预设陷阱和主语隐匿；对真实文本做五步扫描，判断哪一层最关键。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/语言如何塑造思维：五把工具扫描文本框定.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-26/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "1048220f23a9cdedc77a5d000c44707674a86ef060652a7d09bf5328bbd8e0f8",
+        "sizeBytes": 98850
       }
     },
     {
@@ -1024,6 +1284,16 @@
           "追踪资金链 follow the money",
           "利益冲突与内部-外部矛盾"
         ]
+      },
+      "slug": "course-27",
+      "blurb": "识别相关当因果与选择性呈现两类缺陷；从一条内容逐层溯源到网站、运营者、挂靠机构与发起方，并用同行评审记录检验\"专家\"身份；查出资助方、金额与证据出处；说明出钱方如何从这个结论获益，识别内部立场与对外说法的双重标准；给这次用过的方法命名。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/追踪信息背后的利益链.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-27/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "e6672d063459a8c4a1b8f8a54c04b0486b8f9e62b6fbc29046101e9ab0b43d0e",
+        "sizeBytes": 205976
       }
     },
     {
@@ -1064,6 +1334,16 @@
           "暂定论点必须允许被修改",
           "AI 可以追问，最终判断要回到材料"
         ]
+      },
+      "slug": "course-28",
+      "blurb": "区分兴趣、主题和研究问题，写出包含未知点的问题种子；用关键词、初步搜索和范围过滤器判断题目能否继续；把研究问题拆成子问题、证据方向和暂定论点；写出 proposal 的核心组成；检查重复、模糊变量、资源缺口和过度论断。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/选题与 Proposal：从宽泛兴趣到可写研究提案.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-28/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "06bb8b599c8aec2a78ae68caeb516c563ea353b0a5881351465b4d8399366cc8",
+        "sizeBytes": 145046
       }
     },
     {
@@ -1102,6 +1382,16 @@
           "甘特图看时间，看板看状态，日志看理由",
           "AI 输出只是候选方案"
         ]
+      },
+      "slug": "course-29",
+      "blurb": "说清项目的最终成果、成功标准和限制条件；把长期目标拆成阶段、任务、依赖关系与里程碑；用优先级、甘特图和看板判断下一步；识别风险、记录调整理由、保留决策路径；把 AI 用作扩展、检查和整理工具，同时自己完成来源核验。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/项目管理：把长期探究变成一周冲刺.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-29/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "d5bdef0dd542d07bfcf209857b60292dedc413f410a0c497c268d9e7ab9fbaf8",
+        "sizeBytes": 97138
       }
     },
     {
@@ -1144,6 +1434,16 @@
           "AI 同意不等于证据",
           "问题锁住回答上限**"
         ]
+      },
+      "slug": "course-30",
+      "blurb": "选择一个窄、熟、可核的真实任务；用同一任务完成原始提问、五个决定诊断、档位升级、边界句测试、反方攻击和验收标准设定；保留核查来源与对话对照；合成一份可复用的提示词处方。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/问得好，AI才会答得妙：提示词如何写.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-30/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "b76b87777d447c03637945025e95912b1eac09363aff9379629d17c7b78afb0c",
+        "sizeBytes": 156540
       }
     },
     {
@@ -1181,6 +1481,16 @@
           "油门和跳闸都不是人品问题",
           "地下室只到门口"
         ]
+      },
+      "slug": "course-31",
+      "blurb": "在具体行为中识别管理者、消防员或流放者被触发的线索；把自我攻击式表达改写成\"我有一个部分……\"；从至少三个场景反推保护意图，而不是停在\"懒\"\"废\"\"没自制力\"；识别油门和跳闸两种压力档位，把指责改成说出状态和请求；完成一次注意力审计。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/你身体里的小队：IFS 内在部分与注意力审计.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-31/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "b4d11a8dff73165f12a2bff8ef93936701b51b8cdbda8942390d03bcfb2b7170",
+        "sizeBytes": 133096
       }
     },
     {
@@ -1219,6 +1529,16 @@
           "变革免疫只命名不溯源",
           "课后先记录，不急着改变"
         ]
+      },
+      "slug": "course-32",
+      "blurb": "理解主体与客体的区别，把\"我就是……\"改写成\"我有一个判断／念头……\"；在问题视角、目标视角、可能性视角之间做情境试戴，而不当成等级标签；觉察自己想被归类的冲动；完成变革免疫四列表；把一个长期改不动的问题从\"我失败\"重构为\"我有两个方向相反但都很强的承诺\"。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/向内探索：三个视角与变革免疫地图.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-32/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "7fa9d5bdee584cfd623e97875fc489ab15aa7084a1ab2bf85167b5e39f526533",
+        "sizeBytes": 145310
       }
     },
     {
@@ -1266,6 +1586,16 @@
           "伦理判断",
           "证据与边界"
         ]
+      },
+      "slug": "course-33",
+      "blurb": "从一个真实 AI 公司案例出发，找出其中的伦理问题； 分别讨论版权、数据劳动、能源成本三个方面；对比公司自己的说法和其他材料，判断哪些信息比较可靠；区分“已经知道的事实”和“目前还不能确定的事情”；最后完成一张简单的 AI 伦理审计卡。",
+      "cover": {
+        "sourcePath": "docs/course-covers-webp/AI 公司的“焚书坑儒”.webp",
+        "relativePath": "cover/course-cover.webp",
+        "objectKey": "courses/course-33/cover/course-cover.webp",
+        "contentType": "image/webp",
+        "sha256": "3d5248755f37552c865bbbe91e6b4e58834b70df75cb52ff771a3432d9a5e2fa",
+        "sizeBytes": 731872
       }
     }
   ]
