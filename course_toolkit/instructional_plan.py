@@ -1,22 +1,27 @@
-"""Teacher-readable Part/Slice plans that precede CourseDefinition production."""
+"""Teacher-readable Part/Slice plans that precede CourseDefinition production.
+
+All toolkit or Skill code that changes the page-plan body must call
+``write_plan_body``; direct writes bypass its cross-process approval guard.
+"""
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
+import fcntl
 import os
 from pathlib import Path
 import re
-import tempfile
-from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
+import time
+from typing import Callable, Dict, Iterable, Iterator, List, Mapping, Sequence, Set, Tuple
 
 from .blueprint import ID_RE
-from .course_compiler import canonical_json_hash
 from .coverage import validate_coverage_inventory
 from .errors import ValidationIssue
-from .hashing import hash_path
+from .hashing import canonical_json_hash, hash_path
 from .instructional_bindings import load_instructional_coverage, validate_instructional_coverage
-from .jsonio import load_json, write_json_atomic
+from .jsonio import load_json, write_json_atomic, write_text_atomic
 from .materials import validate_material_inventory
 
 
@@ -43,8 +48,16 @@ REQUIRED_SLICE_FIELDS = (
 ACTION_KINDS_REQUIRING_EVIDENCE = frozenset({"answer", "interaction"})
 STABLE_TARGET = re.compile(r"^(?:question|claim):" + ID_RE.pattern[1:-1] + r"$")
 BACKTRACKING = re.compile(r"backtrack|go back|previous (?:page|slice)|回看|回退|返回上一", re.IGNORECASE)
-REFERENCE_LANGUAGE = re.compile(r"consult|reference|read|look at|compare|source|material|图表|材料|参考|查看|阅读|对照|比对|依据|引用", re.IGNORECASE)
+REFERENCE_LANGUAGE = re.compile(
+    r"\b(?:consult|reference|look at)\b|"
+    r"\b(?:read|compare)\s+(?:the\s+)?(?:source|material|chart|image|figure)\b|"
+    r"(?:参考|引用|依据)(?:材料|图表|图片|证据)?|"
+    r"(?:查看|阅读)(?:材料|图表|图片|证据)|"
+    r"(?:比较|对照)(?:材料|图表|图片|证据)",
+    re.IGNORECASE,
+)
 REFERENCE_POLICIES = frozenset({"none", "co-visible", "justified-dependency"})
+PLAN_LOCK_RELATIVE_PATH = ".course-work/.course-storyboard.lock"
 
 
 class PlanValidationError(ValueError):
@@ -67,6 +80,11 @@ class PlanApprovalError(ValueError):
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return ValidationIssue(path, code, message)
+
+
+def _unknown_fields(value: dict, allowed: Set[str], path: str, issues: List[ValidationIssue]) -> None:
+    for field in sorted(set(value).difference(allowed)):
+        issues.append(_issue(f"{path}.{field}", "unknown-field", "field is not part of the teacher page-plan schema"))
 
 
 def _nonempty(value: object) -> bool:
@@ -146,6 +164,7 @@ def _validate_layout(value: object, path: str, issues: List[ValidationIssue]) ->
     if not isinstance(value, dict):
         issues.append(_issue(path, "required", "layoutIntent is required"))
         return
+    _unknown_fields(value, {"preset", "ratio"}, path, issues)
     layout = _layout_catalog()
     presets = set(layout.get("presets", []))
     ratios = set(layout.get("splitRatios", []))
@@ -165,6 +184,7 @@ def _validate_source_use(value: object, path: str, sources: Mapping[str, dict], 
     if not isinstance(value, dict):
         issues.append(_issue(path, "invalid-shape", "source use must be an object"))
         return
+    _unknown_fields(value, {"sourceId", "locator", "materialRole"}, path, issues)
     source_id = value.get("sourceId")
     if not _nonempty(source_id):
         issues.append(_issue(f"{path}.sourceId", "required", "source use needs a sourceId"))
@@ -182,6 +202,7 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
     if not isinstance(slice_data, dict):
         issues.append(_issue(path, "invalid-shape", "slice must be an object"))
         return None
+    _unknown_fields(slice_data, set(REQUIRED_SLICE_FIELDS), path, issues)
     for field in REQUIRED_SLICE_FIELDS:
         if field not in slice_data:
             issues.append(_issue(f"{path}.{field}", "required", f"slice requires {field}"))
@@ -214,6 +235,8 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
     if not isinstance(action, dict):
         issues.append(_issue(f"{path}.learnerAction", "required", "learnerAction must describe a learner action"))
         action = {}
+    else:
+        _unknown_fields(action, {"kind", "description", "referencePolicy", "referenceSourceIds", "targetId", "dependencyJustification"}, f"{path}.learnerAction", issues)
     kind = action.get("kind")
     if not _nonempty(kind):
         issues.append(_issue(f"{path}.learnerAction.kind", "required", "learner action kind is required"))
@@ -223,6 +246,9 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
         issues.append(_issue(f"{path}.completionEvidence", "completion-evidence-required", "answer or interaction needs concrete completion evidence"))
     elif "completionEvidence" in slice_data and not _concrete_evidence(slice_data.get("completionEvidence")):
         issues.append(_issue(f"{path}.completionEvidence", "required", "completionEvidence is required"))
+    completion = slice_data.get("completionEvidence")
+    if isinstance(completion, dict):
+        _unknown_fields(completion, {"description", "rule", "artifact", "event"}, f"{path}.completionEvidence", issues)
 
     _validate_layout(slice_data.get("layoutIntent"), f"{path}.layoutIntent", issues)
     covisible = slice_data.get("coVisibleRequirements")
@@ -236,6 +262,7 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
             if not isinstance(requirement, dict):
                 issues.append(_issue(requirement_path, "invalid-shape", "co-visible requirement must be an object"))
                 continue
+            _unknown_fields(requirement, {"sourceId", "targetId", "reason"}, requirement_path, issues)
             source_id = requirement.get("sourceId")
             if not _nonempty(source_id):
                 issues.append(_issue(f"{requirement_path}.sourceId", "required", "co-visible requirement needs a sourceId"))
@@ -244,7 +271,8 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
             else:
                 covisible_by_source.setdefault(source_id, []).append(requirement.get("targetId"))
                 covisible_targets.append((requirement_path, requirement.get("targetId")))
-            if not STABLE_TARGET.match(requirement.get("targetId", "")):
+            requirement_target = requirement.get("targetId")
+            if not isinstance(requirement_target, str) or not STABLE_TARGET.match(requirement_target):
                 issues.append(_issue(f"{requirement_path}.targetId", "stable-target-required", "co-visible target must be a stable question: or claim: ID"))
             if not _nonempty(requirement.get("reason")):
                 issues.append(_issue(f"{requirement_path}.reason", "required", "co-visible requirement needs a reason"))
@@ -296,6 +324,7 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
             if not isinstance(relationship, dict):
                 issues.append(_issue(relation_path, "invalid-shape", "image relationship must be an object"))
                 continue
+            _unknown_fields(relationship, {"sourceId", "targetType", "targetId", "relationship"}, relation_path, issues)
             source_id = relationship.get("sourceId")
             if not _nonempty(source_id) or source_id not in sources:
                 issues.append(_issue(f"{relation_path}.sourceId", "unknown-source", "image relationship needs a known source"))
@@ -315,12 +344,18 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
             blocker_path = f"{path}.unresolvedBlockers[{index}]"
             if _nonempty(blocker):
                 continue
-            if not isinstance(blocker, dict) or not _nonempty(blocker.get("reason")):
+            if not isinstance(blocker, dict):
+                issues.append(_issue(blocker_path, "invalid-blocker", "unresolved blocker needs a concrete reason"))
+                continue
+            _unknown_fields(blocker, {"id", "reason"}, blocker_path, issues)
+            if not _nonempty(blocker.get("reason")):
                 issues.append(_issue(blocker_path, "invalid-blocker", "unresolved blocker needs a concrete reason"))
     exclusions = slice_data.get("proposedExclusions")
     if isinstance(exclusions, list):
         for index, exclusion in enumerate(exclusions):
             exclusion_path = f"{path}.proposedExclusions[{index}]"
+            if isinstance(exclusion, dict):
+                _unknown_fields(exclusion, {"sourceId", "reason"}, exclusion_path, issues)
             source_id = exclusion if isinstance(exclusion, str) else exclusion.get("sourceId") if isinstance(exclusion, dict) else None
             if not _nonempty(source_id) or source_id not in sources or sources[source_id].get("disposition") != "exclude-proposed":
                 issues.append(_issue(exclusion_path, "invalid-proposed-exclusion", "proposed exclusion must reference a current exclude-proposed source"))
@@ -334,6 +369,7 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
     issues.extend(index_issues)
     if not isinstance(document, dict):
         return issues + [_issue(PLAN_RELATIVE_PATH, "invalid-shape", "page plan must be an object")]
+    _unknown_fields(document, {"schemaVersion", "title", "parts", "approval"}, PLAN_RELATIVE_PATH, issues)
     if document.get("schemaVersion") != "2.0":
         issues.append(_issue(f"{PLAN_RELATIVE_PATH}.schemaVersion", "invalid-version", "page plan schemaVersion must be 2.0"))
     parts = document.get("parts")
@@ -347,6 +383,7 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
         if not isinstance(part, dict):
             issues.append(_issue(part_path, "invalid-shape", "Part must be an object"))
             continue
+        _unknown_fields(part, {"partId", "title", "slices"}, part_path, issues)
         part_id = part.get("partId")
         if not _nonempty(part_id):
             issues.append(_issue(f"{part_path}.partId", "required", "Part needs a stable partId"))
@@ -367,7 +404,54 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
                 if slice_id in slice_ids:
                     issues.append(_issue(f"{part_path}.slices[{slice_index}].sliceId", "duplicate-slice-id", "sliceId must be unique"))
                 slice_ids.add(slice_id)
+    _validate_coverage_placement(document, coverage, issues)
     return issues
+
+
+def _validate_coverage_placement(document: dict, coverage: object, issues: List[ValidationIssue]) -> None:
+    """Reconcile plan source uses with already-known Part/Slice bindings."""
+    source_uses: Dict[str, List[Tuple[Tuple[str, str], str]]] = {}
+    for part_index, part in enumerate(document.get("parts", [])):
+        if not isinstance(part, dict):
+            continue
+        for slice_index, slice_data in enumerate(part.get("slices", [])):
+            if not isinstance(slice_data, dict):
+                continue
+            part_id, slice_id = slice_data.get("partId"), slice_data.get("sliceId")
+            if not isinstance(part_id, str) or not isinstance(slice_id, str):
+                continue
+            source_uses_data = slice_data.get("sourceUses")
+            if not isinstance(source_uses_data, list):
+                continue
+            for source_index, source_use in enumerate(source_uses_data):
+                if isinstance(source_use, dict) and isinstance(source_use.get("sourceId"), str):
+                    source_uses.setdefault(source_use["sourceId"], []).append(
+                        ((part_id, slice_id), f"{PLAN_RELATIVE_PATH}.parts[{part_index}].slices[{slice_index}].sourceUses[{source_index}].sourceId")
+                    )
+    items = coverage.get("items") if isinstance(coverage, dict) else None
+    if not isinstance(items, list):
+        return
+    for coverage_index, item in enumerate(items):
+        if not isinstance(item, dict) or not isinstance(item.get("sourceId"), str):
+            continue
+        bindings = item.get("bindings")
+        if not isinstance(bindings, list) or not bindings:
+            continue
+        plan_pairs = {pair for pair, _ in source_uses.get(item["sourceId"], [])}
+        binding_pairs = set()
+        for binding_index, binding in enumerate(bindings):
+            if not isinstance(binding, dict):
+                continue
+            part_id, slice_id = binding.get("partId"), binding.get("sliceId")
+            if not isinstance(part_id, str) or not isinstance(slice_id, str):
+                continue
+            pair = (part_id, slice_id)
+            binding_pairs.add(pair)
+            if pair not in plan_pairs:
+                issues.append(_issue(f"{COVERAGE_RELATIVE_PATH}.items[{coverage_index}].bindings[{binding_index}]", "coverage-binding-plan-mismatch", "coverage learner binding is not represented by sourceUses in the same Part/Slice"))
+        for pair, source_path in source_uses.get(item["sourceId"], []):
+            if pair not in binding_pairs:
+                issues.append(_issue(source_path, "plan-source-use-binding-mismatch", "planned source use does not match an existing coverage Part/Slice binding"))
 
 
 def _prefix_inventory_issues(issues: Iterable[ValidationIssue]) -> List[ValidationIssue]:
@@ -450,6 +534,90 @@ def _validated_current(root: Path) -> Tuple[Path, dict, dict, Dict[str, str]]:
     return safe_root, plan, coverage, hashes
 
 
+@contextmanager
+def _plan_guard(root: Path, *, timeout_seconds: float = 3.0) -> Iterator[None]:
+    """Serialize toolkit page-plan writes across macOS/Linux processes."""
+    work = root / ".course-work"
+    lock = root / PLAN_LOCK_RELATIVE_PATH
+    if work.is_symlink() or lock.is_symlink():
+        raise PlanApprovalError("plan-lock-unavailable", ".course-work", "page-plan lock path is unsafe")
+    flags = os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(lock, flags, 0o600)
+    except OSError as exc:
+        raise PlanApprovalError("plan-lock-unavailable", ".course-work", "page-plan lock cannot be opened") from exc
+    deadline = time.monotonic() + timeout_seconds
+    try:
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise PlanApprovalError("plan-lock-timeout", ".course-work", "page-plan is being edited by another toolkit process")
+                time.sleep(0.05)
+        yield
+    finally:
+        try:
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+
+
+def _current_approval_identity(plan: dict, hashes: Mapping[str, str]) -> Dict[str, str]:
+    return {"planContentHash": plan_content_hash(plan), **dict(hashes)}
+
+
+def _require_expected_current(current: Mapping[str, str], expected: Mapping[str, str]) -> None:
+    stale = {key: value for key, value in expected.items() if current.get(key) != value}
+    if stale:
+        raise PlanApprovalError("approval-conflict", PLAN_RELATIVE_PATH, "page plan or source evidence changed before this write could be committed", evidence=stale)
+
+
+def write_plan_body(
+    root: Path,
+    *,
+    mutate: Callable[[dict], dict | None],
+    expected_plan_content_hash: str | None = None,
+    expected_materials_extracted_hash: str | None = None,
+    expected_source_coverage_hash: str | None = None,
+) -> dict:
+    """Write page-plan body through the shared lock used by all toolkit writers.
+
+    ``mutate`` receives a detached body without approval metadata. Any body
+    write clears approval, so plan writers cannot preserve a confirmation for
+    changed teaching decisions. Callers can pass hashes read earlier to avoid
+    overwriting a newer plan or source-evidence revision.
+    """
+    safe_root, _, _, _ = _validated_current(root)
+    expected = {
+        key: value
+        for key, value in {
+            "planContentHash": expected_plan_content_hash,
+            "materialsExtractedHash": expected_materials_extracted_hash,
+            "sourceCoverageHash": expected_source_coverage_hash,
+        }.items()
+        if value is not None
+    }
+    with _plan_guard(safe_root):
+        safe_root, current, coverage, hashes = _validated_current(safe_root)
+        _require_expected_current(_current_approval_identity(current, hashes), expected)
+        body = deepcopy(current)
+        body.pop("approval", None)
+        candidate = mutate(body)
+        if candidate is None:
+            candidate = body
+        if not isinstance(candidate, dict):
+            raise PlanValidationError([_issue(PLAN_RELATIVE_PATH, "invalid-shape", "page-plan writer must return an object")])
+        candidate = deepcopy(candidate)
+        candidate.pop("approval", None)
+        issues = validate_instructional_plan(candidate, coverage)
+        if issues:
+            raise PlanValidationError(issues)
+        write_json_atomic(safe_root / PLAN_RELATIVE_PATH, candidate, reject_symlinks=True)
+        return candidate
+
+
 def approve_plan(root: Path, *, decision_id: str, approved_at: str) -> dict:
     """Record an explicit teacher decision after validating the plan and evidence."""
     if not _nonempty(decision_id):
@@ -457,17 +625,21 @@ def approve_plan(root: Path, *, decision_id: str, approved_at: str) -> dict:
     if not _nonempty(approved_at):
         raise PlanApprovalError("approved-at-required", PLAN_RELATIVE_PATH, "approval needs an approval timestamp")
     safe_root, plan, _, hashes = _validated_current(root)
-    approval = {
-        "teacherConfirmed": True,
-        "decisionId": decision_id.strip(),
-        "approvedAt": approved_at.strip(),
-        "planContentHash": plan_content_hash(plan),
-        **hashes,
-    }
-    updated = deepcopy(plan)
-    updated["approval"] = approval
-    write_json_atomic(safe_root / PLAN_RELATIVE_PATH, updated, reject_symlinks=True)
-    return approval
+    expected = _current_approval_identity(plan, hashes)
+    with _plan_guard(safe_root):
+        safe_root, plan, _, hashes = _validated_current(safe_root)
+        current = _current_approval_identity(plan, hashes)
+        _require_expected_current(current, expected)
+        approval = {
+            "teacherConfirmed": True,
+            "decisionId": decision_id.strip(),
+            "approvedAt": approved_at.strip(),
+            **current,
+        }
+        updated = deepcopy(plan)
+        updated["approval"] = approval
+        write_json_atomic(safe_root / PLAN_RELATIVE_PATH, updated, reject_symlinks=True)
+        return approval
 
 
 def verify_plan_approval(root: Path) -> Dict[str, str]:
@@ -477,7 +649,7 @@ def verify_plan_approval(root: Path) -> Dict[str, str]:
     if not isinstance(approval, dict):
         raise PlanApprovalError("approval-missing", PLAN_RELATIVE_PATH, "teacher approval is missing")
     required = ("teacherConfirmed", "decisionId", "approvedAt", "planContentHash", "materialsExtractedHash", "sourceCoverageHash")
-    if approval.get("teacherConfirmed") is not True or any(not _nonempty(approval.get(field)) for field in required[1:]):
+    if set(approval).difference(required) or approval.get("teacherConfirmed") is not True or any(not _nonempty(approval.get(field)) for field in required[1:]):
         raise PlanApprovalError("approval-invalid", f"{PLAN_RELATIVE_PATH}.approval", "teacher approval is incomplete")
     current = {"planContentHash": plan_content_hash(plan), **hashes}
     stale = {key: value for key, value in current.items() if approval.get(key) != value}
@@ -492,12 +664,9 @@ def verify_plan_approval(root: Path) -> Dict[str, str]:
 
 
 def _markdown_safe(value: object) -> str:
-    """Render text as CommonMark text, never as HTML/table/heading syntax."""
-    text = str(value)
-    text = text.replace("\\", "\\\\")
-    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
-    return text.replace("|", "\\|")
+    """Encode arbitrary values as deterministic inactive CommonMark text."""
+    text = str(value).replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return "".join(character if character.isalnum() or character.isspace() or ord(character) > 127 else f"&#{ord(character)};" for character in text)
 
 
 def _slice_rows(plan: dict) -> Iterable[dict]:
@@ -538,21 +707,50 @@ def _dependency_text(slice_data: dict) -> str:
     ) or "—"
 
 
+def _detail_list(value: object) -> str:
+    if not isinstance(value, list) or not value:
+        return "无"
+    return "；".join(str(item) for item in value)
+
+
 def render_teacher_plan(plan: dict, coverage: dict) -> str:
     """Generate the teacher view; this Markdown is deliberately never approval evidence."""
     title = plan.get("title") if _nonempty(plan.get("title")) else "课程页计划"
-    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生行动 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- |"]
-    for slice_data in _slice_rows(plan):
+    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- |"]
+    part_titles = {
+        part.get("partId"): part.get("title", "—")
+        for part in plan.get("parts", [])
+        if isinstance(part, dict)
+    }
+    slices = list(_slice_rows(plan))
+    for slice_data in slices:
         source_uses = slice_data.get("sourceUses")
         identity = f"{slice_data.get('partId', '—')} / {slice_data.get('sliceId', '—')}"
         lines.append("| " + " | ".join(_markdown_safe(value) for value in (
             identity,
             slice_data.get("teachingPurpose", "—"),
             _source_text(source_uses),
+            slice_data.get("learnerSees", "—"),
             _action_description(slice_data.get("learnerAction")) or "—",
+            slice_data.get("completionEvidence", "—"),
             _layout_text(slice_data.get("layoutIntent")),
             _dependency_text(slice_data),
         )) + " |")
+    lines.extend(["", "## 页面细节"])
+    for slice_data in slices:
+        action = slice_data.get("learnerAction") if isinstance(slice_data.get("learnerAction"), dict) else {}
+        lines.extend([
+            "",
+            f"### {_markdown_safe(part_titles.get(slice_data.get('partId'), '—'))} / {_markdown_safe(slice_data.get('title', '—'))}",
+            "",
+            f"- 学生看到：{_markdown_safe(slice_data.get('learnerSees', '—'))}",
+            f"- 完成证据：{_markdown_safe(slice_data.get('completionEvidence', '—'))}",
+            f"- 学生行动类型与参考安排：{_markdown_safe(action.get('kind', '—'))}；{_markdown_safe(action.get('referencePolicy', '—'))}；{_markdown_safe(action.get('referenceSourceIds', []))}；{_markdown_safe(action.get('targetId', '—'))}；{_markdown_safe(action.get('dependencyJustification', '—'))}",
+            f"- 同页参考/依赖：{_markdown_safe(_detail_list(slice_data.get('coVisibleRequirements')))}",
+            f"- 图像关系：{_markdown_safe(_detail_list(slice_data.get('imageRelationships')))}",
+            f"- 未解决问题：{_markdown_safe(_detail_list(slice_data.get('unresolvedBlockers')))}",
+            f"- 拟排除素材：{_markdown_safe(_detail_list(slice_data.get('proposedExclusions')))}",
+        ])
     lines.extend(["", "## 未使用或仅用于备课", "", "| 素材 | 处置 | 定位 | 原因 |", "| --- | --- | --- | --- |"])
     rows = []
     for item in coverage.get("items", []) if isinstance(coverage, dict) else []:
@@ -581,23 +779,7 @@ def render_plan_at_root(root: Path) -> Path:
         raise PlanValidationError([_issue(PLAN_MARKDOWN_RELATIVE_PATH, "symlink-file", "output may not be a symlink")])
     if not output.parent.is_dir():
         raise PlanValidationError([_issue(".course-work", "missing-file", "output directory is missing")])
-    descriptor, temporary_name = tempfile.mkstemp(prefix=".course-storyboard-", suffix=".tmp", dir=str(output.parent))
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as handle:
-            handle.write(content.encode("utf-8"))
-            handle.flush()
-            os.fsync(handle.fileno())
-        temporary.replace(output)
-        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
-        directory_fd = os.open(output.parent, directory_flags)
-        try:
-            os.fsync(directory_fd)
-        finally:
-            os.close(directory_fd)
-    finally:
-        if temporary.exists():
-            temporary.unlink()
+    write_text_atomic(output, content, reject_symlinks=True)
     return output
 
 

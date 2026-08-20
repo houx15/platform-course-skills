@@ -3,7 +3,9 @@ import os
 import subprocess
 import tempfile
 import unittest
+from contextlib import contextmanager
 from pathlib import Path
+from unittest.mock import patch
 
 from course_toolkit.jsonio import load_json, write_json_atomic
 
@@ -188,7 +190,7 @@ class InstructionalPlanTests(unittest.TestCase):
         rendered = self.api().render_teacher_plan(plan_document(), coverage)
         self.assertIn("| 教学目的 |", rendered)
         self.assertIn("未使用或仅用于备课", rendered)
-        for source_id in ("source-support", "source-authoring", "source-exclude", "source-exclude-approved"):
+        for source_id in ("source&#45;support", "source&#45;authoring", "source&#45;exclude", "source&#45;exclude&#45;approved"):
             self.assertIn(source_id, rendered)
         self.assertNotIn("G0", rendered)
         self.assertNotIn("workflow", rendered.lower())
@@ -197,10 +199,10 @@ class InstructionalPlanTests(unittest.TestCase):
         coverage = coverage_document()
         plan = plan_document()
         plan["parts"][0]["slices"][0]["sourceUses"].append({"sourceId": "source-support", "locator": "page:9", "materialRole": "可选延伸"})
-        self.assertIn("source-support", self.api().render_teacher_plan(plan, coverage))
+        self.assertIn("source&#45;support", self.api().render_teacher_plan(plan, coverage))
         coverage["items"][2]["bindings"] = [{"partId": "part-evidence", "sliceId": "slice-compare", "blockId": "support-block"}]
         unused = self.api().render_teacher_plan(plan, coverage).split("## 未使用或仅用于备课", 1)[1]
-        self.assertNotIn("source-support", unused)
+        self.assertNotIn("source&#45;support", unused)
 
     def test_unknown_source_empty_purpose_and_action_are_rejected(self):
         data = plan_document()
@@ -281,6 +283,41 @@ class InstructionalPlanTests(unittest.TestCase):
         data["parts"][0]["slices"][0]["title"] = "改过的标题"
         self.assertNotEqual(first, api.plan_content_hash(data))
 
+    def test_coverage_bindings_and_source_uses_must_share_part_slice_placement(self):
+        coverage = coverage_document()
+        coverage["items"][0]["bindings"][0]["sliceId"] = "slice-other"
+        codes = {issue.code for issue in self.api().validate_instructional_plan(plan_document(), coverage)}
+        self.assertIn("coverage-binding-plan-mismatch", codes)
+        self.assertIn("plan-source-use-binding-mismatch", codes)
+        self.assertNotIn("coverage-binding-plan-mismatch", {issue.code for issue in self.api().validate_instructional_plan(plan_document(), coverage_document())})
+
+    def test_unknown_plan_fields_and_unknown_approval_metadata_are_rejected(self):
+        data = plan_document()
+        slice_data = data["parts"][0]["slices"][0]
+        data["runtime"] = True
+        data["parts"][0]["runtime"] = True
+        slice_data["runtime"] = True
+        slice_data["sourceUses"][0]["runtime"] = True
+        slice_data["learnerAction"]["runtime"] = True
+        slice_data["completionEvidence"] = {"description": "提交回答", "runtime": True}
+        slice_data["layoutIntent"]["runtime"] = True
+        slice_data["coVisibleRequirements"][0]["runtime"] = True
+        slice_data["imageRelationships"][0]["runtime"] = True
+        slice_data["unresolvedBlockers"] = [{"id": "blocker", "reason": "待确认", "runtime": True}]
+        slice_data["proposedExclusions"] = [{"sourceId": "source-exclude", "reason": "过时", "runtime": True}]
+        self.assertIn("unknown-field", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
+            stored = load_json(root / ".course-work/course-storyboard.json")
+            stored["approval"]["runtime"] = True
+            write_json_atomic(root / ".course-work/course-storyboard.json", stored)
+            with self.assertRaises(api.PlanApprovalError) as caught:
+                api.verify_plan_approval(root)
+            self.assertEqual(caught.exception.code, "approval-invalid")
+
     def test_approval_binds_evidence_and_never_changes_plan_body(self):
         api = self.api()
         with tempfile.TemporaryDirectory() as temporary:
@@ -292,6 +329,41 @@ class InstructionalPlanTests(unittest.TestCase):
             self.assertEqual(api.plan_content_hash(before), api.plan_content_hash(after))
             self.assertEqual(approval["materialsExtractedHash"], api.verify_plan_approval(root)["materialsExtractedHash"])
 
+    def test_concurrent_edit_conflicts_with_approval_without_losing_new_body(self):
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            original_guard = api._plan_guard
+
+            @contextmanager
+            def coordinated_edit(guard_root, **kwargs):
+                current = load_json(guard_root / ".course-work/course-storyboard.json")
+                current["title"] = "并发编辑后的计划"
+                write_json_atomic(guard_root / ".course-work/course-storyboard.json", current)
+                with original_guard(guard_root, **kwargs):
+                    yield
+
+            with patch.object(api, "_plan_guard", coordinated_edit):
+                with self.assertRaises(api.PlanApprovalError) as caught:
+                    api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
+            self.assertEqual(caught.exception.code, "approval-conflict")
+            stored = load_json(root / ".course-work/course-storyboard.json")
+            self.assertEqual(stored["title"], "并发编辑后的计划")
+            self.assertNotIn("approval", stored)
+
+    def test_public_plan_body_writer_clears_approval_and_honors_expected_hash(self):
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
+            stored = load_json(root / ".course-work/course-storyboard.json")
+            expected = api.plan_content_hash(stored)
+            updated = api.write_plan_body(root, expected_plan_content_hash=expected, mutate=lambda body: {**body, "title": "由写入接口更新"})
+            self.assertEqual(updated["title"], "由写入接口更新")
+            self.assertNotIn("approval", load_json(root / ".course-work/course-storyboard.json"))
+
     def test_changed_inventory_coverage_or_plan_makes_approval_stale(self):
         api = self.api()
         for name in ("materials-extracted.json", "source-coverage.json", "course-storyboard.json"):
@@ -301,7 +373,10 @@ class InstructionalPlanTests(unittest.TestCase):
                 api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
                 path = root / ".course-work" / name
                 changed = load_json(path)
-                changed["changeMarker"] = name
+                if name == "course-storyboard.json":
+                    changed["title"] = "变更后的教学计划"
+                else:
+                    changed["changeMarker"] = name
                 write_json_atomic(path, changed)
                 with self.assertRaises(api.PlanApprovalError) as caught:
                     api.verify_plan_approval(root)
@@ -358,9 +433,53 @@ class InstructionalPlanTests(unittest.TestCase):
         data["parts"][0]["slices"][0]["teachingPurpose"] = "目的|<script>&\r\n# 假标题"
         rendered = self.api().render_teacher_plan(data, coverage_document())
         self.assertEqual(rendered, self.api().render_teacher_plan(data, coverage_document()))
-        self.assertIn("标题\\\\&lt;b&gt;\\| ## 注入", rendered)
-        self.assertIn("目的\\|&lt;script&gt;&amp; # 假标题", rendered)
+        self.assertIn("标题&#92;&#60;b&#62;&#124; &#35;&#35; 注入", rendered)
+        self.assertIn("目的&#124;&#60;script&#62;&#38; &#35; 假标题", rendered)
         self.assertNotIn("<script>", rendered)
+
+    def test_markdown_shows_all_substantive_teacher_fields_and_disables_links(self):
+        data = plan_document()
+        slice_data = data["parts"][0]["slices"][0]
+        slice_data["learnerSees"] = "学生可见材料"
+        slice_data["completionEvidence"] = {"description": "提交判断", "artifact": "一段理由"}
+        slice_data["unresolvedBlockers"] = [{"id": "needs-confirmation", "reason": "请确认图表版本"}]
+        slice_data["proposedExclusions"] = [{"sourceId": "source-exclude", "reason": "过时"}]
+        data["title"] = "[click](javascript:alert(1)) ![track](https://example.test) <img src=x>"
+        rendered = self.api().render_teacher_plan(data, coverage_document())
+        for text in ("学生可见材料", "提交判断", "一段理由", "请确认图表版本", "source&#45;exclude", "图像关系", "拟排除素材"):
+            self.assertIn(text, rendered)
+        self.assertNotIn("[click]", rendered)
+        self.assertNotIn("![track]", rendered)
+        self.assertNotIn("<img", rendered)
+
+    def test_malformed_target_id_and_reference_word_boundaries_are_safe(self):
+        data = plan_document()
+        data["parts"][0]["slices"][0]["coVisibleRequirements"][0]["targetId"] = ["not-a-target"]
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertIn("stable-target-required", codes)
+        action = plan_document()["parts"][0]["slices"][0]["learnerAction"]
+        action["referencePolicy"] = "none"
+        action["referenceSourceIds"] = []
+        action.pop("targetId")
+        action["description"] = "The response is ready for review."
+        plan = plan_document()
+        plan["parts"][0]["slices"][0]["learnerAction"] = action
+        plan["parts"][0]["slices"][0]["coVisibleRequirements"] = []
+        self.assertNotIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        action["description"] = "Read the source chart and answer."
+        self.assertIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        action["description"] = "准备好后提交回答。"
+        self.assertNotIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        action["description"] = "比较图表后提交回答。"
+        self.assertIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(plan, coverage_document())})
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, plan=data)
+            script = Path(__file__).resolve().parents[1] / "scripts/manage-course-plan.py"
+            result = subprocess.run(["python3", str(script), str(root), "validate"], text=True, capture_output=True, check=False)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("stable-target-required", result.stderr)
+            self.assertNotIn(str(root), result.stderr)
 
     def test_render_rejects_symlinked_output_and_never_reports_absolute_path(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -1,7 +1,10 @@
 import os
+import errno
+import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from course_toolkit.jsonio import load_json, write_json_atomic
 
@@ -33,6 +36,23 @@ class JsonIoTests(unittest.TestCase):
                 write_json_atomic(path, {"ok": True}, reject_symlinks=True)
 
             self.assertEqual(outside.read_text(encoding="utf-8"), "outside")
+
+    def test_atomic_write_preserves_existing_posix_permissions(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "record.json"
+            path.write_text("{}\n", encoding="utf-8")
+            path.chmod(0o640)
+
+            write_json_atomic(path, {"ok": True})
+
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
+
+    def test_unsupported_directory_fsync_does_not_report_failure_after_replace(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "record.json"
+            with patch("course_toolkit.jsonio.os.fsync", side_effect=[None, OSError(errno.EINVAL, "unsupported")]):
+                write_json_atomic(path, {"ok": True})
+            self.assertEqual(load_json(path), {"ok": True})
 
 
 if __name__ == "__main__":

@@ -14,6 +14,7 @@ from course_toolkit.blueprint import (
     project_course_definition,
     validate_blueprint_authoring,
 )
+from course_toolkit.hashing import canonical_json_hash
 from course_toolkit.jsonio import dump_json
 
 
@@ -65,16 +66,6 @@ class CompilationEvidenceError(ValueError):
 
 
 ContractValidator = Callable[[dict], SharedContractResult]
-
-
-def canonical_json_hash(data: object) -> str:
-    encoded = json.dumps(
-        data,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
-    return hashlib.sha256(encoded).hexdigest()
 
 
 def file_sha256(path: Path) -> str:

@@ -1,6 +1,7 @@
 """Neutral, symlink-safe hashing helpers for local course evidence."""
 
 import hashlib
+import json
 from pathlib import Path
 
 
@@ -10,6 +11,16 @@ def _hash_file(path: Path) -> str:
         for chunk in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def canonical_json_hash(data: object) -> str:
+    encoded = json.dumps(
+        data,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def hash_path(path: Path) -> str:
