@@ -1,4 +1,5 @@
 import copy
+import os
 import subprocess
 import tempfile
 import unittest
@@ -403,6 +404,33 @@ class InstructionalPlanTests(unittest.TestCase):
             with self.assertRaises(api.PlanValidationError) as caught:
                 api.render_plan_at_root(root)
             self.assertEqual(caught.exception.issues[0].code, "symlink-file")
+
+    def test_approval_does_not_follow_legacy_predictable_json_temp_symlink(self):
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            outside = root / "outside.json"
+            outside.write_text("outside", encoding="utf-8")
+            legacy_temp = root / ".course-work" / f".course-storyboard.json.{os.getpid()}.tmp"
+            legacy_temp.symlink_to(outside)
+            api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
+            self.assertEqual(outside.read_text(encoding="utf-8"), "outside")
+
+    def test_cli_write_failure_hides_course_root_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            work = root / ".course-work"
+            work.chmod(0o500)
+            script = Path(__file__).resolve().parents[1] / "scripts/manage-course-plan.py"
+            try:
+                result = subprocess.run(["python3", str(script), str(root), "render"], text=True, capture_output=True, check=False)
+            finally:
+                work.chmod(0o700)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("filesystem-error", result.stderr)
+            self.assertNotIn(str(root), result.stdout + result.stderr)
 
     def test_cli_validate_render_approve_and_status(self):
         with tempfile.TemporaryDirectory() as temporary:

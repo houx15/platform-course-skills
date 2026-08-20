@@ -77,8 +77,11 @@ def main() -> int:
     except PlanApprovalError as exc:
         print(f"[{exc.code}] {exc.path}: {exc}", file=sys.stderr)
         return 2
-    except (OSError, RuntimeError, ValueError) as exc:
-        print(f"页面计划工具失败：{exc}", file=sys.stderr)
+    except OSError:
+        print("[filesystem-error] .course-work: 无法读写课程计划文件，请检查本地目录权限。", file=sys.stderr)
+        return 3
+    except (RuntimeError, ValueError):
+        print("[tool-error] .course-work: 页面计划工具无法完成当前操作。", file=sys.stderr)
         return 3
 
 

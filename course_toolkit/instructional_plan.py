@@ -466,7 +466,7 @@ def approve_plan(root: Path, *, decision_id: str, approved_at: str) -> dict:
     }
     updated = deepcopy(plan)
     updated["approval"] = approval
-    write_json_atomic(safe_root / PLAN_RELATIVE_PATH, updated)
+    write_json_atomic(safe_root / PLAN_RELATIVE_PATH, updated, reject_symlinks=True)
     return approval
 
 
