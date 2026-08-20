@@ -10,7 +10,7 @@ Handle the only externally mutating phase. Read [api-contract.md](references/api
 ## Preconditions
 
 1. Run `python _course-toolkit/scripts/course-workflow.py status ROOT --json`. Require current G8. If G8 is incomplete or invalidated, explain that you cannot publish and return to the responsible Skill.
-2. Run `python _course-toolkit/scripts/manage-course-catalog.py status ROOT --json`. If no current teacher-confirmed binding exists, propose matches from the course title and ask the teacher to select the correct human-readable course. This applies to old courses too. The binding deterministically supplies `category`, structured `introduction`, and `cardIds`; do not ask for those fields separately and never send `featured_rank`.
+2. Run `python _course-toolkit/scripts/manage-course-catalog.py status ROOT --json`. If no current teacher-confirmed binding exists, propose matches from the course title and ask the teacher to select the correct human-readable course. This applies to old courses too. The binding deterministically supplies fixed `category`, structured `introduction`, and `cardIds`; do not ask the teacher to review, approve, or edit those values separately and never send `featured_rank`.
 3. Require a stable slug that exactly equals `course.id`. Initialize it once:
 
    ```bash
@@ -34,7 +34,7 @@ python _course-toolkit/scripts/publish-course.py preflight ROOT \
   --json
 ```
 
-Present the teacher-readable dry run: stable slug, create/update mode, exact action, definition hash, blurb, catalog-derived category/introduction/card IDs, generated cover path/hash, upload and reuse counts, and risks. State plainly:
+Present the teacher-readable dry run: stable slug, create/update mode, exact action, definition hash, blurb, confirmation that fixed catalog metadata is bound, generated cover path/hash, upload and reuse counts, and risks. Do not present category, `cardIds`, or `introduction` as separate teacher choices or approval items. State plainly:
 
 - all writes hit production;
 - the API is last-writer-wins;

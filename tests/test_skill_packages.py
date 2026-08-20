@@ -334,6 +334,10 @@ class SkillPackageTests(unittest.TestCase):
             "`coverAssetPath`",
             "`coverUrl`",
             "exact uploaded bytes",
+            "The teacher makes only two catalog-and-cover decisions",
+            "selects the human-readable course name",
+            "accepts or rejects the generated cover",
+            "Do not ask the teacher to review or approve category, cardIds, or introduction separately",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)

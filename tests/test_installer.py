@@ -169,10 +169,14 @@ class InstallerTests(unittest.TestCase):
 
         required = (
             "## 33 门课程绑定与封面协议",
-            "代码只负责提议，老师负责确认",
+            "老师在这套流程中只做两个选择",
+            "选择或确认课程名称",
+            "接受或拒绝课程封面",
+            "代码提议课程名称，老师只确认课程名称",
             "不得把模糊匹配第一名静默写成最终选择",
             "从固定目录原样取得",
             "`category`、`cardIds` 和完整 `introduction`",
+            "不要求老师分别审核、确认或改写",
             "旧版本制作的课程也不能跳过",
             "`PUT /api/v1/admin/courses/{slug}/definition`",
             '"cardIds": ["belief-spectrum", "perspective-matrix"]',
