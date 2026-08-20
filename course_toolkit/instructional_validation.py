@@ -268,12 +268,12 @@ def _external_event_updates(
     visible: Set[str],
     enabled: Set[str],
     active_narrations: Set[str],
-    active_timers: Mapping[str, int],
+    active_timers: Mapping[str, Tuple[int, bool, bool]],
     consumed_events: Set[Tuple[str, str]],
     attempts: Mapping[str, int],
     locked_assessments: Set[str],
     playing_videos: Set[str],
-) -> List[Tuple[Set[str], Dict[str, int], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
+) -> List[Tuple[Set[str], Dict[str, Tuple[int, bool, bool]], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
     """Return successor runtime facts for one externally produced event."""
     on = transition.get("on") if isinstance(transition, dict) else None
     if not isinstance(on, dict):
@@ -301,13 +301,29 @@ def _external_event_updates(
         candidates = selected_ids if selected_ids else set(active_timers)
         updates = []
         for timer_id in sorted(candidates):
-            if active_timers.get(timer_id, 0) <= 0:
+            total, has_latest, latest_pending = active_timers.get(timer_id, (0, False, False))
+            if total <= 0:
                 continue
-            next_timers = dict(active_timers)
-            next_timers[timer_id] -= 1
-            if next_timers[timer_id] == 0:
-                del next_timers[timer_id]
-            updates.append((set(active_narrations), next_timers, set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
+            # The current map points only at the latest handle.  Its callback
+            # can fire while that stale map entry remains; older callbacks are
+            # still live but no longer cancelable by this id.
+            choices = []
+            if latest_pending:
+                choices.append((total - 1, has_latest, False))
+            if total - int(latest_pending) > 0:
+                choices.append((total - 1, has_latest, latest_pending))
+            for next_state in choices:
+                next_timers = dict(active_timers)
+                if next_state[0] == 0:
+                    # Preserve a fired latest handle ref even with no pending
+                    # callback; cancelTimer still clears that ref later.
+                    if next_state[1]:
+                        next_timers[timer_id] = next_state
+                    else:
+                        next_timers.pop(timer_id, None)
+                else:
+                    next_timers[timer_id] = next_state
+                updates.append((set(active_narrations), next_timers, set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
         return updates
     source_id = on.get("sourceId")
     candidates = [(source_id, blocks.get(source_id))] if isinstance(source_id, str) else sorted(blocks.items())
@@ -320,11 +336,15 @@ def _external_event_updates(
             if block_id in locked_assessments or not _block_can_emit_event(block, "answer.submitted", visible, enabled):
                 continue
             next_attempts = dict(attempts)
-            attempt = next_attempts.get(block_id, 0) + 1
+            raw_attempt = next_attempts.get(block_id, 0) + 1
             completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
             maximum = completion.get("maxAttempts")
-            if isinstance(maximum, int) and attempt > maximum:
+            if isinstance(maximum, int) and raw_attempt > maximum:
                 continue
+            # Unlimited submit-correct retries have identical future event
+            # semantics after the first wrong attempt.  Abstract their count
+            # to one so a retry loop cannot exhaust the state-space cap.
+            attempt = raw_attempt if isinstance(maximum, int) else min(raw_attempt, 1)
             if event_type == "answer.submitted":
                 for pending, locks in _assessment_cascades(block, attempt):
                     updates.append((set(active_narrations), dict(active_timers), set(consumed_events), {**next_attempts, block_id: attempt}, set(locked_assessments).union({block_id} if locks else set()), set(playing_videos), pending))
@@ -636,14 +656,17 @@ def _effective_step_states(
     if initial_id not in steps:
         return {}, []
     visible, enabled = _initial_state(slice_data)
-    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), (), frozenset(), (), frozenset(), frozenset(), ())])
+    # The final flag means "apply this step's enter actions".  Synchronous
+    # renderer event tails can continue in the same step after an ignored
+    # event; they must not replay enter actions while doing so.
+    pending = deque([(initial_id, frozenset(visible), frozenset(enabled), frozenset(), (), frozenset(), (), frozenset(), frozenset(), (), True)])
     seen = set()
     effective: Dict[str, List[Tuple[Set[str], Set[str]]]] = {}
     issues: List[ValidationIssue] = []
     max_states = 4096
     while pending:
-        step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state = pending.popleft()
-        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state)
+        step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state, apply_enter_actions = pending.popleft()
+        state_key = (step_id, visible_state, enabled_state, narrations_state, timers_state, consumed_state, attempts_state, locked_state, playing_state, pending_events_state, apply_enter_actions)
         if state_key in seen:
             continue
         seen.add(state_key)
@@ -657,7 +680,7 @@ def _effective_step_states(
         consumed_events, attempts = set(consumed_state), dict(attempts_state)
         locked_assessments, playing_videos = set(locked_state), set(playing_state)
         pending_events = tuple(pending_events_state)
-        for action in _items(step.get("enterActions")):
+        for action in _items(step.get("enterActions")) if apply_enter_actions else []:
             if not isinstance(action, dict):
                 continue
             action_type = action.get("type")
@@ -673,14 +696,24 @@ def _effective_step_states(
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
-                active_timers[timer_id] = min(active_timers.get(timer_id, 0) + 1, 8)
+                total, _has_latest, _latest_pending = active_timers.get(timer_id, (0, False, False))
+                # timers.current keeps only the newest handle.  An older
+                # overwritten callback remains live but is no longer owned.
+                active_timers[timer_id] = (min(total + 1, 8), True, True)
                 continue
             if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
-                if active_timers.get(timer_id, 0) > 1:
-                    active_timers[timer_id] -= 1
-                else:
-                    active_timers.pop(timer_id, None)
+                total, has_latest, latest_pending = active_timers.get(timer_id, (0, False, False))
+                # cancelTimer clears only the stored latest handle.  If that
+                # handle fired already, clearing it must not cancel an older
+                # pending callback.
+                if has_latest:
+                    if latest_pending:
+                        total -= 1
+                    if total > 0:
+                        active_timers[timer_id] = (total, False, False)
+                    else:
+                        active_timers.pop(timer_id, None)
                 continue
             if action_type == "resetBlock":
                 if isinstance(target, str) and blocks.get(target, {}).get("type") == "video":
@@ -712,7 +745,7 @@ def _effective_step_states(
             matched = next((transition for transition in _items(step.get("transitions")) if _matcher_matches(transition.get("on") if isinstance(transition, dict) else None, emitted)), None)
             pending_events = pending_events[1:]
             if matched is not None and matched.get("to") in steps:
-                pending.append((matched["to"], frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(consumed_events), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events))
+                pending.append((matched["to"], frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(consumed_events), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events, True))
                 break
         else:
             matched = None
@@ -734,7 +767,35 @@ def _effective_step_states(
                 locked_assessments=locked_assessments,
                 playing_videos=playing_videos,
             ):
-                pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events))
+                pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
+
+        # A learner can submit any visible/enabled assessment or play/end any
+        # visible/enabled video even when no transition consumes the first
+        # emitted event.  The renderer nevertheless produces the rest of its
+        # synchronous cascade, which may match a later authored transition.
+        # Keep this continuation in the same step without replaying its enter
+        # actions (which could otherwise start duplicate timers or narration).
+        for block_id, block in sorted(blocks.items()):
+            if block.get("type") in ASSESSMENT_TYPES:
+                synthetic = {"on": {"type": "answer.submitted", "sourceId": block_id}}
+            elif block.get("type") == "video":
+                event_type = "video.ended" if block_id in playing_videos else "video.started"
+                synthetic = {"on": {"type": event_type, "sourceId": block_id}}
+            else:
+                continue
+            for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
+                synthetic,
+                blocks=blocks,
+                visible=visible,
+                enabled=enabled,
+                active_narrations=active_narrations,
+                active_timers=active_timers,
+                consumed_events=consumed_events,
+                attempts=attempts,
+                locked_assessments=locked_assessments,
+                playing_videos=playing_videos,
+            ):
+                pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, False))
     return effective, issues
 
 

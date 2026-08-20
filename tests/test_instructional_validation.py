@@ -518,3 +518,64 @@ class InstructionalValidationTests(unittest.TestCase):
         }
 
         self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_ignored_wrong_attempts_can_reach_exhaustion_transition(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        answer = slice_data["blocks"][3]
+        answer["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        answer["completion"] = {"rule": "submit-correct-or-exhausted", "maxAttempts": 3}
+        slice_data["blocks"].append({"id": "followup", "type": "fillBlank", "prompt": "说明原因", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "wait-for-exhaustion",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "wait-for-exhaustion", "enterActions": [], "transitions": [{"on": {"type": "answer.attemptsExhausted", "sourceId": "answer-block"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_unlimited_retry_loop_is_abstracted_without_state_space_error(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        answer = slice_data["blocks"][3]
+        answer["assessment"] = {"mode": "graded", "correctOptionId": "a"}
+        answer["completion"] = {"rule": "submit-correct"}
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "retry",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [{"id": "retry", "enterActions": [], "transitions": [{"on": {"type": "answer.incorrect", "sourceId": "answer-block"}, "to": "retry"}]}],
+        }
+
+        self.assertNotIn((PATH, "workflow-state-space-exceeded"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_video_completed_event_reaches_transition_without_video_ended_transition(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append({"id": "video", "type": "video", "source": "materials/video.mp4", "completion": {"rule": "video-ended"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "watch",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "video"], "enabledBlockIds": ["video"]},
+            "steps": [
+                {"id": "watch", "enterActions": [], "transitions": [{"on": {"type": "block.completed", "sourceId": "video"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_fired_latest_timer_then_cancel_preserves_older_callback(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "start",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "start", "enterActions": [{"type": "startTimer", "timerId": "same", "durationSeconds": 5}, {"type": "startTimer", "timerId": "same", "durationSeconds": 10}], "transitions": [{"on": {"type": "timer.elapsed", "sourceId": "same"}, "to": "after-latest"}]},
+                {"id": "after-latest", "enterActions": [{"type": "cancelTimer", "timerId": "same"}], "transitions": [{"on": {"type": "timer.elapsed", "sourceId": "same"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
