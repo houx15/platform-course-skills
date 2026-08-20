@@ -2,6 +2,7 @@ import copy
 import json
 import subprocess
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from course_toolkit.instructional_audit import (
     record_instructional_audit,
     verify_instructional_audit,
 )
+import course_toolkit.instructional_audit as instructional_audit
 from course_toolkit.instructional_plan import approve_plan
 from course_toolkit.jsonio import load_json, write_json_atomic
 from tests.helpers import ROOT
@@ -215,6 +217,7 @@ def _candidate(root: Path, *, status: str = "pass") -> dict:
             "sliceId": SLICE,
             "check": check,
             "status": status,
+            "applicability": "applicable",
             "sourceIds": ["source-1"],
             "targetIds": ["block:evidence-question"],
             "evidence": "源材料、页面计划和当前题目共同支持本项判断。",
@@ -239,6 +242,7 @@ def _two_slice_candidate(root: Path) -> dict:
                     "sliceId": slice_id,
                     "check": check,
                     "status": "pass",
+                    "applicability": "applicable",
                     "sourceIds": [source_id],
                     "targetIds": [target_id],
                     "evidence": "该 Slice 的来源与题目在当前课程定义中一一对应。",
@@ -497,7 +501,7 @@ class InstructionalAuditTests(unittest.TestCase):
         write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, stored)
         with self.assertRaises(InstructionalAuditError) as caught:
             verify_instructional_audit(self.root)
-        self.assertEqual(caught.exception.code, "review-decision-unconfirmed")
+        self.assertEqual(caught.exception.code, "audit-anchor-mismatch")
 
         document["decisions"][0].update({"status": "confirmed", "answer": "将主张置于题目上方后继续同屏呈现。", "decidedAt": "2026-08-21T01:00:00Z"})
         write_json_atomic(self.root / ".course-work/decisions.json", document)
@@ -505,7 +509,7 @@ class InstructionalAuditTests(unittest.TestCase):
         write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, stored)
         with self.assertRaises(InstructionalAuditError) as caught:
             verify_instructional_audit(self.root)
-        self.assertEqual(caught.exception.code, "review-decision-changed")
+        self.assertEqual(caught.exception.code, "audit-anchor-mismatch")
 
     def test_source_and_target_ids_cannot_cross_slice_boundaries(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -540,6 +544,106 @@ class InstructionalAuditTests(unittest.TestCase):
         with self.assertRaises(InstructionalAuditError) as caught:
             record_instructional_audit(self.root, _candidate(self.root))
         self.assertEqual(caught.exception.code, "symlink-evidence")
+
+    def test_anchor_detects_direct_lifecycle_tampering(self):
+        record_instructional_audit(self.root, _candidate(self.root, status="blocker"))
+        tampered = load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
+        for entry in tampered["entries"]:
+            entry["status"] = "pass"
+        write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, tampered)
+        with self.assertRaises(InstructionalAuditError) as caught:
+            verify_instructional_audit(self.root)
+        self.assertEqual(caught.exception.code, "audit-anchor-mismatch")
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write_root(root)
+            review = _candidate(root)
+            review["entries"][0].update({
+                "status": "review",
+                "plausibleArrangements": ["保留当前安排。", "采用第二种安排。"],
+            })
+            record_instructional_audit(root, review)
+            tampered = load_json(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
+            tampered["entries"][0].pop("plausibleArrangements")
+            tampered["entries"][0]["status"] = "pass"
+            write_json_atomic(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, tampered)
+            with self.assertRaises(InstructionalAuditError) as caught:
+                verify_instructional_audit(root)
+            self.assertEqual(caught.exception.code, "audit-anchor-mismatch")
+
+    def test_course_lock_rechecks_prior_blocker_before_stale_pass_writes(self):
+        stale_pass = _candidate(self.root)
+        blocker = _candidate(self.root, status="blocker")
+        entered, release = threading.Event(), threading.Event()
+        original = instructional_audit._write_audit_documents
+        errors = []
+
+        def gated(root, report):
+            if report["entries"][0]["status"] == "blocker":
+                entered.set()
+                self.assertTrue(release.wait(3))
+            return original(root, report)
+
+        def record(payload):
+            try:
+                record_instructional_audit(self.root, payload)
+            except Exception as exc:  # inspected below
+                errors.append(exc)
+
+        instructional_audit._write_audit_documents = gated
+        try:
+            first = threading.Thread(target=record, args=(blocker,))
+            first.start()
+            self.assertTrue(entered.wait(3))
+            second = threading.Thread(target=record, args=(stale_pass,))
+            second.start()
+            release.set()
+            first.join(5)
+            second.join(5)
+        finally:
+            instructional_audit._write_audit_documents = original
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], InstructionalAuditError)
+        self.assertEqual(errors[0].code, "blocker-downgrade-forbidden")
+        self.assertEqual(load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)["entries"][0]["status"], "blocker")
+
+    def test_source_less_slice_can_record_explicit_non_applicable_checks_only(self):
+        plan = load_json(self.root / ".course-work/course-storyboard.json")
+        plan["parts"][0]["slices"][0]["sourceUses"] = []
+        coverage = load_json(self.root / ".course-work/source-coverage.json")
+        coverage["items"] = []
+        inventory = load_json(self.root / ".course-work/materials-extracted.json")
+        inventory["items"] = []
+        write_json_atomic(self.root / ".course-work/course-storyboard.json", plan)
+        write_json_atomic(self.root / ".course-work/source-coverage.json", coverage)
+        write_json_atomic(self.root / ".course-work/materials-extracted.json", inventory)
+        approve_plan(self.root, decision_id="source-less-plan", approved_at="2026-08-21T02:00:00Z")
+        candidate = _candidate(self.root)
+        for entry in candidate["entries"]:
+            entry.update({
+                "applicability": "not-applicable",
+                "sourceIds": [],
+                "targetIds": [],
+                "notApplicableReason": "该 Slice 当前没有可声明的来源证据，无法进行本项语义比对。",
+            })
+        report = record_instructional_audit(self.root, candidate)
+        self.assertTrue(all(entry["applicability"] == "not-applicable" for entry in report["entries"]))
+        self.assertIn("notApplicableReason", report["entries"][0])
+
+    def test_non_applicable_cannot_waive_a_slice_with_sources_and_targets(self):
+        candidate = _candidate(self.root)
+        candidate["entries"][0].update({
+            "applicability": "not-applicable",
+            "sourceIds": [],
+            "targetIds": [],
+            "notApplicableReason": "不适用。",
+        })
+        with self.assertRaises(InstructionalAuditError) as caught:
+            record_instructional_audit(self.root, candidate)
+        self.assertEqual(caught.exception.code, "not-applicable-not-justified")
 
     def test_cli_requires_confined_candidate_file_and_emits_json_errors(self):
         script = ROOT / "scripts/record-instructional-audit.py"

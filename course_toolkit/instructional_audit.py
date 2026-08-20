@@ -9,22 +9,27 @@ needed) teacher decision record that it inspected.
 
 from __future__ import annotations
 
+import json
+import os
 from pathlib import Path
-from typing import Dict, Iterable, List, Mapping, Set, Tuple
+import secrets
+import stat
+from typing import Dict, List, Mapping, Set, Tuple
 
 from .course_package_validation import (
     VALIDATION_REPORT_RELATIVE_PATH,
     build_course_validation_report,
 )
-from .decisions import DECISION_STORE_SCHEMA_VERSION, DecisionStore
+from .decisions import DECISION_STORE_SCHEMA_VERSION
 from .hashing import canonical_json_hash
-from .instructional_plan import verify_plan_approval
-from .jsonio import load_json, write_json_atomic
+from .instructional_plan import _plan_guard, verify_plan_approval
+from .jsonio import dump_json
 from .workflow import verify_g5_compilation
 
 
 INSTRUCTIONAL_AUDIT_VERSION = "1.0"
 INSTRUCTIONAL_AUDIT_RELATIVE_PATH = ".course-work/instructional-audit.json"
+INSTRUCTIONAL_AUDIT_ANCHOR_RELATIVE_PATH = ".course-work/instructional-audit-anchor.json"
 SEMANTIC_CHECKS = (
     "image-supports-assigned-claim",
     "question-answerable-from-declared-evidence",
@@ -58,6 +63,8 @@ _ENTRY_FIELDS = frozenset(
         "decisionId",
         "reviewContextHash",
         "decisionRecordHash",
+        "applicability",
+        "notApplicableReason",
     }
 )
 _STATUS = frozenset({"pass", "blocker", "review"})
@@ -94,34 +101,50 @@ def _safe_root(root: Path) -> Path:
 
 
 def _safe_json(root: Path, relative: str, *, required: bool = True) -> object | None:
-    path = root
-    for component in Path(relative).parts:
-        path = path / component
-        if path.is_symlink():
-            raise InstructionalAuditError("symlink-evidence", "audit evidence may not traverse a symlink", path=relative)
-    if not path.is_file():
-        if required:
-            raise InstructionalAuditError("missing-evidence", "required audit evidence is missing", path=relative)
-        return None
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
     try:
-        return load_json(path)
-    except ValueError as exc:
+        descriptor = os.open(root, directory_flags)
+    except OSError as exc:
+        raise InstructionalAuditError("unsafe-evidence-root", "audit evidence root cannot be opened safely", path=relative) from exc
+    try:
+        for index, component in enumerate(Path(relative).parts):
+            child_flags = flags if index == len(Path(relative).parts) - 1 else directory_flags
+            try:
+                child = os.open(component, child_flags, dir_fd=descriptor)
+            except FileNotFoundError:
+                if required:
+                    raise InstructionalAuditError("missing-evidence", "required audit evidence is missing", path=relative)
+                return None
+            except OSError as exc:
+                raise InstructionalAuditError("symlink-evidence", "audit evidence may not traverse a symlink", path=relative) from exc
+            os.close(descriptor)
+            descriptor = child
+        if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+            raise InstructionalAuditError("invalid-evidence", "audit evidence must be a regular file", path=relative)
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 1024 * 1024)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except (UnicodeError, json.JSONDecodeError) as exc:
         raise InstructionalAuditError("invalid-json", "audit evidence is not valid JSON", path=relative) from exc
+    finally:
+        os.close(descriptor)
 
 
 def _decision_store_hash(root: Path) -> str:
-    path = root / ".course-work" / "decisions.json"
-    if not path.exists():
+    document = _safe_json(root, ".course-work/decisions.json", required=False)
+    if document is None:
         # An audit with no review resolution may legitimately precede the
         # first decision record.  Hash the canonical empty store instead of
         # treating absence as an unbound special case.
         return canonical_json_hash({"schemaVersion": DECISION_STORE_SCHEMA_VERSION, "decisions": []})
-    _safe_json(root, ".course-work/decisions.json")
-    try:
-        DecisionStore.load(path)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise InstructionalAuditError("invalid-decisions", "teacher decision record is invalid", path=".course-work/decisions.json") from exc
-    return canonical_json_hash(load_json(path))
+    if not isinstance(document, dict) or document.get("schemaVersion") != DECISION_STORE_SCHEMA_VERSION or not isinstance(document.get("decisions"), list):
+        raise InstructionalAuditError("invalid-decisions", "teacher decision record is invalid", path=".course-work/decisions.json")
+    return canonical_json_hash(document)
 
 
 def _current_artifact_hashes_at(root: Path) -> Tuple[Dict[str, str], dict, dict, dict, dict]:
@@ -150,7 +173,9 @@ def _current_artifact_hashes_at(root: Path) -> Tuple[Dict[str, str], dict, dict,
     # set.  Rebuild it before accepting its asset hash, so a changed image or
     # PDF cannot reuse a previous semantic observation.
     try:
-        rebuilt = build_course_validation_report(root)
+        # G5 was verified immediately above; rebuilding the package report
+        # with that fact avoids a duplicate compilation traversal.
+        rebuilt = build_course_validation_report(root, verify_compilation=False)
     except Exception as exc:
         raise InstructionalAuditError("asset-evidence-invalid", "current asset evidence cannot be rebuilt", path=str(VALIDATION_REPORT_RELATIVE_PATH)) from exc
     if canonical_json_hash(report) != canonical_json_hash(rebuilt):
@@ -292,7 +317,7 @@ def _validate_entry(
     unknown = sorted(set(value).difference(_ENTRY_FIELDS))
     if unknown:
         raise InstructionalAuditError("unknown-field", f"unsupported audit entry field: {unknown[0]}", path=path)
-    required = {"partId", "sliceId", "check", "status", "sourceIds", "targetIds", "evidence"}
+    required = {"partId", "sliceId", "check", "status", "sourceIds", "targetIds", "evidence", "applicability"}
     missing = sorted(required.difference(value))
     if missing:
         raise InstructionalAuditError("entry-field-required", f"audit entry is missing {missing[0]}", path=path)
@@ -309,17 +334,25 @@ def _validate_entry(
     if not _nonempty(evidence):
         raise InstructionalAuditError("evidence-required", "audit evidence must be concise nonempty source/course-grounded text", path=f"{path}.evidence")
 
+    applicability = value.get("applicability")
+    if applicability not in {"applicable", "not-applicable"}:
+        raise InstructionalAuditError("applicability-required", "audit entry must explicitly state whether the check applies", path=f"{path}.applicability")
     normalized: dict = {
         "partId": part_id,
         "sliceId": slice_id,
         "check": check,
         "status": status,
+        "applicability": applicability,
     }
     known_source_ids, known_target_ids = slice_ids.get((part_id, slice_id), (set(), set()))
     for field, known, code in (("sourceIds", known_source_ids, "source-not-in-slice"), ("targetIds", known_target_ids, "target-not-in-slice")):
         ids = value.get(field)
-        if not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item for item in ids):
-            raise InstructionalAuditError("stable-ids-required", f"{field} must be a nonempty list of stable IDs", path=f"{path}.{field}")
+        if not isinstance(ids, list) or not all(isinstance(item, str) and item for item in ids):
+            raise InstructionalAuditError("stable-ids-required", f"{field} must be a list of stable IDs", path=f"{path}.{field}")
+        if applicability == "applicable" and not ids:
+            raise InstructionalAuditError("stable-ids-required", f"{field} must be nonempty when the check applies", path=f"{path}.{field}")
+        if applicability == "not-applicable" and ids:
+            raise InstructionalAuditError("not-applicable-ids", f"{field} must be empty only for a genuinely non-applicable check", path=f"{path}.{field}")
         if len(ids) != len(set(ids)):
             raise InstructionalAuditError("duplicate-id", f"{field} must not contain duplicate IDs", path=f"{path}.{field}")
         unknown_id = next((item for item in ids if item not in known), None)
@@ -327,6 +360,17 @@ def _validate_entry(
             raise InstructionalAuditError(code, f"{field} contains an unknown current ID", path=f"{path}.{field}")
         normalized[field] = sorted(ids)
     normalized["evidence"] = evidence.strip()
+
+    reason = value.get("notApplicableReason")
+    if applicability == "not-applicable":
+        if status != "pass" or not _nonempty(reason):
+            raise InstructionalAuditError("not-applicable-reason-required", "a non-applicable check needs a concise reason and pass status", path=path)
+        if any(value.get(field) is not None for field in ("plausibleArrangements", "decisionId", "reviewContextHash", "decisionRecordHash")):
+            raise InstructionalAuditError("status-field-invalid", "a non-applicable check may not carry review fields", path=path)
+        normalized["notApplicableReason"] = reason.strip()
+        return normalized
+    if reason is not None:
+        raise InstructionalAuditError("status-field-invalid", "notApplicableReason is allowed only for non-applicable checks", path=path)
 
     arrangements = value.get("plausibleArrangements")
     decision_id = value.get("decisionId")
@@ -425,6 +469,15 @@ def _validate_payload(
         )
         for index, entry in enumerate(entries)
     ]
+    # N/A is deliberately narrow: it is only a representation for a Slice
+    # that has no source evidence or no stable course/plan target at all.  It
+    # cannot be used to waive a check that has both sides available for audit.
+    for entry in normalized:
+        if entry["applicability"] != "not-applicable":
+            continue
+        sources, targets = slice_ids.get((entry["partId"], entry["sliceId"]), (set(), set()))
+        if sources and targets:
+            raise InstructionalAuditError("not-applicable-not-justified", "a check with current sources and targets must be audited", path="entries")
     expected = {(part_id, slice_id, check) for part_id, slice_id in ordered_slices for check in SEMANTIC_CHECKS}
     actual = [(entry["partId"], entry["sliceId"], entry["check"]) for entry in normalized]
     if len(actual) != len(set(actual)):
@@ -465,6 +518,92 @@ def _existing_entries(root: Path) -> dict[Tuple[str, str, str], dict]:
     return result
 
 
+def _audit_anchor(report: Mapping[str, object]) -> dict:
+    """Small tamper-evident companion to the mutable human-readable report."""
+    entries = report.get("entries")
+    if not isinstance(entries, list):
+        raise InstructionalAuditError("invalid-payload", "audit report has no entries")
+    return {
+        "schemaVersion": INSTRUCTIONAL_AUDIT_VERSION,
+        "reportHash": canonical_json_hash(report),
+        "entries": [
+            {
+                "partId": entry["partId"],
+                "sliceId": entry["sliceId"],
+                "check": entry["check"],
+                "entryHash": canonical_json_hash(entry),
+            }
+            for entry in entries
+        ],
+    }
+
+
+def _validate_existing_anchor(root: Path, report: Mapping[str, object], *, required: bool) -> None:
+    anchor = _safe_json(root, INSTRUCTIONAL_AUDIT_ANCHOR_RELATIVE_PATH, required=required)
+    if anchor is None and not required:
+        return
+    if not isinstance(anchor, dict) or anchor != _audit_anchor(report):
+        raise InstructionalAuditError("audit-anchor-mismatch", "instructional audit was changed outside its atomic lifecycle record", path=INSTRUCTIONAL_AUDIT_ANCHOR_RELATIVE_PATH)
+
+
+def _write_audit_documents(root: Path, report: Mapping[str, object]) -> None:
+    """Descriptor-relative atomic replacement; parent and leaf symlinks never follow."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
+    root_fd = os.open(root, directory_flags)
+    work_fd = None
+    temporary_names: List[str] = []
+    try:
+        work_fd = os.open(".course-work", directory_flags, dir_fd=root_fd)
+        if not stat.S_ISDIR(os.fstat(work_fd).st_mode):
+            raise InstructionalAuditError("unsafe-destination", "audit destination directory is unsafe", path=".course-work")
+        documents = (
+            ("instructional-audit.json", report),
+            ("instructional-audit-anchor.json", _audit_anchor(report)),
+        )
+        prepared: List[Tuple[str, str]] = []
+        for name, document in documents:
+            try:
+                existing = os.stat(name, dir_fd=work_fd, follow_symlinks=False)
+                if stat.S_ISLNK(existing.st_mode):
+                    raise InstructionalAuditError("symlink-evidence", "audit destination may not be a symlink", path=f".course-work/{name}")
+                mode = stat.S_IMODE(existing.st_mode)
+            except FileNotFoundError:
+                mode = 0o644
+            temporary = f".{name}.{secrets.token_hex(16)}.tmp"
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), mode, dir_fd=work_fd)
+            temporary_names.append(temporary)
+            try:
+                content = dump_json(document).encode("utf-8")
+                os.write(fd, content)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+            prepared.append((temporary, name))
+        # Rename never follows the destination.  A race that replaces it with
+        # a symlink is safe (the link itself is atomically replaced).
+        for temporary, name in prepared:
+            os.rename(temporary, name, src_dir_fd=work_fd, dst_dir_fd=work_fd)
+            temporary_names.remove(temporary)
+        try:
+            os.fsync(work_fd)
+        except OSError:
+            pass
+    except InstructionalAuditError:
+        raise
+    except OSError as exc:
+        raise InstructionalAuditError("unsafe-destination", "audit destination cannot be written safely", path=".course-work") from exc
+    finally:
+        if work_fd is not None:
+            for temporary in temporary_names:
+                try:
+                    os.unlink(temporary, dir_fd=work_fd)
+                except OSError:
+                    pass
+            os.close(work_fd)
+        os.close(root_fd)
+
+
 def _confirmed_review_decision(
     root: Path,
     *,
@@ -473,13 +612,9 @@ def _confirmed_review_decision(
     context_hash: str,
 ) -> str:
     """Validate the concrete teacher decision without loose model coercion."""
-    path = root / ".course-work" / "decisions.json"
-    if not path.exists():
+    document = _safe_json(root, ".course-work/decisions.json", required=False)
+    if document is None:
         raise InstructionalAuditError("review-decision-missing", "a review cannot become pass without a confirmed teacher decision", path=".course-work/decisions.json")
-    try:
-        document = _safe_json(root, ".course-work/decisions.json")
-    except InstructionalAuditError:
-        raise
     if not isinstance(document, dict) or document.get("schemaVersion") != DECISION_STORE_SCHEMA_VERSION or not isinstance(document.get("decisions"), list):
         raise InstructionalAuditError("invalid-decisions", "teacher decision record is invalid", path=".course-work/decisions.json")
     matches = [item for item in document["decisions"] if isinstance(item, dict) and item.get("id") == decision_id]
@@ -568,13 +703,22 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
     candidate therefore leaves an earlier valid report byte-for-byte intact.
     """
     root = _safe_root(root)
-    hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
-    report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
-    _validate_lifecycle(root, report, hashes)
-    report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
-    _validate_resolved_passes(root, report, hashes)
-    write_json_atomic(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, report, reject_symlinks=True)
-    return report
+    # The same per-course guard used for plan mutations gives recorders a
+    # process-wide compare-and-swap boundary.  Critically, evidence and the
+    # prior lifecycle state are re-read *inside* the guard.
+    with _plan_guard(root):
+        hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
+        previous = _safe_json(root, INSTRUCTIONAL_AUDIT_RELATIVE_PATH, required=False)
+        if previous is not None:
+            if not isinstance(previous, dict):
+                raise InstructionalAuditError("invalid-payload", "previous instructional audit is invalid")
+            _validate_existing_anchor(root, previous, required=True)
+        report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
+        _validate_lifecycle(root, report, hashes)
+        report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
+        _validate_resolved_passes(root, report, hashes)
+        _write_audit_documents(root, report)
+        return report
 
 
 def verify_instructional_audit(root: Path) -> Dict[str, str]:
@@ -582,6 +726,9 @@ def verify_instructional_audit(root: Path) -> Dict[str, str]:
     root = _safe_root(root)
     hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
     payload = _safe_json(root, INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
+    if not isinstance(payload, dict):
+        raise InstructionalAuditError("invalid-payload", "instructional audit must be an object")
+    _validate_existing_anchor(root, payload, required=True)
     report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
     _validate_resolved_passes(root, report, hashes)
     blockers = [entry for entry in report["entries"] if entry["status"] == "blocker"]

@@ -3,6 +3,8 @@
 
 import argparse
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -14,7 +16,6 @@ from course_toolkit.instructional_audit import (
     _safe_root,
     record_instructional_audit,
 )
-from course_toolkit.jsonio import load_json
 
 
 MAX_CANDIDATE_BYTES = 512 * 1024
@@ -49,6 +50,38 @@ def _candidate_path(root: Path, raw: str) -> Path:
     return candidate
 
 
+def _load_candidate(root: Path, raw: str) -> dict:
+    """Read the candidate through checked descriptors, not a raceable pathname."""
+    _candidate_path(root, raw)  # stable error messages and lexical contract
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
+    descriptor = os.open(root, directory_flags)
+    try:
+        parts = raw.split("/")
+        for index, component in enumerate(parts):
+            child = os.open(component, flags if index == len(parts) - 1 else directory_flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISREG(metadata.st_mode):
+            raise InstructionalAuditError("candidate-required", "candidate JSON file is required", path="candidate")
+        if metadata.st_size > MAX_CANDIDATE_BYTES:
+            raise InstructionalAuditError("candidate-too-large", "candidate JSON exceeds the allowed size", path="candidate")
+        chunks = []
+        while True:
+            chunk = os.read(descriptor, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        return json.loads(b"".join(chunks).decode("utf-8"))
+    except InstructionalAuditError:
+        raise
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise InstructionalAuditError("candidate-invalid-path", "candidate file cannot be read safely", path="candidate") from exc
+    finally:
+        os.close(descriptor)
+
+
 def _emit(payload: dict, as_json: bool, *, error: bool = False) -> None:
     if as_json:
         print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
@@ -68,8 +101,7 @@ def main() -> int:
         if args.candidate is None:
             raise InstructionalAuditError("candidate-required", "candidate JSON file is required", path="candidate")
         root = _safe_root(args.root)
-        candidate = _candidate_path(root, args.candidate)
-        payload = load_json(candidate)
+        payload = _load_candidate(root, args.candidate)
         report = record_instructional_audit(root, payload)
         _emit({"ok": True, "status": "recorded", "output": INSTRUCTIONAL_AUDIT_RELATIVE_PATH, "report": report}, args.json)
         return 0

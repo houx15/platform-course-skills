@@ -638,12 +638,13 @@ def _instructional_layers(root: Path, document: dict) -> Tuple[dict, List[Valida
     return layers, blockers, warnings
 
 
-def build_course_validation_report(root: Path) -> dict:
+def build_course_validation_report(root: Path, *, verify_compilation: bool = True) -> dict:
     from course_toolkit.workflow import verify_g5_compilation
 
     root = root.resolve()
     delivery_root = root / "course"
-    verify_g5_compilation(root)
+    if verify_compilation:
+        verify_g5_compilation(root)
     document = load_json(root / "course/course.json")
     compilation_report = load_json(root / ".course-work/compilation-report.json")
     asset_result = validate_asset_references(
