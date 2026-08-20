@@ -164,6 +164,37 @@ class InstallerTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, readme)
 
+    def test_readme_teaches_agents_catalog_binding_cover_review_and_card_submission(self):
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+        required = (
+            "## 33 门课程绑定与封面协议",
+            "代码只负责提议，老师负责确认",
+            "不得把模糊匹配第一名静默写成最终选择",
+            "从固定目录原样取得",
+            "`category`、`cardIds` 和完整 `introduction`",
+            "旧版本制作的课程也不能跳过",
+            "`PUT /api/v1/admin/courses/{slug}/definition`",
+            '"cardIds": ["belief-spectrum", "perspective-matrix"]',
+            "Cards 不属于 `CourseDefinition`",
+            "Cards 不通过 `ship` 提交",
+            "把实际图片展示给老师",
+            "不得伪造生成记录",
+            "老师拒绝时保留原图和候选图",
+            "不得生成发布副本",
+            "老师明确接受后",
+            '`coverAssetPath: "cover/course-cover.webp"`',
+            "`coverUrl` 返回的字节",
+        )
+        for phrase in required:
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, readme)
+
+        self.assertLess(
+            readme.index("## 33 门课程绑定与封面协议"),
+            readme.index("## 老师如何使用"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

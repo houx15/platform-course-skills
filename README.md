@@ -41,6 +41,78 @@
 请阅读这个仓库的 README.md。不要只总结说明，请按照“Agent 接手协议”判断我是在安装、开始新课程还是继续已有课程，并主动带我完成下一步。所有教师沟通使用中文；未经我对具体发布计划明确批准，不要上传或发布。
 ```
 
+## 33 门课程绑定与封面协议
+
+以下协议供接手课程的 Agent 执行。不要把内部命令交给老师。
+
+### 先提议课程，再由老师确认
+
+代码只负责提议，老师负责确认。读取课程正式名称和别名后，调用 `manage-course-catalog.py propose`。匹配顺序为完全一致、标准化一致、模糊相似度排序。
+
+向老师展示最可能的正常课程名称，例如：
+
+```text
+我判断这最可能是《把争议放回证据里：立场光谱与视角对照矩阵》。请确认；也可以先完成课程预览，提交前再确认。
+```
+
+不得把模糊匹配第一名静默写成最终选择。不要让老师选择 `catalogId`、填写分类、抄写 Cards 或编辑介绍 JSON。老师确认课程名称后，调用 `manage-course-catalog.py confirm` 保存绑定。
+
+老师可以在开始时确认，也可以推迟到提交前。任何 `save-preview` 或 `publish` 之前都必须存在当前有效的确认记录。旧版本制作的课程也不能跳过。正式目录、别名或对应字段变化后，要求老师重新确认。
+
+确认后，从固定目录原样取得 `category`、`cardIds` 和完整 `introduction`。不要让 AI 根据课程材料重新猜测或改写这些字段。完整介绍固定包含 `hook`、`whatYouDo`、`takeaways`、`alignment` 和 `keywords`。不要提交 `featured_rank` 或 `featuredRank`。
+
+### 把目录字段提交到正确接口
+
+Cards 不属于 `CourseDefinition`。Cards 不通过 `ship` 提交。将目录字段与课程定义一起发送到 `PUT /api/v1/admin/courses/{slug}/definition`：
+
+请求结构为：
+
+```json
+{
+  "definition": { "...": "CourseDefinition 2.0" },
+  "blurb": "课程短介绍",
+  "cardIds": ["belief-spectrum", "perspective-matrix"],
+  "category": "stance-value",
+  "introduction": {
+    "hook": "...",
+    "whatYouDo": "...",
+    "takeaways": ["..."],
+    "alignment": {
+      "ib": ["..."],
+      "otherIntl": ["..."],
+      "domestic": ["..."]
+    },
+    "keywords": ["..."]
+  }
+}
+```
+
+这里的 `cardIds`、`category` 和 `introduction` 必须全部来自同一条已确认目录记录。学生端查询结果可能把 Cards 返回为 `card_ids`；教师工具提交时仍使用 `cardIds`。
+
+### 正式发布前生成并审核 Cover
+
+`save-preview` 不要求生成 Cover。最终 `publish` 必须使用老师审核过的专属 Cover。
+
+执行顺序如下：
+
+1. 先确认 33 门课程绑定。
+2. 调用 `manage-course-cover.py prompt`，取得已填入正式课程名称的固定 Prompt。
+3. 把该 Prompt 原样交给独立 subagent，要求它调用 imagegen2。不得缩写、翻译或改写 Prompt。
+4. 把原始生成结果保存在 `.course-work/cover-sources/`。
+5. 调用 `manage-course-cover.py prepare`，生成严格 16:9、质量 100 的 WebP 候选。
+6. 把实际图片展示给老师。图片描述、文件名或检查结果不能代替看图。
+7. 明确询问老师接受还是拒绝这张图片。
+
+当前宿主无法安排 subagent 或调用 imagegen2 时，明确报告阻塞。不得伪造生成记录、改用任意图片或跳过 Cover。
+
+老师拒绝时保留原图和候选图，不得生成发布副本。根据老师意见重新生成候选，再次展示并审核。
+
+老师明确接受后，调用 `manage-course-cover.py confirm`。只有该命令可以生成 `.course-work/cover-delivery/course-cover.webp`。确认记录绑定课程目录、完整 Prompt 和文件 SHA-256；任一内容改变后都要重新看图确认。
+
+把确认后的 WebP 作为 `cover/course-cover.webp` 上传 OSS。在 ship 请求中使用 `coverAssetPath: "cover/course-cover.webp"`，同时保持库存 `cover` 为空。不得发送 OSS object key、URL 或 `asset:` 值。
+
+发布后要求学生端返回非空 `coverUrl`。下载 `coverUrl` 返回的字节，并与老师确认文件的 SHA-256 和字节数比较。两者完全一致后才能完成 G10 和报告发布成功。不得保存或展示签名 URL。
+
 ## 老师如何使用
 
 老师只需要准备材料、回答教学判断、查看预览并批准最终提交。课程目录、JSON、格式检查、预览服务和发布操作由 Agent 处理。
