@@ -172,6 +172,8 @@ python scripts/manage-annotations.py apply ROOT \
 
 Application writes Blueprint and annotations atomically, then requires reconcile, compile, G5, CourseDefinition 2.0 validation, and G6. Runtime bugs have no Blueprint operations and remain preview blockers. After application, applied annotations remain unverified until the shared renderer verifies the new definition in a later G7 preview. The preview writes current hash-bound `.course-work/preview-manifest.json`; then `python scripts/course-workflow.py complete-gate ROOT G7 --json` independently verifies it.
 
+When the teacher completes the current local review, proactively remind the teacher that `127.0.0.1` is usable only on that computer. If another person needs to preview the course, the next step is an explicitly approved publish to the student platform and sharing the student page. Do not propose a ZIP archive, copied course directory, or local preview URL as a review handoff.
+
 ### G8 — Independent final review
 
 Inputs: original sources, decisions, Blueprint/storyboard, generated definition, assets, validation reports, and current preview evidence.
@@ -179,6 +181,8 @@ Inputs: original sources, decisions, Blueprint/storyboard, generated definition,
 Checks: re-read evidence independently; do not accept the director's or compiler's earlier conclusion as proof. Any open required annotation, stale preview, unresolved semantic issue, or failed Part dimension blocks.
 
 Exit: the independent report is publishable for exactly the reviewed hashes.
+
+At this exit, proactively offer the student-platform publication dry run when the teacher wants colleagues to preview. Do not treat a local URL or transferred course package as a shareable preview.
 
 ### G9 — Publication preflight
 

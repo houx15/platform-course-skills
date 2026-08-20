@@ -726,6 +726,46 @@ def _media_evidence(root: Path, document: dict) -> dict:
     return evidence
 
 
+def _layout_findings(document: dict) -> List[ValidationIssue]:
+    issues: List[ValidationIssue] = []
+    course = document.get("course")
+    if not isinstance(course, dict):
+        return issues
+    for part_index, part in enumerate(course.get("parts", [])):
+        if not isinstance(part, dict):
+            continue
+        for slice_index, slice_data in enumerate(part.get("slices", [])):
+            if not isinstance(slice_data, dict):
+                continue
+            layout = slice_data.get("layout")
+            if not isinstance(layout, dict) or layout.get("preset") not in {
+                "split-horizontal",
+                "split-vertical",
+            }:
+                continue
+            slots = layout.get("slots")
+            if not isinstance(slots, list):
+                continue
+            for slot_index, slot in enumerate(slots):
+                block_ids = slot.get("blockIds") if isinstance(slot, dict) else None
+                if not isinstance(block_ids, list) or not block_ids:
+                    issues.append(
+                        ValidationIssue(
+                            path=(
+                                f"course.parts[{part_index}].slices[{slice_index}]"
+                                f".layout.slots[{slot_index}].blockIds"
+                            ),
+                            code="layout-empty-slot",
+                            message=(
+                                "Split layout Slots must be non-empty. Use full for one "
+                                "focused Block, redistribute content across both sides, "
+                                "or split the teaching sequence into separate Slices."
+                            ),
+                        )
+                    )
+    return issues
+
+
 def build_course_validation_report(root: Path) -> dict:
     from course_toolkit.workflow import verify_g5_compilation
 
@@ -740,6 +780,7 @@ def build_course_validation_report(root: Path) -> dict:
         compilation_report.get("assetPaths", []),
     )
     issues = list(asset_result.issues)
+    issues.extend(_layout_findings(document))
     specialized_issues, warnings = _specialized_asset_findings(
         delivery_root,
         document,

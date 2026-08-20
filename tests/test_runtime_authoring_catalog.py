@@ -83,6 +83,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
         self.assertIn("answerable-block-prefers-right-slot", layout["authoringRules"])
         self.assertIn("reference-and-answer-prefer-same-slice", layout["authoringRules"])
         self.assertIn("grid-supports-two-to-four-cells", layout["authoringRules"])
+        self.assertIn("split-slots-must-be-non-empty", layout["authoringRules"])
         self.assertEqual(
             layout["mediaComposition"],
             {

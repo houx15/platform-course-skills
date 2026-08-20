@@ -70,7 +70,8 @@
       "asymmetric-only-for-dominant-video-with-short-supporting-text",
       "answerable-block-prefers-right-slot",
       "reference-and-answer-prefer-same-slice",
-      "grid-supports-two-to-four-cells"
+      "grid-supports-two-to-four-cells",
+      "split-slots-must-be-non-empty"
     ],
     "mediaComposition": {
       "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",

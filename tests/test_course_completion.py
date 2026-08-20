@@ -206,6 +206,29 @@ class CourseCompletionTests(unittest.TestCase):
             {issue["code"] for issue in plan["slices"][0]["issues"]},
         )
 
+    def test_split_layout_cannot_leave_a_dead_empty_slot(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        slice_data = blueprint["course"]["parts"][0]["slices"][0]
+        slice_data["layout"] = {
+            "preset": "split-horizontal",
+            "ratio": "3:1",
+            "slots": [
+                {
+                    "id": "left",
+                    "blockIds": ["claim-text", "evidence-question"],
+                },
+                {"id": "right", "blockIds": []},
+            ],
+        }
+
+        plan = audit_course_draft(blueprint)
+
+        self.assertIn(
+            "layout-empty-slot",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+        self.assertFalse(plan["summary"]["ready"])
+
     def test_grid_may_use_two_to_four_cells(self):
         blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
         slice_data = blueprint["course"]["parts"][0]["slices"][0]

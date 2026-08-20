@@ -420,6 +420,27 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
 
         self.assertIn("estimated-time-drift", self.codes("warnings"))
 
+    def test_g6_blocks_a_split_layout_with_an_empty_slot(self):
+        blueprint_path = self.root / ".course-work/course-blueprint.json"
+        blueprint = load_json(blueprint_path)
+        slice_data = blueprint["course"]["parts"][0]["slices"][0]
+        block_ids = [block["id"] for block in slice_data["blocks"]]
+        slice_data["layout"] = {
+            "preset": "split-horizontal",
+            "ratio": "3:1",
+            "slots": [
+                {"id": "left", "blockIds": block_ids},
+                {"id": "right", "blockIds": []},
+            ],
+        }
+        write_json_atomic(blueprint_path, blueprint)
+        write_compilation_outputs_atomic(self.root, compile_blueprint(blueprint))
+
+        report = build_course_validation_report(self.root)
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertIn("layout-empty-slot", self.codes())
+
     def test_legacy_html_protocol_is_blocked(self):
         (self.root / "course/interactions/html/simulation.html").write_text(
             VALID_HTML,

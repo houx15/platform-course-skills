@@ -94,6 +94,18 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
         if len(slot_ids) not in {2, 3, 4} or slot_ids != canonical:
             issues.append(_issue(f"{base}.layout.slots", "invalid-layout-slots", "Grid requires two to four slots named cell-1 through cell-N in order."))
 
+    if preset in {"split-horizontal", "split-vertical"}:
+        for slot_index, slot in enumerate(slots):
+            block_ids = slot.get("blockIds") if isinstance(slot, dict) else None
+            if not isinstance(block_ids, list) or not block_ids:
+                issues.append(
+                    _issue(
+                        f"{base}.layout.slots[{slot_index}].blockIds",
+                        "layout-empty-slot",
+                        "Split layout Slots must be non-empty. Use full for one focused Block, redistribute content across both sides, or split the teaching sequence into separate Slices.",
+                    )
+                )
+
     blocks = slice_data.get("blocks")
     block_ids = [block.get("id") for block in blocks if isinstance(block, dict)] if isinstance(blocks, list) else []
     assigned: List[object] = []

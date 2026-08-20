@@ -357,6 +357,28 @@ class SkillPackageTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
 
+    def test_external_preview_handoff_and_non_empty_split_rule_are_explicit(self):
+        director = (ROOT / "skills/build-platform-course/SKILL.md").read_text(encoding="utf-8")
+        workflow = (
+            ROOT / "skills/build-platform-course/references/workflow.md"
+        ).read_text(encoding="utf-8")
+        blueprint = (ROOT / "skills/design-course-blueprint/SKILL.md").read_text(encoding="utf-8")
+        runtime = (
+            ROOT / "skills/design-course-blueprint/references/runtime-authoring-standard.md"
+        ).read_text(encoding="utf-8")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        combined = "\n".join((director, workflow, blueprint, runtime, readme))
+
+        for phrase in (
+            "split Slots must be non-empty",
+            "proactively remind the teacher",
+            "publish to the student platform",
+            "ZIP archive",
+            "127.0.0.1",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
     def test_pdf_authoring_uses_equal_slots_and_popup_reading(self):
         blueprint = (ROOT / "skills/design-course-blueprint/SKILL.md").read_text(encoding="utf-8")
         runtime = (ROOT / "skills/design-course-blueprint/references/runtime-authoring-standard.md").read_text(encoding="utf-8")
