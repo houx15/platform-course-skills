@@ -24,6 +24,7 @@ from .errors import ValidationIssue
 from .html_validation import validate_interactive_html
 from .html_reports import render_html_report, validate_html_report
 from .index_renderer import render_index
+from .instructional_bindings import collect_course_destinations
 from .jsonio import load_json, write_json_atomic
 from .paths import resolve_course_path, validate_referenced_paths
 from .video_interactions import (
@@ -314,24 +315,29 @@ def _summarize_media(
 def _course_destinations(data: Optional[dict]) -> Optional[set]:
     if data is None:
         return None
+    destinations = collect_course_destinations(data)
+    if not destinations and data.get("schemaVersion") != "2.0":
+        # Legacy package review continues to validate its v1 records without
+        # pretending that Part/Piece targets are CourseDefinition 2.0 targets.
+        return None
+    return {"/".join(destination) for destination in destinations}
+
+
+def _legacy_coverage_destinations(data: Optional[dict]) -> Optional[set]:
+    """Keep v1 work-record validation available while C2 uses the shared collector."""
+    if data is None:
+        return None
     destinations = set()
     for part in data.get("course", {}).get("parts", []):
-        if not isinstance(part, dict):
+        if not isinstance(part, dict) or not isinstance(part.get("id"), str):
             continue
-        part_id = part.get("id")
         for piece in part.get("pieces", []):
-            if not isinstance(piece, dict):
+            if not isinstance(piece, dict) or not isinstance(piece.get("id"), str):
                 continue
-            piece_id = piece.get("id")
             for block in piece.get("blocks", []):
-                if (
-                    isinstance(block, dict)
-                    and isinstance(part_id, str)
-                    and isinstance(piece_id, str)
-                    and isinstance(block.get("id"), str)
-                ):
-                    destinations.add(f"{part_id}/{piece_id}/{block['id']}")
-    return destinations
+                if isinstance(block, dict) and isinstance(block.get("id"), str):
+                    destinations.add(f"{part['id']}/{piece['id']}/{block['id']}")
+    return destinations or None
 
 
 def _validate_work_records(
@@ -376,12 +382,15 @@ def _validate_work_records(
             issues.append(ValidationIssue(path.name, "invalid-json", str(exc)))
     coverage = loaded_records.get("source-coverage.json")
     if coverage is not None:
+        destinations = _course_destinations(course_data)
+        if destinations is None:
+            destinations = _legacy_coverage_destinations(course_data)
         issues.extend(
             _prefixed(
                 "source-coverage.json",
                 validate_coverage(
                     coverage,
-                    _course_destinations(course_data),
+                    destinations,
                 ),
             )
         )
