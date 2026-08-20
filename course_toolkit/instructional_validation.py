@@ -77,6 +77,19 @@ ONE_SHOT_BLOCK_EVENTS = frozenset(
     }
 )
 
+# ``timers.current`` owns only the latest handle for each ID, while overwritten
+# timeout callbacks remain pending.  A timer state therefore records whether
+# the current map still has a latest handle plus canonical ``(remaining, is_latest)``
+# pending callbacks.  Keeping at most eight callbacks per ID is a conservative
+# finite abstraction for cyclic authored workflows.
+TimerState = Tuple[bool, Tuple[Tuple[int, bool], ...]]
+TimerMap = Mapping[str, TimerState]
+MAX_PENDING_TIMER_HANDLES = 8
+
+
+def _timer_state(has_latest: bool, callbacks: Iterable[Tuple[int, bool]]) -> TimerState:
+    return has_latest, tuple(sorted((max(0, remaining), is_latest) for remaining, is_latest in callbacks))
+
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
     return ValidationIssue(path, code, message)
@@ -268,12 +281,12 @@ def _external_event_updates(
     visible: Set[str],
     enabled: Set[str],
     active_narrations: Set[str],
-    active_timers: Mapping[str, Tuple[int, bool, bool]],
+    active_timers: TimerMap,
     consumed_events: Set[Tuple[str, str]],
     attempts: Mapping[str, int],
     locked_assessments: Set[str],
     playing_videos: Set[str],
-) -> List[Tuple[Set[str], Dict[str, Tuple[int, bool, bool]], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
+) -> List[Tuple[Set[str], Dict[str, TimerState], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
     """Return successor runtime facts for one externally produced event."""
     on = transition.get("on") if isinstance(transition, dict) else None
     if not isinstance(on, dict):
@@ -299,31 +312,35 @@ def _external_event_updates(
         if len(selected_ids) > 1:
             return []
         candidates = selected_ids if selected_ids else set(active_timers)
+        pending_callbacks = [
+            (remaining, timer_id, index, is_latest)
+            for timer_id, (_has_latest, callbacks) in active_timers.items()
+            for index, (remaining, is_latest) in enumerate(callbacks)
+        ]
+        if not pending_callbacks:
+            return []
+        # A timeout can fire only at the globally earliest deadline.  Ties
+        # are intentionally branched: JS callback ordering for equal deadlines
+        # is not a teaching-plan guarantee.
+        earliest = min(remaining for remaining, _timer_id, _index, _is_latest in pending_callbacks)
+        firing = [
+            (timer_id, index, is_latest)
+            for remaining, timer_id, index, is_latest in pending_callbacks
+            if remaining == earliest and timer_id in candidates
+        ]
         updates = []
-        for timer_id in sorted(candidates):
-            total, has_latest, latest_pending = active_timers.get(timer_id, (0, False, False))
-            if total <= 0:
-                continue
-            # The current map points only at the latest handle.  Its callback
-            # can fire while that stale map entry remains; older callbacks are
-            # still live but no longer cancelable by this id.
-            choices = []
-            if latest_pending:
-                choices.append((total - 1, has_latest, False))
-            if total - int(latest_pending) > 0:
-                choices.append((total - 1, has_latest, latest_pending))
-            for next_state in choices:
-                next_timers = dict(active_timers)
-                if next_state[0] == 0:
-                    # Preserve a fired latest handle ref even with no pending
-                    # callback; cancelTimer still clears that ref later.
-                    if next_state[1]:
-                        next_timers[timer_id] = next_state
-                    else:
-                        next_timers.pop(timer_id, None)
-                else:
-                    next_timers[timer_id] = next_state
-                updates.append((set(active_narrations), next_timers, set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
+        for timer_id, index, _is_latest in firing:
+            next_timers: Dict[str, TimerState] = {}
+            for other_id, (has_latest, callbacks) in active_timers.items():
+                advanced = [(remaining - earliest, latest) for remaining, latest in callbacks]
+                if other_id == timer_id:
+                    advanced.pop(index)
+                if advanced or has_latest:
+                    # A latest callback keeps its current-map handle after it
+                    # fires.  cancelTimer can clear that stale handle later,
+                    # but cannot touch an older pending callback.
+                    next_timers[other_id] = _timer_state(has_latest, advanced)
+            updates.append((set(active_narrations), next_timers, set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
         return updates
     source_id = on.get("sourceId")
     candidates = [(source_id, blocks.get(source_id))] if isinstance(source_id, str) else sorted(blocks.items())
@@ -696,22 +713,27 @@ def _effective_step_states(
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
-                total, _has_latest, _latest_pending = active_timers.get(timer_id, (0, False, False))
-                # timers.current keeps only the newest handle.  An older
-                # overwritten callback remains live but is no longer owned.
-                active_timers[timer_id] = (min(total + 1, 8), True, True)
+                duration = action.get("durationSeconds")
+                if not isinstance(duration, int) or isinstance(duration, bool) or duration < 0:
+                    continue
+                _has_latest, callbacks = active_timers.get(timer_id, (False, ()))
+                # timers.current points only at this new handle.  Previous
+                # callbacks remain live, but become unowned by this ID.
+                demoted = [(remaining, False) for remaining, _is_latest in callbacks]
+                if len(demoted) >= MAX_PENDING_TIMER_HANDLES:
+                    demoted = demoted[: MAX_PENDING_TIMER_HANDLES - 1]
+                active_timers[timer_id] = _timer_state(True, [*demoted, (duration, True)])
                 continue
             if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
-                total, has_latest, latest_pending = active_timers.get(timer_id, (0, False, False))
+                has_latest, callbacks = active_timers.get(timer_id, (False, ()))
                 # cancelTimer clears only the stored latest handle.  If that
-                # handle fired already, clearing it must not cancel an older
-                # pending callback.
+                # callback fired already, clearing the stale map entry must
+                # not affect any older pending callback.
                 if has_latest:
-                    if latest_pending:
-                        total -= 1
-                    if total > 0:
-                        active_timers[timer_id] = (total, False, False)
+                    surviving = [(remaining, latest) for remaining, latest in callbacks if not latest]
+                    if surviving:
+                        active_timers[timer_id] = _timer_state(False, surviving)
                     else:
                         active_timers.pop(timer_id, None)
                 continue
@@ -744,8 +766,9 @@ def _effective_step_states(
             emitted = pending_events[0]
             matched = next((transition for transition in _items(step.get("transitions")) if _matcher_matches(transition.get("on") if isinstance(transition, dict) else None, emitted)), None)
             pending_events = pending_events[1:]
-            if matched is not None and matched.get("to") in steps:
-                pending.append((matched["to"], frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(consumed_events), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events, True))
+            if matched is not None:
+                if matched.get("to") in steps:
+                    pending.append((matched["to"], frozenset(visible), frozenset(enabled), frozenset(active_narrations), tuple(sorted(active_timers.items())), frozenset(consumed_events), tuple(sorted(attempts.items())), frozenset(locked_assessments), frozenset(playing_videos), pending_events, True))
                 break
         else:
             matched = None
@@ -754,6 +777,23 @@ def _effective_step_states(
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
             if destination not in steps:
+                continue
+            on = transition.get("on") if isinstance(transition, dict) else None
+            source_id = on.get("sourceId") if isinstance(on, dict) else None
+            event_type = on.get("type") if isinstance(on, dict) else None
+            # An assessment's outcome/completion is inseparable from its
+            # preceding submitted emission.  If submitted is handled in this
+            # step, direct fallback must not invent a separate later-event
+            # route that bypasses the runtime's first transition.
+            if (
+                isinstance(source_id, str)
+                and blocks.get(source_id, {}).get("type") in ASSESSMENT_TYPES
+                and event_type != "answer.submitted"
+                and any(
+                    _matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, (source_id, "answer.submitted"))
+                    for candidate in _items(step.get("transitions"))
+                )
+            ):
                 continue
             for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
                 transition,
@@ -770,11 +810,10 @@ def _effective_step_states(
                 pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
 
         # A learner can submit any visible/enabled assessment or play/end any
-        # visible/enabled video even when no transition consumes the first
-        # emitted event.  The renderer nevertheless produces the rest of its
-        # synchronous cascade, which may match a later authored transition.
-        # Keep this continuation in the same step without replaying its enter
-        # actions (which could otherwise start duplicate timers or narration).
+        # visible/enabled video.  Only an event with no matching transition is
+        # ignored in-place; when it does match, runtime takes that first
+        # transition and the remaining synchronous tail belongs solely to the
+        # destination step.
         for block_id, block in sorted(blocks.items()):
             if block.get("type") in ASSESSMENT_TYPES:
                 synthetic = {"on": {"type": "answer.submitted", "sourceId": block_id}}
@@ -783,6 +822,31 @@ def _effective_step_states(
                 synthetic = {"on": {"type": event_type, "sourceId": block_id}}
             else:
                 continue
+            event = (block_id, synthetic["on"]["type"])
+            if any(_matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, event) for candidate in _items(step.get("transitions"))):
+                continue
+            for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
+                synthetic,
+                blocks=blocks,
+                visible=visible,
+                enabled=enabled,
+                active_narrations=active_narrations,
+                active_timers=active_timers,
+                consumed_events=consumed_events,
+                attempts=attempts,
+                locked_assessments=locked_assessments,
+                playing_videos=playing_videos,
+            ):
+                pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, False))
+
+        # An ignored timer callback still advances logical time.  Explore it
+        # only when the current step has no matching timer transition; the
+        # update function permits only globally earliest deadline ties.
+        for timer_id in sorted(active_timers):
+            event = (timer_id, "timer.elapsed")
+            if any(_matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, event) for candidate in _items(step.get("transitions"))):
+                continue
+            synthetic = {"on": {"type": "timer.elapsed", "sourceId": timer_id}}
             for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
                 synthetic,
                 blocks=blocks,
