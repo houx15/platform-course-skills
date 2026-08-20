@@ -526,7 +526,10 @@ class MixedAnnotationRevisionBatchTests(unittest.TestCase):
             )
 
             self.assertEqual((root / "course/course.json").read_bytes(), definition_before)
-            with self.assertRaisesRegex(WorkflowError, "Blueprint hash"):
+            with self.assertRaisesRegex(
+                WorkflowError,
+                "G5 CourseDefinition does not match compilation from the current Blueprint",
+            ):
                 verify_g5_compilation(root)
             revised_blueprint = load_json(root / ".course-work/course-blueprint.json")
             revised_slice = revised_blueprint["course"]["parts"][0]["slices"][0]
