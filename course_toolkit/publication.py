@@ -1,5 +1,6 @@
 import mimetypes
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional, Tuple
 
@@ -8,7 +9,13 @@ from course_toolkit.course_package_validation import VALIDATION_REPORT_RELATIVE_
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.jsonio import load_json, write_json_atomic
-from course_toolkit.workflow import hash_path, load_session, save_session, verify_g6_validation
+from course_toolkit.workflow import (
+    hash_path,
+    load_session,
+    reconcile_current_session,
+    save_session,
+    verify_g6_validation,
+)
 
 
 ASSET_MANIFEST_SCHEMA_VERSION = "1.0"
@@ -584,6 +591,11 @@ def _verify_review_evidence(
     evidence: PublicationReviewEvidence,
 ) -> None:
     session = load_session(root)
+    reconcile_current_session(
+        root,
+        session,
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
     if "G8" not in session.completed_gate_ids:
         raise PublicationBlocked("G8 final review is not complete")
     report_path = root / VALIDATION_REPORT_RELATIVE_PATH
@@ -712,6 +724,9 @@ def prepare_publication_preflight(
     if visibility not in {"private", "unlisted", "public"}:
         raise ValueError("visibility must be private, unlisted, or public")
 
+    session = load_session(root)
+    reconcile_current_session(root, session, now)
+
     candidates = []
     state = None
     identity = None
@@ -820,6 +835,12 @@ def prepare_publication_preflight(
 
 def publication_preflight_status(root: Path) -> dict:
     root = root.resolve()
+    session = load_session(root)
+    reconcile_current_session(
+        root,
+        session,
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
     path = root / PUBLICATION_PREFLIGHT_RELATIVE_PATH
     if path.is_symlink() or not path.is_file():
         raise PublicationBlocked("Publication preflight is missing")

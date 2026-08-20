@@ -570,9 +570,10 @@ def publish_course(
     if adapter_mode not in {"test", "live"}:
         raise ValueError("adapter_mode must be test or live")
     if adapter_mode == "live":
-        from course_toolkit.workflow import load_session
+        from course_toolkit.workflow import load_session, reconcile_current_session
 
         session = load_session(root)
+        reconcile_current_session(root, session, now)
         if "G9" not in session.completed_gate_ids:
             raise PublicationBlocked("Live publication requires completed G9 preflight")
         if session.artifact_hashes.get("@toolkit/course-publisher") != publisher_code_hash():

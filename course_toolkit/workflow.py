@@ -1,4 +1,5 @@
 from dataclasses import asdict, dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 import re
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -145,7 +146,9 @@ MEDIA_KINDS_BY_EXTENSION = {
     ".aac": "audio",
     ".ogg": "audio",
 }
-MEDIA_DESIGN_STATUSES = frozenset({"planned", "ready"})
+# G4 confirms a design decision, not produced delivery media. A single status
+# avoids implying that any source asset has already been rendered or recorded.
+MEDIA_DESIGN_STATUSES = frozenset({"planned"})
 
 G5_EVIDENCE_KEYS = (
     ".course-work/course-blueprint.json",
@@ -212,6 +215,7 @@ class ArtifactReconciliationResult:
     missing_source_paths: Tuple[str, ...]
     earliest_invalidated_gate_id: Optional[str]
     active_issues: Tuple[CourseProductionIssue, ...]
+    page_plan_proof_gate_id: Optional[str] = None
 
 
 class WorkflowError(ValueError):
@@ -327,11 +331,8 @@ def new_session(
 
 
 def load_session(root: Path) -> CourseProductionSession:
-    session = CourseProductionSession.from_dict(load_json(root / SESSION_RELATIVE_PATH))
-    missing_gate = _first_unproved_page_plan_gate(Path(root).absolute(), session)
-    if missing_gate is not None:
-        invalidate_from_gate(session, missing_gate, session.updated_at)
-    return session
+    """Deserialize the stored session without examining current course files."""
+    return CourseProductionSession.from_dict(load_json(root / SESSION_RELATIVE_PATH))
 
 
 def save_session(root: Path, session: CourseProductionSession) -> None:
@@ -378,6 +379,30 @@ def _first_unproved_page_plan_gate(
             if session.artifact_hashes.get(key) != current_g4[key]:
                 return "G4"
     return None
+
+
+def reconcile_current_session(
+    root: Path,
+    session: CourseProductionSession,
+    now: str,
+) -> ArtifactReconciliationResult:
+    """Reconcile current evidence and persist any page-plan proof migration.
+
+    Callers that act on a completed gate must use this rather than relying on
+    ``load_session``: loading is intentionally a pure deserialization operation.
+    Both the IssueStore and session are written by this explicit operation.
+    """
+    result = reconcile_artifacts(root, session, now)
+    if result.page_plan_proof_gate_id is not None:
+        session.last_successful_action = {
+            "action": "reconcile-current-session",
+            "reason": "page-plan-evidence-unproved",
+            "invalidatedFromGate": result.page_plan_proof_gate_id,
+            "at": now,
+        }
+        session.updated_at = now
+    save_session(root, session)
+    return result
 
 
 def _validate_gate_evidence(
@@ -542,9 +567,16 @@ def resolve_completed_evidence_issues(
         target_path = issue.target.get("path") if isinstance(issue.target, dict) else None
         if (
             issue.status == "active"
-            and issue.code == "workflow-artifact-changed"
+            and issue.code
+            in {
+                "workflow-artifact-changed",
+                "workflow-page-plan-evidence-unproved",
+            }
             and issue.gate_id == gate_id
-            and target_path in evidence_paths
+            and (
+                target_path in evidence_paths
+                or target_path == "@workflow/unproved-page-plan-evidence"
+            )
         ):
             issue_store.resolve(issue.id, now)
     issue_store.save()
@@ -932,6 +964,11 @@ def verify_g9_publication_preflight(root: Path) -> Dict[str, str]:
 
     root = root.resolve()
     session = load_session(root)
+    reconcile_current_session(
+        root,
+        session,
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
     if "G8" not in session.completed_gate_ids:
         raise WorkflowError("G9 publication preflight requires completed G8")
     verify_g6_validation(root)
@@ -1100,6 +1137,23 @@ def reconcile_artifacts(
     if legacy_gate is not None:
         changed_paths.append("@workflow/unproved-page-plan-evidence")
         changed_gate_ids.append(legacy_gate)
+        issue_store.upsert(
+            make_registered_issue(
+                code="workflow-page-plan-evidence-unproved",
+                source="workflow",
+                message=(
+                    "Completed page-plan gate lacks current verified evidence; "
+                    f"re-complete {legacy_gate}."
+                ),
+                gate_id=legacy_gate,
+                seen_at=now,
+                target={"path": "@workflow/unproved-page-plan-evidence"},
+                remediation=(
+                    "Refresh the current page-plan evidence and re-complete "
+                    f"{legacy_gate}."
+                ),
+            )
+        )
 
     for source_path in session.source_paths:
         source = _safe_course_path(root, source_path)
@@ -1341,4 +1395,5 @@ def reconcile_artifacts(
         missing_source_paths=tuple(missing_sources),
         earliest_invalidated_gate_id=earliest_gate_id,
         active_issues=active_issues,
+        page_plan_proof_gate_id=legacy_gate,
     )

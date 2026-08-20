@@ -18,6 +18,7 @@ from course_toolkit.workflow import (
     load_session,
     new_session,
     reconcile_artifacts,
+    reconcile_current_session,
     resolve_completed_evidence_issues,
     save_session,
     set_phase_status,
@@ -220,9 +221,10 @@ def execute(args: argparse.Namespace) -> tuple:
         save_session(root, session)
     elif args.command == "status":
         session = require_session(root)
+        reconcile_current_session(root, session, now)
     elif args.command == "reconcile":
         session = require_session(root)
-        reconcile_artifacts(root, session, now)
+        reconcile_current_session(root, session, now)
         sync_pending_decisions(root, session)
         save_session(root, session)
     elif args.command == "complete-gate":
@@ -232,12 +234,14 @@ def execute(args: argparse.Namespace) -> tuple:
                 "G10 requires remote verification by the publication adapter"
             )
         if args.gate_id == "G9":
+            session = require_session(root)
+            reconcile_current_session(root, session, now)
             verify_g9_publication_preflight(root)
             raise WorkflowError(
                 "G9 requires handoff to the live publication adapter; "
                 "the local dry-run CLI cannot complete it"
             )
-        reconciliation = reconcile_artifacts(root, session, now)
+        reconciliation = reconcile_current_session(root, session, now)
         sync_pending_decisions(root, session)
         # Preserve reconciliation invalidation and its issues even when the
         # requested gate is then blocked by stale or missing evidence.
@@ -282,19 +286,21 @@ def execute(args: argparse.Namespace) -> tuple:
         save_session(root, session)
     elif args.command == "accept-warning":
         session = require_session(root)
+        reconcile_current_session(root, session, now)
         issues = IssueStore.load(root / ".course-work/issues.json")
         try:
             issues.accept(args.issue_id, args.rationale)
         except ValueError as exc:
             raise WorkflowError(str(exc)) from exc
         issues.save()
-        reconciliation = reconcile_artifacts(root, session, now)
+        reconciliation = reconcile_current_session(root, session, now)
         session.active_issue_ids = [
             issue.id for issue in reconciliation.active_issues
         ]
         save_session(root, session)
     elif args.command == "confirm-decision":
         session = require_session(root)
+        reconcile_current_session(root, session, now)
         decisions = DecisionStore.load(root / ".course-work/decisions.json")
         try:
             decision = decisions.get(args.decision_id)
@@ -314,6 +320,7 @@ def execute(args: argparse.Namespace) -> tuple:
         save_session(root, session)
     elif args.command == "set-status":
         session = require_session(root)
+        reconcile_current_session(root, session, now)
         set_phase_status(session, args.workflow_status, now)
         save_session(root, session)
     else:

@@ -1,5 +1,6 @@
 import mimetypes
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -19,6 +20,7 @@ from course_toolkit.workflow import (
     hash_path,
     invalidate_from_gate,
     load_session,
+    reconcile_current_session,
     save_session,
 )
 
@@ -305,6 +307,12 @@ def prepare_live_preflight(
 
 def live_preflight_status(root: Path) -> dict:
     root = root.resolve()
+    session = load_session(root)
+    reconcile_current_session(
+        root,
+        session,
+        datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+    )
     path = root / PREFLIGHT_PATH
     if path.is_symlink() or not path.is_file():
         raise LivePublicationBlocked("publication preflight is missing")
@@ -394,6 +402,11 @@ def _verify_definition(remote: Optional[RemoteCourse], definition: dict, slug: s
 
 def _complete_trusted_gate(root: Path, gate_id: str, evidence: dict, now: str) -> None:
     session = load_session(root)
+    # G9 is a readiness decision and must reconcile its upstream proof first.
+    # G10 follows the live write itself, which intentionally updates G9-tracked
+    # publication state as part of the same trusted operation.
+    if gate_id == "G9":
+        reconcile_current_session(root, session, now)
     issues = IssueStore.load(root / ".course-work/issues.json")
     decisions = DecisionStore.load(root / ".course-work/decisions.json")
     active = [issue for issue in issues.all() if issue.status == "active"]

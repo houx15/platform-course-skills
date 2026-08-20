@@ -29,6 +29,12 @@ ISSUE_POLICIES: Dict[str, IssuePolicy] = {
         "G0",
         "no-acknowledgement-required",
     ),
+    "workflow-page-plan-evidence-unproved": IssuePolicy(
+        "workflow-page-plan-evidence-unproved",
+        "warning",
+        "G3",
+        "no-acknowledgement-required",
+    ),
     "workflow-missing-source": IssuePolicy(
         "workflow-missing-source", "blocker", "G1"
     ),

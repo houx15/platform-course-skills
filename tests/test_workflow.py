@@ -22,6 +22,7 @@ from course_toolkit.workflow import (
     load_session,
     new_session,
     reconcile_artifacts,
+    reconcile_current_session,
     save_session,
     set_phase_status,
     workflow_summary,
@@ -542,6 +543,20 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
 
         write_valid_media_design(self.root)
         media = load_json(media_path)
+        media["items"][0]["status"] = "ready"
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "media-status"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["narrations"][0]["status"] = "ready"
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "narration-status"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
         media["items"][0]["kind"] = "video"
         write_json_atomic(media_path, media)
         with self.assertRaisesRegex(WorkflowError, "media-item-mismatch"):
@@ -601,18 +616,44 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
         complete_gate(session, "G4", NOW, gate_evidence=verify_g4_media_design(self.root))
         self.assertIn("G4", session.completed_gate_ids)
 
-    def test_legacy_missing_page_plan_evidence_invalidates_on_load_and_reconcile(self):
+    def test_legacy_page_plan_proof_migrates_only_through_explicit_reconciliation(self):
         session = fully_gated_through("G4")
         for key in G3_EVIDENCE_KEYS:
             session.artifact_hashes.pop(key, None)
         save_session(self.root, session)
 
+        before_load = load_json(self.root / ".course-work" / "session.json")
         restored = load_session(self.root)
+        self.assertEqual(restored.as_dict(), before_load)
+        # A plain deserialize-and-save path is not a hidden migration.
+        save_session(self.root, restored)
+        self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G4")
+
+        result = reconcile_current_session(self.root, restored, NOW)
         self.assertEqual(restored.completed_gate_ids, ["G0", "G1", "G2"])
         self.assertEqual(restored.invalidated_gate_ids[:2], ["G3", "G4"])
-
-        result = reconcile_artifacts(self.root, session, NOW)
         self.assertEqual(result.earliest_invalidated_gate_id, "G3")
+        self.assertEqual(result.page_plan_proof_gate_id, "G3")
+        self.assertEqual(
+            restored.last_successful_action["reason"],
+            "page-plan-evidence-unproved",
+        )
+        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        active = [
+            issue
+            for issue in IssueStore.load(self.root / ".course-work" / "issues.json").all()
+            if issue.status == "active"
+        ]
+        self.assertTrue(
+            any(issue.code == "workflow-page-plan-evidence-unproved" for issue in active)
+        )
+
+        repeated = reconcile_current_session(self.root, restored, NOW)
+        self.assertIsNone(repeated.earliest_invalidated_gate_id)
+        self.assertEqual(
+            [issue.id for issue in repeated.active_issues],
+            [issue.id for issue in active],
+        )
 
     def test_symlink_course_root_is_rejected_by_g3_and_g4(self):
         parent = Path(self.temporary.name).parent

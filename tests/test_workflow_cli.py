@@ -107,6 +107,29 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(payload["courseLocalId"], "demo")
 
+    def test_status_explicitly_reconciles_legacy_page_plan_proof(self):
+        self.init()
+        self.prepare_approved_page_plan()
+        for gate_id in ("G0", "G1", "G2", "G3", "G4"):
+            completed = self.run_cli("complete-gate", self.root, gate_id, "--json")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+        session = load_session(self.root)
+        session.artifact_hashes.pop(".course-work/source-coverage.json")
+        save_session(self.root, session)
+
+        completed, payload = self.json_result("status", self.root, "--json")
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(payload["completedGates"], ["G0", "G1", "G2"])
+        self.assertEqual(payload["invalidatedGates"][:2], ["G3", "G4"])
+        self.assertTrue(
+            any(
+                issue["code"] == "workflow-page-plan-evidence-unproved"
+                for issue in payload["issues"]
+            )
+        )
+        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+
     def test_reconcile_reports_missing_source_as_readable_issue(self):
         self.init("--source", "materials/missing.md")
 
@@ -351,7 +374,7 @@ class WorkflowCliTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 2)
         self.assertNotIn("G9", payload["completedGates"])
-        self.assertIn("evidence is missing", payload["error"]["message"])
+        self.assertIn("requires completed G8", payload["error"]["message"])
 
     def test_g7_cannot_be_manually_completed_without_renderer_preview(self):
         self.init()

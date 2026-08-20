@@ -26,8 +26,6 @@ from course_toolkit.publication import (
 )
 from course_toolkit.workflow import (
     complete_gate,
-    G7_EVIDENCE_KEYS,
-    G8_EVIDENCE_KEYS,
     hash_path,
     new_session,
     save_session,
@@ -45,6 +43,10 @@ def complete_through_g8(root: Path) -> None:
     write_root(root)
     approve_plan(root, decision_id="decision-plan-1", approved_at=NOW)
     write_valid_media_design(root)
+    preview = root / ".course-work" / "preview-manifest.json"
+    review = root / ".course-work" / "review-report.json"
+    write_json_atomic(preview, {"renderer": "student-runtime", "result": "clear"})
+    write_json_atomic(review, {"review": "approved", "openAnnotations": 0})
     session = new_session("course-local-a", [], NOW)
     for gate_id in ("G0", "G1", "G2"):
         complete_gate(session, gate_id, NOW)
@@ -63,13 +65,22 @@ def complete_through_g8(root: Path) -> None:
         session,
         "G7",
         NOW,
-        gate_evidence={key: "e" * 64 for key in G7_EVIDENCE_KEYS},
+        gate_evidence={
+            ".course-work/preview-manifest.json": hash_path(preview),
+            "@toolkit/course-preview-bundle": "e" * 64,
+        },
     )
     complete_gate(
         session,
         "G8",
         NOW,
-        gate_evidence={key: "f" * 64 for key in G8_EVIDENCE_KEYS},
+        gate_evidence={
+            ".course-work/review-report.json": hash_path(review),
+            ".course-work/course-validation-report.json": hash_path(
+                root / ".course-work" / "course-validation-report.json"
+            ),
+            ".course-work/preview-manifest.json": hash_path(preview),
+        },
     )
     save_session(root, session)
 
