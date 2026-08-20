@@ -15,9 +15,9 @@ from course_toolkit.errors import ValidationIssue
 from course_toolkit.html_validation import validate_interactive_html_v2
 from course_toolkit.instructional_bindings import audit_instructional_bindings
 from course_toolkit.instructional_validation import (
+    _validate_workflow_availability,
     validate_layout_assignment,
     validate_plan_correspondence,
-    validate_workflow_availability,
 )
 from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.pdf_validation import validate_pdf_file
@@ -597,7 +597,7 @@ def _instructional_layers(root: Path, document: dict) -> Tuple[dict, List[Valida
     blockers: List[ValidationIssue] = []
     warnings: List[ValidationIssue] = []
 
-    layout_workflow = [*validate_layout_assignment(document), *validate_workflow_availability(document, root=root)]
+    layout_workflow = [*validate_layout_assignment(document), *_validate_workflow_availability(document, root=root)]
     layers["layoutWorkflow"] = {
         "status": "blocked" if layout_workflow else "clear",
         "issues": [issue.as_dict() for issue in layout_workflow],

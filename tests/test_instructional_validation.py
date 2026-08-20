@@ -1,8 +1,10 @@
+import inspect
 import tempfile
 import unittest
 from pathlib import Path
 
 from course_toolkit.instructional_validation import (
+    _validate_workflow_availability,
     validate_layout_assignment,
     validate_plan_correspondence,
     validate_workflow_availability,
@@ -155,6 +157,10 @@ class InstructionalValidationTests(unittest.TestCase):
         self.assertEqual(self.correspondence(course), [])
         self.assertEqual(validate_layout_assignment(course), [])
         self.assertEqual(validate_workflow_availability(course), [])
+
+    def test_public_workflow_validator_has_one_argument_signature(self):
+        self.assertEqual(list(inspect.signature(validate_workflow_availability).parameters), ["course"])
+        self.assertEqual(validate_workflow_availability(course_document()), [])
 
     def test_workflow_reports_enable_before_reveal_and_unreachable_completion(self):
         course = course_document()
@@ -726,7 +732,7 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "answer-cue", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.completed", "sourceId": "video", "interactionId": "cue-1"}, "to": "reveal"}]},
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
-        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in _validate_workflow_availability(course, root=self.root)})
 
     def test_video_wildcard_shown_binds_the_next_declared_cue(self):
         write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}, {"id": "cue-2", "atSeconds": 2}]}})
@@ -743,7 +749,7 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
 
-        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in _validate_workflow_availability(course, root=self.root)})
 
     def test_video_cue_two_cannot_bypass_first_cue_transition(self):
         write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}, {"id": "cue-2", "atSeconds": 2}]}})
@@ -757,7 +763,7 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
 
-        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in _validate_workflow_availability(course, root=self.root)})
 
     def test_hiding_video_after_cue_shown_prevents_that_cue_completion(self):
         write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}]}})
@@ -771,7 +777,7 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
 
-        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in _validate_workflow_availability(course, root=self.root)})
 
     def test_showing_video_again_restores_its_active_cue_for_completion(self):
         write_json_atomic(self.root / "course/interactions/video/cues.json", {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1}]}})
@@ -786,7 +792,7 @@ class InstructionalValidationTests(unittest.TestCase):
             {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
         ]}
 
-        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in _validate_workflow_availability(course, root=self.root)})
 
     def test_ended_narration_can_replay_without_second_authored_play_action(self):
         course = course_document()

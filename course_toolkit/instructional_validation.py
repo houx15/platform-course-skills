@@ -1023,7 +1023,7 @@ def _effective_step_states(
     return effective, issues
 
 
-def validate_workflow_availability(course: dict, *, root: Path | None = None) -> List[ValidationIssue]:
+def _validate_workflow_availability(course: dict, *, root: Path | None = None) -> List[ValidationIssue]:
     """Check reachable answer/completion availability and reveal-enable ordering."""
     issues: List[ValidationIssue] = []
     for part_id, slice_id, slice_data in _slice_entries(course):
@@ -1070,6 +1070,11 @@ def validate_workflow_availability(course: dict, *, root: Path | None = None) ->
             if not transitions:
                 issues.append(_issue(_target_path(part_id, slice_id, block_id), "workflow-completion-unreachable", "required completion Block has no reachable completion event transition"))
     return _ordered(issues)
+
+
+def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
+    """Check workflow availability without file-backed package context."""
+    return _validate_workflow_availability(course, root=None)
 
 
 def _ordered(issues: Sequence[ValidationIssue]) -> List[ValidationIssue]:
