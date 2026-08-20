@@ -1,6 +1,7 @@
 import json
 import os
 import http.client
+import hashlib
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -11,6 +12,7 @@ from typing import Optional
 
 DEFAULT_API_BASE = "https://mind-api.uni-robot.cn"
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_COVER_BYTES = 20 * 1024 * 1024
 VALID_CATEGORIES = {
     "stance-value",
     "source-check",
@@ -42,8 +44,8 @@ class RemoteCourse:
 
 
 class MindImprintAuthoringApi:
-    # course-authoring-v1.3.0 ship.cover only documents stock img:* ids.
-    supports_generated_course_cover = False
+    # course-authoring-v1.4.0 supports a safe course-relative WebP cover path.
+    supports_generated_course_cover = True
 
     def __init__(self, api_base: str, admin_key: str, *, timeout: float = 30.0):
         parsed = urllib.parse.urlsplit(api_base)
@@ -212,7 +214,7 @@ class MindImprintAuthoringApi:
             raise MindImprintApiError("category is not one of the seven supported course categories")
         expected_introduction_keys = {"hook", "whatYouDo", "takeaways", "alignment", "keywords"}
         if not isinstance(introduction, dict) or set(introduction) != expected_introduction_keys:
-            raise MindImprintApiError("introduction does not match the student authoring v1.3.0 contract")
+            raise MindImprintApiError("introduction does not match the student authoring v1.4.0 contract")
         payload = self._api_request(
             "PUT",
             f"/api/v1/admin/courses/{urllib.parse.quote(slug, safe='')}/definition",
@@ -230,10 +232,19 @@ class MindImprintAuthoringApi:
         return payload
 
     def ship(self, slug: str, *, cover: str, cover_asset_path: Optional[str] = None) -> dict:
+        if cover and cover_asset_path:
+            raise MindImprintApiError("stock cover and generated coverAssetPath are mutually exclusive")
         if cover_asset_path and not self.supports_generated_course_cover:
             raise MindImprintApiError(
                 "the pinned student authoring API cannot bind a generated course cover"
             )
+        if cover_asset_path and (
+            not cover_asset_path.startswith("cover/")
+            or not cover_asset_path.endswith(".webp")
+            or ".." in cover_asset_path.split("/")
+            or cover_asset_path.startswith("/")
+        ):
+            raise MindImprintApiError("generated coverAssetPath must be a safe cover/*.webp relative path")
         body = {"cover": cover}
         if cover_asset_path:
             body["coverAssetPath"] = cover_asset_path
@@ -246,3 +257,40 @@ class MindImprintAuthoringApi:
         if payload is None or payload.get("slug") != slug or payload.get("status") != "published":
             raise MindImprintApiError("ship response is invalid")
         return payload
+
+    def verify_published_cover(
+        self,
+        slug: str,
+        local_path: Path,
+        expected_sha256: str,
+    ) -> dict:
+        if local_path.is_symlink() or not local_path.is_file():
+            raise MindImprintApiError("local generated cover is missing or unsafe")
+        local_sha256 = hashlib.sha256(local_path.read_bytes()).hexdigest()
+        if local_sha256 != expected_sha256:
+            raise MindImprintApiError("local generated cover does not match the approved hash")
+        matching = [course for course in self.list_courses() if isinstance(course, dict) and course.get("slug") == slug]
+        if len(matching) != 1:
+            raise MindImprintApiError("published course summary could not be identified uniquely")
+        cover_url = matching[0].get("coverUrl")
+        if not isinstance(cover_url, str) or not cover_url:
+            raise MindImprintApiError("published course summary has no generated coverUrl")
+        parsed = urllib.parse.urlsplit(cover_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise MindImprintApiError("published course coverUrl is invalid")
+        request = urllib.request.Request(cover_url, method="GET", headers={"Accept": "image/webp"})
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout) as response:
+                raw = response.read(MAX_COVER_BYTES + 1)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, OSError):
+            raise MindImprintApiError("published course coverUrl could not be read") from None
+        if len(raw) > MAX_COVER_BYTES:
+            raise MindImprintApiError("published course cover exceeded the safe size limit")
+        remote_sha256 = hashlib.sha256(raw).hexdigest()
+        if remote_sha256 != expected_sha256:
+            raise MindImprintApiError("published course cover bytes do not match the approved upload")
+        return {
+            "coverUrlPresent": True,
+            "sha256": remote_sha256,
+            "sizeBytes": len(raw),
+        }

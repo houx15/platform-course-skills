@@ -226,7 +226,7 @@ def prepare_live_preflight(
             raise LivePublicationBlocked(str(exc)) from exc
         if not getattr(api, "supports_generated_course_cover", False):
             raise LivePublicationBlocked(
-                "student authoring API v1.3.0 cannot bind the generated OSS WebP as the visible course cover; "
+                "the configured student authoring API cannot bind the generated OSS WebP as the visible course cover; "
                 "a documented course-asset cover reference is required before final publish"
             )
     state = _load_state(root)
@@ -549,8 +549,21 @@ def execute_live_publication(
             raise LivePublicationBlocked("remote course did not reach published status")
     elif saved.status != "preview":
         raise LivePublicationBlocked("save-preview did not leave the remote course in preview")
+    generated_cover_verification = None
+    if preflight["action"] == "publish" and preflight.get("generatedCover") is not None:
+        generated_cover = preflight["generatedCover"]
+        generated_cover_verification = api.verify_published_cover(
+            slug,
+            root / generated_cover["localPath"],
+            generated_cover["sha256"],
+        )
     operation_id = canonical_json_hash(
-        {"preflightHash": canonical_json_hash(preflight), "remoteHash": saved.definition_hash, "status": saved.status}
+        {
+            "preflightHash": canonical_json_hash(preflight),
+            "remoteHash": saved.definition_hash,
+            "status": saved.status,
+            "generatedCoverVerification": generated_cover_verification,
+        }
     )
     state.update(
         remoteKnown=True,
@@ -582,6 +595,7 @@ def execute_live_publication(
                 *resumed_reused_paths,
             }
         ),
+        "generatedCoverVerification": generated_cover_verification,
         "verifiedAt": now,
     }
     write_json_atomic(root / OPERATION_PATH, operation)

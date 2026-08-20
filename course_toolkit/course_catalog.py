@@ -69,8 +69,8 @@ def load_course_catalog() -> dict:
         raise CourseCatalogError(str(exc)) from exc
     if not isinstance(catalog, dict) or catalog.get("schemaVersion") != "1.0":
         raise CourseCatalogError("the 33-course catalog has an unsupported schema")
-    if catalog.get("studentAuthoringTag") != "course-authoring-v1.3.0":
-        raise CourseCatalogError("the 33-course catalog is not pinned to course-authoring-v1.3.0")
+    if catalog.get("studentAuthoringTag") != "course-authoring-v1.4.0":
+        raise CourseCatalogError("the 33-course catalog is not pinned to course-authoring-v1.4.0")
     courses = catalog.get("courses")
     if not isinstance(courses, list) or len(courses) != 33:
         raise CourseCatalogError("the 33-course catalog must contain exactly 33 courses")

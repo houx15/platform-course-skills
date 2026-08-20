@@ -90,6 +90,7 @@ def main() -> int:
                 "definitionHash": operation["remoteDefinitionHash"],
                 "uploadedCount": len(operation["uploadedPaths"]),
                 "reusedCount": len(operation["reusedPaths"]),
+                "generatedCoverVerification": operation.get("generatedCoverVerification"),
             }
         if as_json:
             print(json.dumps(payload, ensure_ascii=False, indent=2))

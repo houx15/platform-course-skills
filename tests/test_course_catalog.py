@@ -30,7 +30,7 @@ class CourseCatalogTests(unittest.TestCase):
         catalog = module.load_course_catalog()
 
         self.assertEqual(catalog["schemaVersion"], "1.0")
-        self.assertEqual(catalog["studentAuthoringTag"], "course-authoring-v1.3.0")
+        self.assertEqual(catalog["studentAuthoringTag"], "course-authoring-v1.4.0")
         self.assertEqual(len(catalog["courses"]), 33)
         self.assertEqual(len({course["catalogId"] for course in catalog["courses"]}), 33)
         self.assertEqual(len({course["title"] for course in catalog["courses"]}), 33)

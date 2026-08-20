@@ -224,7 +224,7 @@ Agent 会先展示精确 dry run。确认课程 ID、创建或更新、素材数
 
 正式发布前，Agent 还会安排一个独立的封面生成任务：工具会把已确认课程名称填入固定的完整封面 Prompt，再由子 Agent 原样使用该 Prompt 调用 imagegen2，不允许自行缩写或改写。生成结果会另存为 16:9、质量 100 的 WebP 候选。老师会直接看到图片并确认采用；原始生成结果和未采用候选都保留，确认同时绑定目录、Prompt 和文件哈希，任一变化后必须重新看图确认。采用后的发布副本保存在 `.course-work/cover-delivery/course-cover.webp`，并以 `cover/course-cover.webp` 的课程相对路径按课程 ID 和文件哈希参与 OSS 上传与复用，不会污染 CourseDefinition 的正文素材集合。
 
-当前学生端 authoring API v1.3.0 仍只支持 `img:3` 这类库存封面值。专属 WebP 可以完成生成、审阅和 OSS 上传准备，但“文件已上传”还不等于“学生端已显示”。在学生端接口补充安全的课程素材封面引用以前，Agent 必须明确报告这一阻塞，不能用库存图静默替代，也不能声称专属封面已经上线。
+学生端 authoring API v1.4.0 使用课程相对路径 `coverAssetPath: "cover/course-cover.webp"` 绑定专属封面。Agent 会先上传老师确认过的 WebP，再 ship 同一个稳定课程 ID；发布后还必须得到非空的签名 `coverUrl`，下载并核对它是否与刚才上传的 exact uploaded bytes 完全一致。只有 SHA-256 和字节数一致才会完成 G10。签名 URL 本身不会保存或展示，学生端管理员凭证也不会发送给该 URL。
 
 第一次需要真实提交时，老师可以把管理员提供的 `OSS_ADMIN_KEY` 交给 Agent。Agent 会把它写入课程目录的本地 `.env`，同时确认 `/.env` 已加入 `.gitignore`；老师不需要执行命令，也不需要设置系统环境变量。Git 中只保留值为空的 `.env.example`。进程环境变量优先于 `.env`，方便部署环境覆盖本地设置。
 

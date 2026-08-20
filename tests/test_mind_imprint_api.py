@@ -1,6 +1,7 @@
 import json
 import os
 import inspect
+import hashlib
 import tempfile
 import threading
 import unittest
@@ -15,6 +16,8 @@ class FakeAuthoringHandler(BaseHTTPRequestHandler):
     records = []
     definition = None
     status = "preview"
+    cover_bytes = b"RIFF-cover-WEBP-exact-bytes"
+    cover_asset_path = None
 
     def log_message(self, format, *args):
         return
@@ -33,7 +36,26 @@ class FakeAuthoringHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         type(self).records.append(("GET", self.path, self.headers.get("Authorization"), b""))
         if self.path == "/api/v1/admin/courses":
-            self._json(200, {"courses": []})
+            courses = []
+            if type(self).definition is not None:
+                host, port = self.server.server_address
+                courses.append({
+                    "slug": "demo",
+                    "status": type(self).status,
+                    "coverUrl": (
+                        f"http://{host}:{port}/signed-cover?signature=secret"
+                        if type(self).cover_asset_path
+                        else ""
+                    ),
+                })
+            self._json(200, {"courses": courses})
+        elif self.path.startswith("/signed-cover?"):
+            raw = type(self).cover_bytes
+            self.send_response(200)
+            self.send_header("Content-Type", "image/webp")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
         elif self.path.endswith("/missing/definition"):
             self._json(404, {"code": "not_found", "message": "课程不存在"})
         elif self.path.endswith("/demo/definition") and type(self).definition is not None:
@@ -54,6 +76,7 @@ class FakeAuthoringHandler(BaseHTTPRequestHandler):
                 "expiresAt": "2026-08-17T14:00:00Z",
             })
         elif self.path.endswith("/ship"):
+            type(self).cover_asset_path = json.loads(body).get("coverAssetPath")
             type(self).status = "published"
             self._json(200, {"slug": "demo", "status": "published", "narrationsGenerated": 1})
         else:
@@ -78,6 +101,7 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         FakeAuthoringHandler.records = []
         FakeAuthoringHandler.definition = None
         FakeAuthoringHandler.status = "preview"
+        FakeAuthoringHandler.cover_asset_path = None
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeAuthoringHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -90,6 +114,7 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         self.thread.join(timeout=2)
 
     def test_bearer_discovery_write_upload_and_readback_contract(self):
+        self.assertTrue(self.api.supports_generated_course_cover)
         self.assertEqual(self.api.list_courses(), [])
         self.assertIsNone(self.api.get_course("missing"))
         plan = self.api.plan_asset_upload("demo", "assets/file.json", "application/json", 3)
@@ -118,11 +143,27 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
             introduction=introduction,
         )
         self.assertEqual(self.api.get_course("demo").definition, definition)
-        self.api.supports_generated_course_cover = True
         self.api.ship("demo", cover="", cover_asset_path="cover/course-cover.webp")
         self.assertEqual(self.api.get_course("demo").status, "published")
+        with tempfile.TemporaryDirectory() as temporary:
+            cover = Path(temporary) / "course-cover.webp"
+            cover.write_bytes(FakeAuthoringHandler.cover_bytes)
+            proof = self.api.verify_published_cover(
+                "demo",
+                cover,
+                hashlib.sha256(FakeAuthoringHandler.cover_bytes).hexdigest(),
+            )
+        self.assertEqual(proof, {
+            "coverUrlPresent": True,
+            "sha256": hashlib.sha256(FakeAuthoringHandler.cover_bytes).hexdigest(),
+            "sizeBytes": len(FakeAuthoringHandler.cover_bytes),
+        })
 
-        api_records = [record for record in FakeAuthoringHandler.records if not record[1].startswith("/oss/")]
+        api_records = [
+            record
+            for record in FakeAuthoringHandler.records
+            if not record[1].startswith(("/oss/", "/signed-cover?"))
+        ]
         self.assertTrue(all(record[2] == "Bearer synthetic-test-key" for record in api_records))
         oss_record = next(record for record in FakeAuthoringHandler.records if record[1].startswith("/oss/"))
         self.assertIsNone(oss_record[2])
@@ -142,6 +183,8 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         )
         self.assertEqual(ship_write["cover"], "")
         self.assertEqual(ship_write["coverAssetPath"], "cover/course-cover.webp")
+        signed_cover_read = next(record for record in FakeAuthoringHandler.records if record[1].startswith("/signed-cover?"))
+        self.assertIsNone(signed_cover_read[2])
 
     def test_environment_factory_requires_key_without_echoing_it(self):
         previous = os.environ.pop("OSS_ADMIN_KEY", None)
@@ -151,6 +194,37 @@ class MindImprintAuthoringApiTests(unittest.TestCase):
         finally:
             if previous is not None:
                 os.environ["OSS_ADMIN_KEY"] = previous
+
+    def test_cover_verification_rejects_missing_url_and_mismatched_bytes(self):
+        cover_bytes = FakeAuthoringHandler.cover_bytes
+        expected = hashlib.sha256(cover_bytes).hexdigest()
+        with tempfile.TemporaryDirectory() as temporary:
+            cover = Path(temporary) / "course-cover.webp"
+            cover.write_bytes(cover_bytes)
+            FakeAuthoringHandler.definition = {"schemaVersion": "2.0"}
+            with self.assertRaisesRegex(MindImprintApiError, "no generated coverUrl"):
+                self.api.verify_published_cover("demo", cover, expected)
+
+            FakeAuthoringHandler.cover_asset_path = "cover/course-cover.webp"
+            FakeAuthoringHandler.cover_bytes = b"RIFF-different-WEBP-bytes"
+            try:
+                with self.assertRaisesRegex(MindImprintApiError, "do not match"):
+                    self.api.verify_published_cover("demo", cover, expected)
+            finally:
+                FakeAuthoringHandler.cover_bytes = cover_bytes
+
+    def test_ship_rejects_ambiguous_or_unsafe_generated_cover_without_network(self):
+        with self.assertRaisesRegex(MindImprintApiError, "mutually exclusive"):
+            self.api.ship(
+                "demo",
+                cover="img:3",
+                cover_asset_path="cover/course-cover.webp",
+            )
+        for unsafe in ("asset:cover/course-cover.webp", "../course-cover.webp", "cover/course-cover.png"):
+            with self.subTest(unsafe=unsafe):
+                with self.assertRaisesRegex(MindImprintApiError, "safe cover"):
+                    self.api.ship("demo", cover="", cover_asset_path=unsafe)
+        self.assertFalse(any(record[1].endswith("/ship") for record in FakeAuthoringHandler.records))
 
 
 if __name__ == "__main__":

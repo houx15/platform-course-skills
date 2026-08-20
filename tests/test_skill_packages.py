@@ -318,7 +318,7 @@ class SkillPackageTests(unittest.TestCase):
             "33-course catalog",
             "manage-course-catalog.py propose",
             "teacher-confirmed catalog binding",
-            "course-authoring-v1.3.0",
+            "course-authoring-v1.4.0",
             "structured `introduction`",
             "`cardIds`",
             "featured_rank",
@@ -331,11 +331,14 @@ class SkillPackageTests(unittest.TestCase):
             "quality-100 WebP",
             "manage-course-cover.py confirm",
             ".course-work/cover-delivery/course-cover.webp",
-            "stock cover catalog",
-            "does not make it visible",
+            "`coverAssetPath`",
+            "`coverUrl`",
+            "exact uploaded bytes",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
+        self.assertNotIn("Final generated-cover publication remains blocked", combined)
+        self.assertNotIn("authoring API v1.3.0", combined)
 
     def test_teacher_credentials_are_stored_without_command_line_work(self):
         build_skill = (

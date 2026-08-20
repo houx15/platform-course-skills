@@ -52,6 +52,7 @@ class FakeMindApi:
         self.get_course_calls = 0
         self.max_bytes = 500_000_000
         self.fail_save_once = False
+        self.cover_verifications = []
 
     def get_course(self, slug):
         self.get_course_calls += 1
@@ -89,6 +90,14 @@ class FakeMindApi:
         self.last_cover_asset_path = cover_asset_path
         self.remote = RemoteCourse(slug, "published", "b" * 64, self.remote.definition)
         return {"slug": slug, "status": "published", "narrationsGenerated": 1}
+
+    def verify_published_cover(self, slug, local_path, expected_sha256):
+        self.cover_verifications.append((slug, local_path, expected_sha256))
+        return {
+            "coverUrlPresent": True,
+            "sha256": expected_sha256,
+            "sizeBytes": local_path.stat().st_size,
+        }
 
 
 def prepare_g8(root: Path):
@@ -185,6 +194,12 @@ class LivePublicationTests(unittest.TestCase):
         self.assertEqual(self.api.last_definition_options["category"], "stance-value")
         self.assertIn("hook", self.api.last_definition_options["introduction"])
         self.assertEqual(self.api.last_cover_asset_path, "cover/course-cover.webp")
+        self.assertEqual(len(self.api.cover_verifications), 1)
+        self.assertEqual(result["generatedCoverVerification"]["coverUrlPresent"], True)
+        self.assertEqual(
+            result["generatedCoverVerification"]["sha256"],
+            preflight["generatedCover"]["sha256"],
+        )
         self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G10")
 
     def test_old_course_without_catalog_binding_is_blocked_before_remote_discovery(self):
@@ -197,7 +212,7 @@ class LivePublicationTests(unittest.TestCase):
 
         self.assertEqual(self.api.get_course_calls, 0)
 
-    def test_current_v1_3_api_is_blocked_before_generated_cover_publish(self):
+    def test_adapter_without_v1_4_cover_support_is_blocked_before_generated_cover_publish(self):
         self.api.supports_generated_course_cover = False
 
         with self.assertRaisesRegex(LivePublicationBlocked, "cannot bind the generated OSS WebP"):

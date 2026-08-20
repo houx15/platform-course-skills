@@ -42,7 +42,7 @@ Present the teacher-readable dry run: stable slug, create/update mode, exact act
 - ship regenerates TTS and should not be repeated casually;
 - asset reuse is based on local upload proof for the same slug, relative path, and SHA-256 because the server has no asset existence/checksum endpoint.
 - category, structured introduction, and card IDs come from the confirmed 33-course catalog entry, not free-form publication flags;
-- the confirmed generated WebP is included in upload/reuse counts, but authoring API v1.3.0 still accepts only stock `img:*` values for the visible cover. Do not execute or claim a complete generated-cover publication until the student API adds a documented course-asset cover reference.
+- the confirmed generated WebP is included in upload/reuse counts and authoring API v1.4.0 receives only the course-relative `coverAssetPath` `cover/course-cover.webp`; never send an OSS key, URL, or `asset:` value, and never combine a non-empty stock `cover` with `coverAssetPath`.
 
 Do not expose object keys in the ordinary summary. Multiple relative paths with identical bytes still need separate OSS objects because the CourseDefinition references each relative path.
 
@@ -69,8 +69,8 @@ Run the deterministic live adapter only when status says `approved: true`:
 python _course-toolkit/scripts/publish-course.py execute ROOT --json
 ```
 
-The adapter re-reads the slug before mutation, uploads only planned assets, persists each successful upload, PUTs the approved definition/options, reads back the exact definition, ships only for `publish`, then reads back the final status. It completes G10 only from live verified evidence.
+The adapter re-reads the slug before mutation, uploads only planned assets, persists each successful upload, PUTs the approved definition/options, reads back the exact definition, ships only for `publish`, then reads back the final status. For a generated cover it also requires a non-empty signed `coverUrl`, downloads it without the bearer credential, and verifies that it resolves to the exact uploaded bytes by SHA-256 before completing G10.
 
 After an ambiguous definition or ship timeout, read back first. If the approved definition already exists or status is already `published`, record success without a blind repeated write. An OSS timeout may require overwriting the same deterministic key; it cannot create an extra object path.
 
-Report only verified slug, final status, remote definition hash, uploaded count, and reused count. Never report success from an HTTP 200 alone. Never reveal credentials, Authorization, presigned URL query parameters, or raw remote payloads.
+Report only verified slug, final status, remote definition hash, uploaded count, reused count, and the safe cover byte-verification result. Never report success from an HTTP 200 alone. Never reveal credentials, Authorization, `coverUrl`, presigned URL query parameters, or raw remote payloads.

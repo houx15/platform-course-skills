@@ -175,7 +175,7 @@ def main() -> int:
     rows = parse_classification(text)
     catalog = {
         "schemaVersion": "1.0",
-        "studentAuthoringTag": "course-authoring-v1.3.0",
+        "studentAuthoringTag": "course-authoring-v1.4.0",
         "source": {
             "path": "docs/2026-08-19-courses.md",
             "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
