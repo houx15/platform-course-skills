@@ -195,6 +195,63 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertIn("approval-stale", payload["error"]["message"])
         self.assertNotIn(str(self.root), payload["error"]["message"])
 
+    def test_g4_requires_recompleted_g3_and_resolves_changed_evidence_issues(self):
+        self.init()
+        self.prepare_approved_page_plan()
+        for gate_id in ("G0", "G1", "G2", "G3", "G4"):
+            completed = self.run_cli("complete-gate", self.root, gate_id, "--json")
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+        storyboard_path = self.root / ".course-work" / "course-storyboard.json"
+        storyboard = json.loads(storyboard_path.read_text(encoding="utf-8"))
+        storyboard["parts"][0]["slices"][0]["teachingPurpose"] = "重新审批后的页面目标"
+        storyboard_path.write_text(json.dumps(storyboard), encoding="utf-8")
+        approve_plan(
+            self.root,
+            decision_id="decision-plan-2",
+            approved_at="2026-08-22T00:00:00Z",
+        )
+
+        blocked, blocked_payload = self.json_result(
+            "complete-gate", self.root, "G4", "--json"
+        )
+        self.assertEqual(blocked.returncode, 2)
+        self.assertIn("G4 requires G3", blocked_payload["error"]["message"])
+        invalidated = load_session(self.root)
+        self.assertEqual(invalidated.completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertTrue(
+            any(
+                issue.code == "workflow-artifact-changed"
+                for issue in IssueStore.load(self.root / ".course-work" / "issues.json").all()
+                if issue.status == "active"
+            )
+        )
+
+        completed_g3, g3_payload = self.json_result(
+            "complete-gate", self.root, "G3", "--json"
+        )
+        self.assertEqual(completed_g3.returncode, 0, completed_g3.stderr)
+        self.assertEqual(g3_payload["completedGates"][-1], "G3")
+        self.assertFalse(
+            any(
+                issue["target"] == {"path": ".course-work/course-storyboard.json"}
+                for issue in g3_payload["issues"]
+            )
+        )
+
+        completed_g4, g4_payload = self.json_result(
+            "complete-gate", self.root, "G4", "--json"
+        )
+        self.assertEqual(completed_g4.returncode, 0, completed_g4.stderr)
+        self.assertEqual(g4_payload["completedGates"][-1], "G4")
+        self.assertEqual(g4_payload["issues"], [])
+
+        repeated, repeated_payload = self.json_result(
+            "complete-gate", self.root, "G4", "--json"
+        )
+        self.assertEqual(repeated.returncode, 0, repeated.stderr)
+        self.assertEqual(repeated_payload["issues"], [])
+
     def test_set_status_persists_waiting_for_teacher(self):
         self.init()
 
@@ -230,7 +287,10 @@ class WorkflowCliTests(unittest.TestCase):
             if index == 3:
                 evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
             elif index == 4:
-                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+                evidence = {
+                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+                    for key in G4_EVIDENCE_KEYS
+                }
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
@@ -265,7 +325,10 @@ class WorkflowCliTests(unittest.TestCase):
             if index == 3:
                 evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
             elif index == 4:
-                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+                evidence = {
+                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+                    for key in G4_EVIDENCE_KEYS
+                }
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
@@ -299,7 +362,10 @@ class WorkflowCliTests(unittest.TestCase):
             if index == 3:
                 evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
             elif index == 4:
-                evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+                evidence = {
+                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+                    for key in G4_EVIDENCE_KEYS
+                }
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:

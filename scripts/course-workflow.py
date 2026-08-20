@@ -18,6 +18,7 @@ from course_toolkit.workflow import (
     load_session,
     new_session,
     reconcile_artifacts,
+    resolve_completed_evidence_issues,
     save_session,
     set_phase_status,
     verify_g3_plan,
@@ -218,6 +219,9 @@ def execute(args: argparse.Namespace) -> tuple:
             )
         reconciliation = reconcile_artifacts(root, session, now)
         sync_pending_decisions(root, session)
+        # Preserve reconciliation invalidation and its issues even when the
+        # requested gate is then blocked by stale or missing evidence.
+        save_session(root, session)
         if args.gate_id == "G3":
             gate_evidence = verify_g3_plan(root)
         elif args.gate_id == "G4":
@@ -250,6 +254,7 @@ def execute(args: argparse.Namespace) -> tuple:
             pending_decision_ids=session.pending_decision_ids,
             gate_evidence=gate_evidence,
         )
+        resolve_completed_evidence_issues(root, session, args.gate_id, now)
         if args.gate_id == "G8":
             from course_toolkit.package_review import write_publication_review_evidence_v2
 

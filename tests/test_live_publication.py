@@ -141,7 +141,13 @@ def prepare_g8(root: Path):
         session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
     )
     complete_gate(
-        session, "G4", NOW, gate_evidence={key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+        session,
+        "G4",
+        NOW,
+        gate_evidence={
+            key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+            for key in G4_EVIDENCE_KEYS
+        },
     )
     # This publication fixture predates the Task 3 page-plan artifacts. Keep it
     # readable as a legacy session rather than fabricating current G3/G4 proof.

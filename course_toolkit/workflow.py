@@ -1,5 +1,6 @@
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+import re
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from course_toolkit.issues import (
@@ -78,6 +79,7 @@ GATES = (
 
 GATE_BY_ID = {gate.id: gate for gate in GATES}
 GATE_INDEX = {gate.id: index for index, gate in enumerate(GATES)}
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True)
@@ -155,6 +157,12 @@ G9_EVIDENCE_KEYS = (
     ".course-work/publication-review-evidence.json",
     ".course-work/remote-discovery.json",
     "@toolkit/course-publisher",
+)
+# The live publisher additionally binds the fixed catalog selection. Older
+# local publication adapters may not have that artifact, so it is known and
+# hash-validated when present without becoming a fabricated requirement.
+G9_OPTIONAL_EVIDENCE_KEYS = (
+    ".course-work/course-catalog-selection.json",
 )
 
 G10_EVIDENCE_KEYS = (
@@ -302,6 +310,66 @@ def save_session(root: Path, session: CourseProductionSession) -> None:
     write_json_atomic(root / SESSION_RELATIVE_PATH, session.as_dict())
 
 
+def _validate_gate_evidence(
+    session: CourseProductionSession,
+    gate_id: str,
+    evidence: Dict[str, str],
+    required_keys: Sequence[str],
+    label: str,
+) -> Dict[str, str]:
+    missing = [key for key in required_keys if key not in evidence]
+    if missing:
+        raise WorkflowError(f"{gate_id} requires {label}: {missing[0]}")
+    allowed_dynamic_keys = (
+        {key for key in evidence if key.startswith(G6_ASSET_EVIDENCE_PREFIX)}
+        if gate_id == "G6"
+        else set()
+    )
+    allowed_optional_keys = (
+        set(G9_OPTIONAL_EVIDENCE_KEYS) if gate_id == "G9" else set()
+    )
+    unexpected = sorted(
+        set(evidence)
+        .difference(required_keys)
+        .difference(allowed_dynamic_keys)
+        .difference(allowed_optional_keys)
+    )
+    if unexpected:
+        raise WorkflowError(f"{gate_id} has unexpected evidence: {unexpected[0]}")
+    invalid = [
+        key
+        for key in evidence
+        if not isinstance(evidence[key], str) or not SHA256_HEX.fullmatch(evidence[key])
+    ]
+    if invalid:
+        raise WorkflowError(f"{gate_id} evidence must be a SHA-256 hash: {invalid[0]}")
+    if gate_id == "G4":
+        g3_storyboard_hash = session.artifact_hashes.get(
+            ".course-work/course-storyboard.json"
+        )
+        g3_coverage_hash = session.artifact_hashes.get(
+            ".course-work/source-coverage.json"
+        )
+        if not isinstance(g3_storyboard_hash, str) or not SHA256_HEX.fullmatch(
+            g3_storyboard_hash
+        ):
+            raise WorkflowError("G4 requires current G3 page-plan evidence")
+        if not isinstance(g3_coverage_hash, str) or not SHA256_HEX.fullmatch(
+            g3_coverage_hash
+        ):
+            raise WorkflowError("G4 requires current G3 source-coverage evidence")
+        if evidence[".course-work/course-storyboard.json"] != g3_storyboard_hash:
+            raise WorkflowError("G4 page plan differs from completed G3")
+        # The storyboard semantic hash belongs to G3. G4 verifies it but never
+        # replaces that baseline with approval-era evidence.
+        return {
+            key: value
+            for key, value in evidence.items()
+            if key != ".course-work/course-storyboard.json"
+        }
+    return dict(evidence)
+
+
 def complete_gate(
     session: CourseProductionSession,
     gate_id: str,
@@ -347,10 +415,11 @@ def complete_gate(
     if gate_id in evidence_requirements:
         required_keys, label = evidence_requirements[gate_id]
         evidence = gate_evidence or {}
-        missing = [key for key in required_keys if key not in evidence]
-        if missing:
-            raise WorkflowError(f"{gate_id} requires {label}: {missing[0]}")
-        session.artifact_hashes.update(evidence)
+        session.artifact_hashes.update(
+            _validate_gate_evidence(
+                session, gate_id, evidence, required_keys, label
+            )
+        )
     if gate_id not in session.completed_gate_ids:
         session.completed_gate_ids.append(gate_id)
         session.completed_gate_ids.sort(key=GATE_INDEX.__getitem__)
@@ -366,6 +435,45 @@ def complete_gate(
     }
     session.updated_at = now
     return session
+
+
+def resolve_completed_evidence_issues(
+    root: Path,
+    session: CourseProductionSession,
+    gate_id: str,
+    now: str,
+) -> Tuple[CourseProductionIssue, ...]:
+    """Resolve only changed-artifact issues proved current by this completion.
+
+    Reconciliation records a new baseline before invalidating a completed gate.
+    Once the matching verifier and gate completion have succeeded, retaining
+    that warning would require an unnecessary second reconciliation command.
+    """
+    evidence_paths = {
+        "G3": set(G3_EVIDENCE_KEYS),
+        # G4 observes the G3 storyboard hash but does not own or replace it.
+        "G4": set(G4_EVIDENCE_KEYS).difference(
+            {".course-work/course-storyboard.json"}
+        ),
+    }.get(gate_id)
+    if not evidence_paths:
+        return ()
+    issue_store = IssueStore.load(root / ".course-work" / "issues.json")
+    for issue in issue_store.all():
+        target_path = issue.target.get("path") if isinstance(issue.target, dict) else None
+        if (
+            issue.status == "active"
+            and issue.code == "workflow-artifact-changed"
+            and issue.gate_id == gate_id
+            and target_path in evidence_paths
+        ):
+            issue_store.resolve(issue.id, now)
+    issue_store.save()
+    active_issues = tuple(
+        issue for issue in issue_store.all() if issue.status == "active"
+    )
+    session.active_issue_ids = [issue.id for issue in active_issues]
+    return active_issues
 
 
 def invalidate_from_gate(
@@ -675,6 +783,11 @@ def verify_g9_publication_preflight(root: Path) -> Dict[str, str]:
         ".course-work/remote-discovery.json": root / REMOTE_DISCOVERY_RELATIVE_PATH,
     }
     evidence = {label: hash_path(path) for label, path in paths.items()}
+    catalog_selection_path = root / ".course-work" / "course-catalog-selection.json"
+    if catalog_selection_path.exists():
+        evidence[".course-work/course-catalog-selection.json"] = hash_path(
+            catalog_selection_path
+        )
     evidence["@toolkit/course-publisher"] = publisher_code_hash()
     return evidence
 

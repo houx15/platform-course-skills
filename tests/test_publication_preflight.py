@@ -47,7 +47,13 @@ def complete_through_g8(root: Path) -> None:
         session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
     )
     complete_gate(
-        session, "G4", NOW, gate_evidence={key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+        session,
+        "G4",
+        NOW,
+        gate_evidence={
+            key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+            for key in G4_EVIDENCE_KEYS
+        },
     )
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))

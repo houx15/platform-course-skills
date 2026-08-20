@@ -47,7 +47,10 @@ def fully_gated_through(gate_id):
         if index == 3:
             evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
         elif index == 4:
-            evidence = {key: "4" * 64 for key in G4_EVIDENCE_KEYS}
+            evidence = {
+                key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
+                for key in G4_EVIDENCE_KEYS
+            }
         elif index == 5:
             evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
         elif index == 6:
@@ -218,6 +221,24 @@ class WorkflowGateTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(WorkflowError, "G4 requires current approved page-plan"):
             complete_gate(session, "G4", NOW)
+
+    def test_gate_evidence_rejects_unknown_or_non_hash_values(self):
+        session = fully_gated_through("G2")
+        valid = {key: "a" * 64 for key in G3_EVIDENCE_KEYS}
+        with self.assertRaisesRegex(WorkflowError, "unexpected evidence: extra"):
+            complete_gate(
+                session,
+                "G3",
+                NOW,
+                gate_evidence={**valid, "extra": "a" * 64},
+            )
+        with self.assertRaisesRegex(WorkflowError, "must be a SHA-256 hash"):
+            complete_gate(
+                session,
+                "G3",
+                NOW,
+                gate_evidence={**valid, ".course-work/course-storyboard.json": "not-a-hash"},
+            )
 
     def test_g6_requires_verified_validation_evidence(self):
         session = fully_gated_through("G5")
@@ -434,6 +455,24 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
 
         self.assertIsNone(result.earliest_invalidated_gate_id)
         self.assertIn("G3", session.completed_gate_ids)
+
+    def test_g4_cannot_replace_completed_g3_plan_baseline(self):
+        session = fully_gated_through("G2")
+        complete_gate(session, "G3", NOW, gate_evidence=verify_g3_plan(self.root))
+        plan_path = self.root / ".course-work" / "course-storyboard.json"
+        plan = load_json(plan_path)
+        plan["parts"][0]["slices"][0]["teachingPurpose"] = "重新审批后的页面目标"
+        write_json_atomic(plan_path, plan)
+        self.approve_and_design_media(decision_id="decision-plan-2")
+
+        with self.assertRaisesRegex(WorkflowError, "differs from completed G3"):
+            complete_gate(
+                session,
+                "G4",
+                NOW,
+                gate_evidence=verify_g4_media_design(self.root),
+            )
+        self.assertNotIn("G4", session.completed_gate_ids)
 
     def test_plan_body_or_source_coverage_change_invalidates_g3_onward(self):
         session = self.complete_through_g4()
