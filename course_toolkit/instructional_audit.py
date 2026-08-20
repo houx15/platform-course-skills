@@ -23,7 +23,7 @@ from .course_package_validation import (
 )
 from .decisions import DECISION_STORE_SCHEMA_VERSION, TeacherDecision
 from .hashing import canonical_json_hash
-from .instructional_plan import _plan_guard, verify_plan_approval
+from .instructional_plan import PlanApprovalError, _plan_guard, verify_plan_approval
 from .jsonio import dump_json
 from .workflow import verify_g5_compilation
 
@@ -164,6 +164,13 @@ def _validate_decision_document(document: object) -> List[dict]:
             raise InstructionalAuditError("invalid-decisions", "teacher decision record has invalid list or context fields", path=".course-work/decisions.json")
         if item.get("status") not in {"pending", "confirmed", "invalidated"} or not all(value is None or isinstance(value, str) for value in (item.get("requestedAt"), item.get("decidedAt"), item.get("invalidatedAt"))):
             raise InstructionalAuditError("invalid-decisions", "teacher decision record has invalid status or times", path=".course-work/decisions.json")
+        status = item["status"]
+        if status == "pending" and (item.get("answer") is not None or item.get("decidedAt") is not None or item.get("invalidatedAt") is not None):
+            raise InstructionalAuditError("invalid-decisions", "pending teacher decisions may not have an answer or terminal timestamp", path=".course-work/decisions.json")
+        if status == "confirmed" and (not _nonempty(item.get("answer")) or not _nonempty(item.get("decidedAt")) or item.get("invalidatedAt") is not None):
+            raise InstructionalAuditError("invalid-decisions", "confirmed teacher decisions require an answer and decision time only", path=".course-work/decisions.json")
+        if status == "invalidated" and not _nonempty(item.get("invalidatedAt")):
+            raise InstructionalAuditError("invalid-decisions", "invalidated teacher decisions require an invalidation time", path=".course-work/decisions.json")
         try:
             TeacherDecision.from_dict(item)
         except (KeyError, TypeError, ValueError) as exc:
@@ -343,26 +350,44 @@ def _check_requirements(
     """Return (applies, requires_source_ids, requires_target_ids) structurally."""
     blocks = course_slice.get("blocks", []) if isinstance(course_slice.get("blocks"), list) else []
     question = any(isinstance(block, dict) and block.get("type") in {"singleChoice", "fillBlank"} for block in blocks)
+    def strings(value: object) -> List[str]:
+        if isinstance(value, str):
+            return [value]
+        if isinstance(value, dict):
+            return [text for nested in value.values() for text in strings(nested)]
+        if isinstance(value, list):
+            return [text for nested in value for text in strings(nested)]
+        return []
+    final_text = " ".join(text for block in blocks if isinstance(block, dict) for text in strings(block))
+    image_block = any(isinstance(block, dict) and block.get("type") in {"image", "figure"} for block in blocks)
+    correctness = any(
+        isinstance(block, dict)
+        and block.get("type") in {"singleChoice", "fillBlank"}
+        and isinstance(block.get("assessment"), dict)
+        and block["assessment"].get("mode") == "graded"
+        and any(_nonempty(block["assessment"].get(field)) for field in ("correctOptionId", "correctAnswer", "answerKey"))
+        for block in blocks
+    )
     action = plan_slice.get("learnerAction") if isinstance(plan_slice.get("learnerAction"), dict) else {}
     reference = bool(plan_slice.get("coVisibleRequirements")) or action.get("referencePolicy") in {"co-visible", "justified-dependency"}
     visible_text = " ".join(
         str(value) for value in (plan_slice.get("learnerSees"), action.get("description")) if isinstance(value, str)
-    )
+    ) + " " + final_text
     if check == "image-supports-assigned-claim":
-        applies = bool(plan_slice.get("imageRelationships"))
+        applies = bool(plan_slice.get("imageRelationships")) or image_block
         return applies, applies, applies
     if check == "question-answerable-from-declared-evidence":
-        return question, False, question
+        return question, question and bool(source_ids), question
     if check == "deictic-reference-resolves":
         applies = bool(_DEICTIC_REFERENCE.search(visible_text))
         return applies, applies and bool(source_ids), applies and bool(target_ids)
     if check == "required-reference-co-visible":
         return reference, reference and bool(source_ids), reference and bool(target_ids)
     if check == "teacher-correctness-preserved":
-        return question, False, question
+        return correctness, correctness and bool(source_ids), correctness
     if check == "source-claim-not-over-reduced":
         applies = bool(source_ids)
-        return applies, applies, False
+        return applies, applies, applies and bool(target_ids)
     raise AssertionError(f"unknown semantic check: {check}")
 
 
@@ -787,25 +812,26 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
     candidate therefore leaves an earlier valid report byte-for-byte intact.
     """
     root = _safe_root(root)
-    # Reject malformed candidates before serializing recorders.  The current
-    # evidence is still re-read below under the lock for lifecycle CAS.
-    prepared_hashes, prepared_plan, prepared_coverage, prepared_blueprint, prepared_course = _current_artifact_hashes_at(root)
-    _validate_payload(payload, hashes=prepared_hashes, plan=prepared_plan, coverage=prepared_coverage, blueprint=prepared_blueprint, course=prepared_course, allow_pending_resolution=True)
     # The same per-course guard used for plan mutations gives recorders a
     # process-wide compare-and-swap boundary.  Critically, evidence and the
     # prior lifecycle state are re-read *inside* the guard.
-    with _plan_guard(root, timeout_seconds=30):
-        hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
-        previous = _read_audit_report(root, required=False)
-        if previous is not None:
-            if not isinstance(previous, dict):
-                raise InstructionalAuditError("invalid-payload", "previous instructional audit is invalid")
-        report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
-        _validate_lifecycle(root, report, hashes)
-        report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
-        _validate_resolved_passes(root, report, hashes)
-        _write_audit_commit(root, report)
-        return report
+    try:
+        with _plan_guard(root, timeout_seconds=30):
+            hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
+            previous = _read_audit_report(root, required=False)
+            if previous is not None:
+                if not isinstance(previous, dict):
+                    raise InstructionalAuditError("invalid-payload", "previous instructional audit is invalid")
+            report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
+            _validate_lifecycle(root, report, hashes)
+            report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
+            _validate_resolved_passes(root, report, hashes)
+            _write_audit_commit(root, report)
+            return report
+    except PlanApprovalError as exc:
+        if exc.code in {"plan-lock-timeout", "plan-lock-unavailable"}:
+            raise InstructionalAuditError("audit-retryable-lock", "instructional audit is waiting for a course edit; retry shortly", path=".course-work") from exc
+        raise InstructionalAuditError(exc.code, "approved page plan is unavailable for instructional audit", path=exc.path) from exc
 
 
 def verify_instructional_audit(root: Path) -> Dict[str, str]:

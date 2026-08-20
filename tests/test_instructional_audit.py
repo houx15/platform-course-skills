@@ -474,8 +474,8 @@ class InstructionalAuditTests(unittest.TestCase):
 
         for field, value, code in (
             ("question", "", "invalid-decisions"),
-            ("answer", None, "review-decision-invalid"),
-            ("decidedAt", None, "review-decision-invalid"),
+            ("answer", None, "invalid-decisions"),
+            ("decidedAt", None, "invalid-decisions"),
             ("answer", "与两个方案都不同", "review-decision-answer-invalid"),
             ("contextHash", "not-the-review-context", "review-decision-stale"),
         ):
@@ -499,7 +499,7 @@ class InstructionalAuditTests(unittest.TestCase):
         resolved["entries"][0]["decisionId"] = "decision-semantic-layout"
         stored = record_instructional_audit(self.root, resolved)
         document = load_json(self.root / ".course-work/decisions.json")
-        document["decisions"][0]["status"] = "invalidated"
+        document["decisions"][0].update({"status": "invalidated", "invalidatedAt": "2026-08-21T02:00:00Z"})
         write_json_atomic(self.root / ".course-work/decisions.json", document)
         # Simulate an attacker rehashing the report: the persisted decision
         # record hash and concrete status still make verification fail.
@@ -509,7 +509,7 @@ class InstructionalAuditTests(unittest.TestCase):
             verify_instructional_audit(self.root)
         self.assertEqual(caught.exception.code, "review-decision-unconfirmed")
 
-        document["decisions"][0].update({"status": "confirmed", "answer": "将主张置于题目上方后继续同屏呈现。", "decidedAt": "2026-08-21T01:00:00Z"})
+        document["decisions"][0].update({"status": "confirmed", "answer": "将主张置于题目上方后继续同屏呈现。", "decidedAt": "2026-08-21T01:00:00Z", "invalidatedAt": None})
         write_json_atomic(self.root / ".course-work/decisions.json", document)
         stored["artifactHashes"] = _current_artifact_hashes(self.root)[0]
         write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, instructional_audit._commit_document(stored))
@@ -731,6 +731,73 @@ class InstructionalAuditTests(unittest.TestCase):
         with self.assertRaises(InstructionalAuditError) as caught:
             _current_artifact_hashes(self.root)
         self.assertEqual(caught.exception.code, "invalid-decisions")
+
+    def test_decision_store_status_invariants_reject_impossible_records_even_unused(self):
+        store = DecisionStore(self.root / ".course-work/decisions.json")
+        store.request("decision-status", "选择安排", "context-hash")
+        store.save()
+        for status, changes in (
+            ("pending", {"answer": "不应有答案"}),
+            ("confirmed", {"answer": None, "decidedAt": None}),
+            ("invalidated", {"invalidatedAt": None}),
+        ):
+            with self.subTest(status=status):
+                document = load_json(self.root / ".course-work/decisions.json")
+                decision = document["decisions"][0]
+                decision.update({"status": status, "answer": None, "decidedAt": None, "invalidatedAt": None})
+                decision.update(changes)
+                if status == "pending":
+                    pass
+                write_json_atomic(self.root / ".course-work/decisions.json", document)
+                with self.assertRaises(InstructionalAuditError) as caught:
+                    _current_artifact_hashes(self.root)
+                self.assertEqual(caught.exception.code, "invalid-decisions")
+
+    def test_final_course_blocks_drive_deictic_and_teacher_correctness_predicates(self):
+        plan_slice = {
+            "learnerSees": "普通文字。",
+            "learnerAction": {"description": "作答", "referencePolicy": "none"},
+            "coVisibleRequirements": [],
+            "imageRelationships": [],
+        }
+        final_deictic = {
+            "blocks": [
+                {"id": "claim", "type": "text", "content": "This claim needs support."},
+                {"id": "survey", "type": "singleChoice", "assessment": {"mode": "survey"}},
+            ]
+        }
+        self.assertEqual(
+            instructional_audit._check_requirements(
+                "deictic-reference-resolves", plan_slice=plan_slice, course_slice=final_deictic, source_ids={"source-1"}, target_ids={"block:claim"}
+            )[0],
+            True,
+        )
+        self.assertEqual(
+            instructional_audit._check_requirements(
+                "teacher-correctness-preserved", plan_slice=plan_slice, course_slice=final_deictic, source_ids={"source-1"}, target_ids={"block:survey"}
+            )[0],
+            False,
+        )
+        no_key = {"blocks": [{"id": "question", "type": "singleChoice", "assessment": {"mode": "graded"}}]}
+        self.assertFalse(
+            instructional_audit._check_requirements(
+                "teacher-correctness-preserved", plan_slice=plan_slice, course_slice=no_key, source_ids={"source-1"}, target_ids={"block:question"}
+            )[0]
+        )
+
+    def test_applicable_checks_require_their_relevant_ids_only_when_available(self):
+        candidate = _candidate(self.root)
+        question = next(entry for entry in candidate["entries"] if entry["check"] == "question-answerable-from-declared-evidence")
+        question["sourceIds"] = []
+        with self.assertRaises(InstructionalAuditError) as caught:
+            record_instructional_audit(self.root, candidate)
+        self.assertEqual(caught.exception.code, "stable-ids-required")
+        candidate = _candidate(self.root)
+        source_claim = next(entry for entry in candidate["entries"] if entry["check"] == "source-claim-not-over-reduced")
+        source_claim["targetIds"] = []
+        with self.assertRaises(InstructionalAuditError) as caught:
+            record_instructional_audit(self.root, candidate)
+        self.assertEqual(caught.exception.code, "stable-ids-required")
 
     def test_cli_requires_confined_candidate_file_and_emits_json_errors(self):
         script = ROOT / "scripts/record-instructional-audit.py"
