@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from .course_compiler import canonical_json_hash
 from .errors import ValidationIssue
 from .jsonio import load_json
 
@@ -49,6 +50,26 @@ def collect_course_destinations(course: dict) -> Dict[Destination, dict]:
                     continue
                 destinations[(part["id"], slice_data["id"], block["id"])] = block
     return destinations
+
+
+def _course_destination_pointers(course: dict) -> Dict[Destination, str]:
+    pointers: Dict[Destination, str] = {}
+    for part_index, part in enumerate(_course_payload(course).get("parts", [])):
+        if not isinstance(part, dict) or not isinstance(part.get("id"), str):
+            continue
+        for slice_index, slice_data in enumerate(part.get("slices", [])):
+            if not isinstance(slice_data, dict) or not isinstance(
+                slice_data.get("id"), str
+            ):
+                continue
+            for block_index, block in enumerate(slice_data.get("blocks", [])):
+                if not isinstance(block, dict) or not isinstance(block.get("id"), str):
+                    continue
+                destination = (part["id"], slice_data["id"], block["id"])
+                pointers[destination] = (
+                    f"/course/parts/{part_index}/slices/{slice_index}/blocks/{block_index}"
+                )
+    return pointers
 
 
 def _course_document_path(root: Path) -> Path:
@@ -99,9 +120,15 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
             migrated_items.append(item)
             continue
         status = item.get("status")
+        approval_complete = (
+            status == "discard-approved"
+            and _nonempty_string(item.get("reason"))
+            and _nonempty_string(item.get("decisionId"))
+            and item.get("teacherConfirmed") is True
+        )
         if status in {"mapped", "merged"}:
             disposition = "required-core"
-        elif status == "discard-approved":
+        elif approval_complete:
             disposition = "exclude-approved"
         else:
             # A legacy unresolved/discard-proposed item remains an auditable,
@@ -113,6 +140,8 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
             if key in item
         }
         migrated["disposition"] = disposition
+        if isinstance(status, str):
+            migrated["legacyStatus"] = status
         if disposition == "required-core":
             bindings = [
                 binding
@@ -123,6 +152,14 @@ def migrate_coverage_v1(document: dict, course: dict) -> dict:
         for key in ("reason", "decisionId", "teacherConfirmed"):
             if key in item:
                 migrated[key] = item[key]
+        if disposition == "exclude-proposed":
+            migration_reason = (
+                "Legacy source-coverage status needs resolution before publication: "
+                f"{status if isinstance(status, str) else 'missing-status'}"
+            )
+            if not _nonempty_string(migrated.get("reason")):
+                migrated["reason"] = migration_reason
+            migrated["migrationReason"] = migration_reason
         migrated_items.append(migrated)
     return {"schemaVersion": "2.0", "items": migrated_items}
 
@@ -132,8 +169,11 @@ def load_instructional_coverage(root: Path) -> dict:
     coverage = load_json(_coverage_path(root))
     if not isinstance(coverage, dict):
         raise ValueError("source coverage must be an object")
-    if coverage.get("schemaVersion") != "1.0":
+    version = coverage.get("schemaVersion")
+    if version == "2.0":
         return coverage
+    if version != "1.0":
+        raise ValueError(f"unsupported source coverage schemaVersion: {version}")
     course = load_json(_course_document_path(root))
     if not isinstance(course, dict):
         raise ValueError("course document must be an object")
@@ -155,12 +195,17 @@ def _source_map_matches(
     source_map: object,
     source_id: object,
     block_id: str,
-) -> bool:
+    expected_pointer: str,
+    expected_hash: str,
+) -> Tuple[bool, bool]:
     if not isinstance(source_map, dict) or not isinstance(source_id, str):
-        return False
+        return False, False
+    if source_map.get("courseDefinitionHash") != expected_hash:
+        return False, False
     mappings = source_map.get("mappings")
     if not isinstance(mappings, list):
-        return False
+        return False, False
+    pointer_mismatch = False
     for mapping in mappings:
         if not isinstance(mapping, dict):
             continue
@@ -168,22 +213,32 @@ def _source_map_matches(
             continue
         source_ids = mapping.get("sourceIds")
         if isinstance(source_ids, list) and source_id in source_ids:
-            return True
-    return False
+            if mapping.get("runtimePointer") == expected_pointer:
+                return True, False
+            pointer_mismatch = True
+    return False, pointer_mismatch
 
 
 def _binding_references_source(
     item: dict,
     block: dict,
     source_map: object,
-) -> bool:
+    expected_pointer: str,
+    expected_hash: str,
+) -> Tuple[bool, bool]:
     source_file = item.get("sourceFile")
     if isinstance(source_file, str) and source_file in set(_walk_strings(block)):
-        return True
+        return True, False
     source_id = item.get("sourceId")
     if isinstance(source_id, str) and source_id in set(_walk_strings(block)):
-        return True
-    return _source_map_matches(source_map, source_id, block.get("id", ""))
+        return True, False
+    return _source_map_matches(
+        source_map,
+        source_id,
+        block.get("id", ""),
+        expected_pointer,
+        expected_hash,
+    )
 
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
@@ -218,6 +273,21 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
         _source_map_path(root), blockers, "source-map-invalid"
     )
     destinations = collect_course_destinations(course) if isinstance(course, dict) else {}
+    destination_pointers = (
+        _course_destination_pointers(course) if isinstance(course, dict) else {}
+    )
+    expected_hash = canonical_json_hash(course) if isinstance(course, dict) else ""
+    if source_map is not None and (
+        not isinstance(source_map, dict)
+        or source_map.get("courseDefinitionHash") != expected_hash
+    ):
+        blockers.append(
+            _issue(
+                "course-runtime-source-map.json",
+                "source-map-stale",
+                "source map does not match the current CourseDefinition hash",
+            )
+        )
     items = coverage.get("items") if isinstance(coverage, dict) else None
     if not isinstance(items, list):
         blockers.append(
@@ -230,6 +300,15 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
         if not isinstance(item, dict):
             blockers.append(_issue(path, "coverage-item-invalid", "coverage item must be an object"))
             continue
+        for field in ("sourceId", "sourceFile", "location", "summary"):
+            if not _nonempty_string(item.get(field)):
+                blockers.append(
+                    _issue(
+                        f"{path}.{field}",
+                        "source-field-required",
+                        f"{field} is required for source traceability",
+                    )
+                )
         disposition = item.get("disposition")
         if disposition not in DISPOSITIONS:
             blockers.append(
@@ -279,6 +358,21 @@ def audit_instructional_bindings(root: Path) -> BindingAudit:
             if block is None:
                 blockers.append(_issue(binding_path, "binding-target-missing", "binding target does not exist in CourseDefinition 2.0"))
                 continue
-            if not _binding_references_source(item, block, source_map):
+            source_referenced, pointer_mismatch = _binding_references_source(
+                item,
+                block,
+                source_map,
+                destination_pointers[identity],  # type: ignore[index]
+                expected_hash,
+            )
+            if pointer_mismatch:
+                blockers.append(
+                    _issue(
+                        binding_path,
+                        "source-map-pointer-mismatch",
+                        "source-map runtimePointer does not identify the bound Block",
+                    )
+                )
+            if not source_referenced:
                 blockers.append(_issue(binding_path, "binding-source-unreferenced", "target Block does not contain or reference the declared source"))
     return BindingAudit(tuple(blockers), tuple(warnings))

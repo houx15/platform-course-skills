@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.jsonio import write_json_atomic
 
 
@@ -58,6 +59,19 @@ def write_root(root: Path, coverage: dict, course=None, source_map=None) -> None
     write_json_atomic(root / "course/course.json", course or course_document())
     if source_map is not None:
         write_json_atomic(root / ".course-work/course-runtime-source-map.json", source_map)
+
+
+def source_map_for(course: dict, *, runtime_pointer="/course/parts/0/slices/0/blocks/0"):
+    return {
+        "courseDefinitionHash": canonical_json_hash(course),
+        "mappings": [
+            {
+                "targetId": "block:evidence-pdf",
+                "runtimePointer": runtime_pointer,
+                "sourceIds": ["source-evidence"],
+            }
+        ],
+    }
 
 
 class InstructionalBindingTests(unittest.TestCase):
@@ -137,19 +151,53 @@ class InstructionalBindingTests(unittest.TestCase):
         self.assertEqual(loaded["items"][0]["location"], "page:7/figure:2")
 
     def test_valid_real_binding_passes_when_source_map_binds_source_to_target(self):
-        coverage = {"schemaVersion": "2.0", "items": [required_evidence()]}
-        source_map = {
-            "mappings": [
-                {"targetId": "block:evidence-pdf", "sourceIds": ["source-evidence"]}
-            ]
+        coverage = {
+            "schemaVersion": "2.0",
+            "items": [required_evidence(source_file="materials/original.pdf")],
         }
+        course = course_document()
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
-            write_root(root, coverage, source_map=source_map)
+            write_root(root, coverage, course=course, source_map=source_map_for(course))
 
             audit = self.api().audit_instructional_bindings(root)
 
         self.assertEqual(audit.blockers, ())
+
+    def test_stale_source_map_cannot_satisfy_binding(self):
+        coverage = {
+            "schemaVersion": "2.0",
+            "items": [required_evidence(source_file="materials/original.pdf")],
+        }
+        course = course_document()
+        source_map = source_map_for(course)
+        source_map["courseDefinitionHash"] = "0" * 64
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, coverage, course=course, source_map=source_map)
+
+            audit = self.api().audit_instructional_bindings(root)
+
+        codes = {issue.code for issue in audit.blockers}
+        self.assertIn("source-map-stale", codes)
+        self.assertIn("binding-source-unreferenced", codes)
+
+    def test_wrong_source_map_runtime_pointer_cannot_satisfy_binding(self):
+        coverage = {
+            "schemaVersion": "2.0",
+            "items": [required_evidence(source_file="materials/original.pdf")],
+        }
+        course = course_document()
+        source_map = source_map_for(course, runtime_pointer="/course/parts/0/slices/0")
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, coverage, course=course, source_map=source_map)
+
+            audit = self.api().audit_instructional_bindings(root)
+
+        codes = {issue.code for issue in audit.blockers}
+        self.assertIn("source-map-pointer-mismatch", codes)
+        self.assertIn("binding-source-unreferenced", codes)
 
     def test_existing_target_that_does_not_reference_source_blocks(self):
         coverage = {
@@ -251,6 +299,83 @@ class InstructionalBindingTests(unittest.TestCase):
         )
         self.assertEqual(migrated["items"][1]["disposition"], "exclude-approved")
         self.assertEqual(migrated["items"][1]["decisionId"], "decision-omit-extra")
+
+    def test_v1_incomplete_discard_approval_migrates_to_explicit_proposal(self):
+        document = course_document()
+        v1 = {
+            "schemaVersion": "1.0",
+            "items": [
+                {
+                    "sourceId": "source-extra",
+                    "sourceFile": "materials/extra.pdf",
+                    "location": "page:9",
+                    "summary": "Duplicate",
+                    "status": "discard-approved",
+                    "reason": "Duplicate",
+                    "teacherConfirmed": True,
+                }
+            ],
+        }
+
+        migrated = self.api().migrate_coverage_v1(v1, document)
+
+        item = migrated["items"][0]
+        self.assertEqual(item["disposition"], "exclude-proposed")
+        self.assertEqual(item["legacyStatus"], "discard-approved")
+        self.assertIn("migrationReason", item)
+
+    def test_v1_unresolved_record_gets_a_traceable_migration_reason(self):
+        document = course_document()
+        v1 = {
+            "schemaVersion": "1.0",
+            "items": [
+                {
+                    "sourceId": "source-unresolved",
+                    "sourceFile": "materials/unknown.pdf",
+                    "location": "page:10",
+                    "summary": "Needs a decision",
+                    "status": "unresolved",
+                }
+            ],
+        }
+
+        migrated = self.api().migrate_coverage_v1(v1, document)
+
+        item = migrated["items"][0]
+        self.assertEqual(item["disposition"], "exclude-proposed")
+        self.assertEqual(item["legacyStatus"], "unresolved")
+        self.assertTrue(item["reason"])
+
+    def test_unknown_coverage_version_is_rejected(self):
+        coverage = {"schemaVersion": "3.0", "items": []}
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, coverage)
+
+            with self.assertRaisesRegex(ValueError, "schemaVersion"):
+                self.api().load_instructional_coverage(root)
+            audit = self.api().audit_instructional_bindings(root)
+
+        self.assertIn("coverage-unavailable", {issue.code for issue in audit.blockers})
+
+    def test_v2_items_require_complete_source_traceability(self):
+        coverage = {
+            "schemaVersion": "2.0",
+            "items": [
+                {
+                    "sourceId": "source-support",
+                    "disposition": "optional-support",
+                    "reason": "Outside the planned task",
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root, coverage)
+
+            audit = self.api().audit_instructional_bindings(root)
+
+        self.assertIn("source-field-required", {issue.code for issue in audit.blockers})
 
     def test_package_review_destinations_use_slice_collector(self):
         from course_toolkit.package_review import _course_destinations
