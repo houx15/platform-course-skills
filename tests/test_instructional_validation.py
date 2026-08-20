@@ -609,3 +609,32 @@ class InstructionalValidationTests(unittest.TestCase):
         }
 
         self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_matching_submitted_transition_cannot_fall_through_to_wildcard_completed_transition(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].append({"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}})
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "answer",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image", "answer-block"], "enabledBlockIds": ["answer-block"]},
+            "steps": [
+                {"id": "answer", "enterActions": [], "transitions": [{"on": {"type": "answer.submitted", "sourceId": "answer-block"}, "to": "dead"}, {"on": {"type": "block.completed"}, "to": "reveal"}]},
+                {"id": "dead", "enterActions": [], "transitions": []},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_fractional_timer_duration_reveals_answer(self):
+        course = course_document()
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {
+            "version": "1.0", "initialStepId": "wait",
+            "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []},
+            "steps": [
+                {"id": "wait", "enterActions": [{"type": "startTimer", "timerId": "half-second", "durationSeconds": 0.5}], "transitions": [{"on": {"type": "timer.elapsed", "sourceId": "half-second"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+            ],
+        }
+
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})

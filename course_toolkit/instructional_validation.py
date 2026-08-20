@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections import deque
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
@@ -82,13 +83,13 @@ ONE_SHOT_BLOCK_EVENTS = frozenset(
 # the current map still has a latest handle plus canonical ``(remaining, is_latest)``
 # pending callbacks.  Keeping at most eight callbacks per ID is a conservative
 # finite abstraction for cyclic authored workflows.
-TimerState = Tuple[bool, Tuple[Tuple[int, bool], ...]]
+TimerState = Tuple[bool, Tuple[Tuple[Decimal, bool], ...]]
 TimerMap = Mapping[str, TimerState]
 MAX_PENDING_TIMER_HANDLES = 8
 
 
-def _timer_state(has_latest: bool, callbacks: Iterable[Tuple[int, bool]]) -> TimerState:
-    return has_latest, tuple(sorted((max(0, remaining), is_latest) for remaining, is_latest in callbacks))
+def _timer_state(has_latest: bool, callbacks: Iterable[Tuple[Decimal, bool]]) -> TimerState:
+    return has_latest, tuple(sorted((max(Decimal(0), remaining), is_latest) for remaining, is_latest in callbacks))
 
 
 def _issue(path: str, code: str, message: str) -> ValidationIssue:
@@ -286,6 +287,7 @@ def _external_event_updates(
     attempts: Mapping[str, int],
     locked_assessments: Set[str],
     playing_videos: Set[str],
+    submitted_handled_sources: Set[str] | None = None,
 ) -> List[Tuple[Set[str], Dict[str, TimerState], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
     """Return successor runtime facts for one externally produced event."""
     on = transition.get("on") if isinstance(transition, dict) else None
@@ -350,6 +352,8 @@ def _external_event_updates(
         if not isinstance(block, dict):
             continue
         if block.get("type") in ASSESSMENT_TYPES:
+            if event_type != "answer.submitted" and block_id in (submitted_handled_sources or set()):
+                continue
             if block_id in locked_assessments or not _block_can_emit_event(block, "answer.submitted", visible, enabled):
                 continue
             next_attempts = dict(attempts)
@@ -713,8 +717,14 @@ def _effective_step_states(
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
                 timer_id = action["timerId"]
-                duration = action.get("durationSeconds")
-                if not isinstance(duration, int) or isinstance(duration, bool) or duration < 0:
+                raw_duration = action.get("durationSeconds")
+                if isinstance(raw_duration, bool) or not isinstance(raw_duration, (int, float)):
+                    continue
+                try:
+                    duration = Decimal(str(raw_duration))
+                except (InvalidOperation, ValueError):
+                    continue
+                if not duration.is_finite() or duration <= 0:
                     continue
                 _has_latest, callbacks = active_timers.get(timer_id, (False, ()))
                 # timers.current points only at this new handle.  Previous
@@ -774,6 +784,15 @@ def _effective_step_states(
             matched = None
         if matched is not None:
             continue
+        submitted_handled_sources = {
+            block_id
+            for block_id, block in blocks.items()
+            if block.get("type") in ASSESSMENT_TYPES
+            and any(
+                _matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, (block_id, "answer.submitted"))
+                for candidate in _items(step.get("transitions"))
+            )
+        }
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
             if destination not in steps:
@@ -806,6 +825,7 @@ def _effective_step_states(
                 attempts=attempts,
                 locked_assessments=locked_assessments,
                 playing_videos=playing_videos,
+                submitted_handled_sources=submitted_handled_sources,
             ):
                 pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
 
