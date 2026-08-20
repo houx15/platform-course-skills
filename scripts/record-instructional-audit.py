@@ -19,23 +19,30 @@ from course_toolkit.jsonio import load_json
 MAX_CANDIDATE_BYTES = 512 * 1024
 
 
-def _candidate_path(root: Path, raw: Path) -> Path:
+def _candidate_path(root: Path, raw: str) -> Path:
     root = Path(root).absolute()
     if root.is_symlink() or not root.is_dir():
         raise InstructionalAuditError("invalid-root", "course root must be a real directory", path=".")
-    candidates = root / ".course-work" / "candidates"
-    if candidates.is_symlink() or not candidates.is_dir():
-        raise InstructionalAuditError("candidate-directory-required", "candidate must be stored under .course-work/candidates", path=".course-work/candidates")
-    candidate = raw if raw.is_absolute() else root / raw
-    try:
-        candidate.relative_to(candidates)
-    except ValueError as exc:
-        raise InstructionalAuditError("candidate-outside-root", "candidate must stay under .course-work/candidates", path="candidate") from exc
-    current = root
-    for component in candidate.relative_to(root).parts:
-        current = current / component
-        if current.is_symlink():
+    if not raw or raw.startswith("/") or "\\" in raw:
+        raise InstructionalAuditError("candidate-invalid-path", "candidate must be a relative path below .course-work/candidates", path="candidate")
+    raw_parts = raw.split("/")
+    if any(part in {"", ".", ".."} for part in raw_parts):
+        raise InstructionalAuditError("candidate-invalid-path", "candidate path may not contain empty, dot, or parent components", path="candidate")
+    expected_prefix = (".course-work", "candidates")
+    if tuple(raw_parts[:2]) != expected_prefix or len(raw_parts) == 2:
+        raise InstructionalAuditError("candidate-outside-root", "candidate must stay below .course-work/candidates", path="candidate")
+    candidates = root
+    for component in expected_prefix:
+        candidates = candidates / component
+        if candidates.is_symlink() or not candidates.is_dir():
+            raise InstructionalAuditError("candidate-directory-required", "candidate must be stored under a real .course-work/candidates directory", path=".course-work/candidates")
+    candidate = root
+    for index, component in enumerate(raw_parts):
+        candidate = candidate / component
+        if candidate.is_symlink():
             raise InstructionalAuditError("candidate-symlink", "candidate path may not traverse a symlink", path="candidate")
+        if index < len(raw_parts) - 1 and not candidate.is_dir():
+            raise InstructionalAuditError("candidate-required", "candidate parent directory does not exist", path="candidate")
     if not candidate.is_file():
         raise InstructionalAuditError("candidate-required", "candidate JSON file is required", path="candidate")
     if candidate.stat().st_size > MAX_CANDIDATE_BYTES:
@@ -55,7 +62,7 @@ def _emit(payload: dict, as_json: bool, *, error: bool = False) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Record a source-grounded instructional audit")
     parser.add_argument("root", type=Path)
-    parser.add_argument("candidate", type=Path, nargs="?", help="JSON under .course-work/candidates/")
+    parser.add_argument("candidate", nargs="?", help="JSON under .course-work/candidates/")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
     try:

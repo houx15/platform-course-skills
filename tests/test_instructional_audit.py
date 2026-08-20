@@ -126,6 +126,86 @@ def _write_root(root: Path) -> None:
     write_json_atomic(root / ".course-work/course-validation-report.json", report)
 
 
+def _write_two_slice_root(root: Path) -> None:
+    _write_root(root)
+    plan = load_json(root / ".course-work/course-storyboard.json")
+    second = copy.deepcopy(plan["parts"][0]["slices"][0])
+    second["sliceId"] = "slice-second"
+    second["title"] = "第二个证据判断"
+    second["sourceUses"][0].update({"sourceId": "source-2", "locator": "paragraph:2"})
+    second["learnerAction"] = {
+        "kind": "answer",
+        "description": "参考第二段证据，选择下一步检查。",
+        "referencePolicy": "co-visible",
+        "referenceSourceIds": ["source-2"],
+        "targetId": "question:question-two",
+    }
+    second["coVisibleRequirements"] = [
+        {"sourceId": "source-2", "targetId": "question:question-two", "reason": "作答时需要阅读第二段证据。"}
+    ]
+    second["imageRelationships"] = [
+        {"sourceId": "source-2", "targetType": "claim", "targetId": "claim:claim-two", "relationship": "该材料支持第二个主张的核验。"}
+    ]
+    plan["parts"][0]["slices"].append(second)
+    coverage = load_json(root / ".course-work/source-coverage.json")
+    coverage["items"].append(
+        {
+            "sourceId": "source-2",
+            "sourceFile": "materials/source-two.txt",
+            "location": "paragraph:2",
+            "summary": "第二个 Slice 的独立证据。",
+            "disposition": "required-core",
+            "bindings": [
+                {
+                    "partId": PART,
+                    "sliceId": "slice-second",
+                    "blockId": "claim-two",
+                    "role": "claim",
+                    "supportsIds": ["claim-two", "question-two"],
+                }
+            ],
+        }
+    )
+    inventory = load_json(root / ".course-work/materials-extracted.json")
+    inventory["items"].append(
+        {
+            "sourceId": "source-2",
+            "sourceFile": "materials/source-two.txt",
+            "location": "paragraph:2",
+            "kind": "file",
+            "text": "第二个 Slice 的独立证据。",
+        }
+    )
+    write_json_atomic(root / ".course-work/course-storyboard.json", plan)
+    write_json_atomic(root / ".course-work/source-coverage.json", coverage)
+    write_json_atomic(root / ".course-work/materials-extracted.json", inventory)
+    (root / "materials/source-two.txt").write_text("第二个 Slice 的独立证据。", encoding="utf-8")
+    approve_plan(root, decision_id="decision-plan-two", approved_at="2026-08-21T00:00:00Z")
+
+    blueprint = load_json(root / ".course-work/course-blueprint.json")
+    first = blueprint["course"]["parts"][0]["slices"][0]
+    second_course_slice = json.loads(
+        json.dumps(first)
+        .replace("slice-read-and-answer", "slice-second")
+        .replace("claim-text", "claim-two")
+        .replace("evidence-question", "question-two")
+        .replace("introduce-check", "introduce-two")
+    )
+    blueprint["course"]["parts"][0]["slices"].append(second_course_slice)
+    blueprint["provenance"].extend(
+        [
+            {"targetId": "block:claim-two", "sourceIds": ["source-2"], "decisionIds": [], "status": "source-backed"},
+            {"targetId": "block:question-two", "sourceIds": ["source-2"], "decisionIds": [], "status": "source-backed"},
+        ]
+    )
+    write_json_atomic(root / ".course-work/course-blueprint.json", blueprint)
+    write_compilation_outputs_atomic(root, compile_blueprint(blueprint))
+    report = build_course_validation_report(root)
+    if report["status"] == "blocked":
+        raise AssertionError(report["issues"])
+    write_json_atomic(root / ".course-work/course-validation-report.json", report)
+
+
 def _candidate(root: Path, *, status: str = "pass") -> dict:
     hashes, _plan_data, _coverage_data, _blueprint, _course = _current_artifact_hashes(root)
     entries = []
@@ -142,6 +222,31 @@ def _candidate(root: Path, *, status: str = "pass") -> dict:
         if status == "review":
             entry["plausibleArrangements"] = ["保留当前左右并列安排。", "将主张置于题目上方后继续同屏呈现。"]
         entries.append(entry)
+    return {"schemaVersion": "1.0", "artifactHashes": hashes, "entries": entries}
+
+
+def _two_slice_candidate(root: Path) -> dict:
+    hashes, _plan_data, _coverage_data, _blueprint, _course = _current_artifact_hashes(root)
+    entries = []
+    for slice_id, source_id, target_id in (
+        (SLICE, "source-1", "block:evidence-question"),
+        ("slice-second", "source-2", "block:question-two"),
+    ):
+        for check in SEMANTIC_CHECKS:
+            entries.append(
+                {
+                    "partId": PART,
+                    "sliceId": slice_id,
+                    "check": check,
+                    "status": "pass",
+                    "sourceIds": [source_id],
+                    "targetIds": [target_id],
+                    "evidence": "该 Slice 的来源与题目在当前课程定义中一一对应。",
+                }
+            )
+    second_entries = [entry for entry in entries if entry["sliceId"] == "slice-second"]
+    second_entries[0]["targetIds"] = ["question:question-two"]
+    second_entries[1]["targetIds"] = ["claim:claim-two"]
     return {"schemaVersion": "1.0", "artifactHashes": hashes, "entries": entries}
 
 
@@ -188,8 +293,8 @@ class InstructionalAuditTests(unittest.TestCase):
 
     def test_source_target_evidence_status_and_closed_schema_are_strict(self):
         cases = (
-            (lambda entry: entry.update(sourceIds=["missing"]), "unknown-source"),
-            (lambda entry: entry.update(targetIds=["block:missing"]), "unknown-target"),
+            (lambda entry: entry.update(sourceIds=["missing"]), "source-not-in-slice"),
+            (lambda entry: entry.update(targetIds=["block:missing"]), "target-not-in-slice"),
             (lambda entry: entry.update(evidence=" "), "evidence-required"),
             (lambda entry: entry.update(status="waived"), "unsupported-status"),
             (lambda entry: entry.update(waived=True), "unknown-field"),
@@ -247,12 +352,111 @@ class InstructionalAuditTests(unittest.TestCase):
         context_hash = _review_context_hash(old_entry, review["artifactHashes"])
         store = DecisionStore(self.root / ".course-work/decisions.json")
         store.request("decision-semantic-layout", "选择两种可行语义安排之一", context_hash)
-        store.confirm("decision-semantic-layout", "保留当前左右并列安排", "2026-08-21T01:00:00Z")
+        store.confirm("decision-semantic-layout", "保留当前左右并列安排。", "2026-08-21T01:00:00Z")
         store.save()
         resolved = _candidate(self.root)
         resolved["entries"][0]["decisionId"] = "decision-semantic-layout"
-        record_instructional_audit(self.root, resolved)
-        self.assertEqual(load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)["entries"][0]["status"], "pass")
+        stored = record_instructional_audit(self.root, resolved)
+        entry = stored["entries"][0]
+        self.assertEqual(entry["status"], "pass")
+        self.assertEqual(entry["decisionId"], "decision-semantic-layout")
+        self.assertEqual(entry["plausibleArrangements"], review["entries"][0]["plausibleArrangements"])
+        self.assertIn("reviewContextHash", entry)
+        self.assertIn("decisionRecordHash", entry)
+        self.assertIn("instructionalAuditHash", verify_instructional_audit(self.root))
+
+        # A later recorder must keep the exact resolution, not turn it into a
+        # generic pass after the decision has disappeared from the candidate.
+        record_instructional_audit(self.root, stored)
+        stripped = copy.deepcopy(stored)
+        for field in ("decisionId", "plausibleArrangements", "reviewContextHash", "decisionRecordHash"):
+            stripped["entries"][0].pop(field)
+        with self.assertRaises(InstructionalAuditError) as caught:
+            record_instructional_audit(self.root, stripped)
+        self.assertEqual(caught.exception.code, "review-provenance-lost")
+        different = copy.deepcopy(stored)
+        different["entries"][0]["decisionId"] = "different-decision"
+        with self.assertRaises(InstructionalAuditError) as caught:
+            record_instructional_audit(self.root, different)
+        self.assertEqual(caught.exception.code, "review-provenance-lost")
+
+    def test_review_decision_requires_substantive_confirmed_record_and_verify_rechecks_it(self):
+        review = _candidate(self.root)
+        review["entries"][0].update(
+            {
+                "status": "review",
+                "plausibleArrangements": ["保留当前左右并列安排。", "将主张置于题目上方后继续同屏呈现。"],
+            }
+        )
+        record_instructional_audit(self.root, review)
+        old_entry = load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)["entries"][0]
+        context_hash = _review_context_hash(old_entry, review["artifactHashes"])
+        store = DecisionStore(self.root / ".course-work/decisions.json")
+        store.request("decision-semantic-layout", "选择两种可行语义安排之一", context_hash)
+        store.save()
+
+        for field, value, code in (
+            ("question", "", "review-decision-invalid"),
+            ("answer", None, "review-decision-invalid"),
+            ("decidedAt", None, "review-decision-invalid"),
+            ("answer", "与两个方案都不同", "review-decision-answer-invalid"),
+            ("contextHash", "not-the-review-context", "review-decision-stale"),
+        ):
+            with self.subTest(field=field, value=value):
+                document = load_json(self.root / ".course-work/decisions.json")
+                decision = document["decisions"][0]
+                decision.update({"status": "confirmed", "question": "选择两种可行语义安排之一", "answer": "保留当前左右并列安排。", "decidedAt": "2026-08-21T01:00:00Z"})
+                decision[field] = value
+                write_json_atomic(self.root / ".course-work/decisions.json", document)
+                candidate = _candidate(self.root)
+                candidate["entries"][0]["decisionId"] = "decision-semantic-layout"
+                with self.assertRaises(InstructionalAuditError) as caught:
+                    record_instructional_audit(self.root, candidate)
+                self.assertEqual(caught.exception.code, code)
+
+        document = load_json(self.root / ".course-work/decisions.json")
+        decision = document["decisions"][0]
+        decision.update({"status": "confirmed", "question": "选择两种可行语义安排之一", "answer": "保留当前左右并列安排。", "decidedAt": "2026-08-21T01:00:00Z", "contextHash": context_hash})
+        write_json_atomic(self.root / ".course-work/decisions.json", document)
+        resolved = _candidate(self.root)
+        resolved["entries"][0]["decisionId"] = "decision-semantic-layout"
+        stored = record_instructional_audit(self.root, resolved)
+        document = load_json(self.root / ".course-work/decisions.json")
+        document["decisions"][0]["status"] = "invalidated"
+        write_json_atomic(self.root / ".course-work/decisions.json", document)
+        # Simulate an attacker rehashing the report: the persisted decision
+        # record hash and concrete status still make verification fail.
+        stored["artifactHashes"] = _current_artifact_hashes(self.root)[0]
+        write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, stored)
+        with self.assertRaises(InstructionalAuditError) as caught:
+            verify_instructional_audit(self.root)
+        self.assertEqual(caught.exception.code, "review-decision-unconfirmed")
+
+        document["decisions"][0].update({"status": "confirmed", "answer": "将主张置于题目上方后继续同屏呈现。", "decidedAt": "2026-08-21T01:00:00Z"})
+        write_json_atomic(self.root / ".course-work/decisions.json", document)
+        stored["artifactHashes"] = _current_artifact_hashes(self.root)[0]
+        write_json_atomic(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, stored)
+        with self.assertRaises(InstructionalAuditError) as caught:
+            verify_instructional_audit(self.root)
+        self.assertEqual(caught.exception.code, "review-decision-changed")
+
+    def test_source_and_target_ids_cannot_cross_slice_boundaries(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write_two_slice_root(root)
+            candidate = _two_slice_candidate(root)
+            first = candidate["entries"][0]
+            first["sourceIds"] = ["source-2"]
+            with self.assertRaises(InstructionalAuditError) as caught:
+                record_instructional_audit(root, candidate)
+            self.assertEqual(caught.exception.code, "source-not-in-slice")
+            candidate = _two_slice_candidate(root)
+            candidate["entries"][0]["targetIds"] = ["block:question-two"]
+            with self.assertRaises(InstructionalAuditError) as caught:
+                record_instructional_audit(root, candidate)
+            self.assertEqual(caught.exception.code, "target-not-in-slice")
+            report = record_instructional_audit(root, _two_slice_candidate(root))
+            self.assertEqual(len(report["entries"]), 2 * len(SEMANTIC_CHECKS))
 
     def test_failed_candidate_preserves_old_valid_report_and_symlinked_destination_fails(self):
         expected = record_instructional_audit(self.root, _candidate(self.root))
@@ -289,14 +493,14 @@ class InstructionalAuditTests(unittest.TestCase):
             check=False,
         )
         self.assertEqual(result.returncode, 2)
-        self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-directory-required")
+        self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-outside-root")
 
         candidates = self.root / ".course-work/candidates"
         candidates.mkdir()
         candidate_path = candidates / "audit.json"
         write_json_atomic(candidate_path, _candidate(self.root))
         result = subprocess.run(
-            ["python3", str(script), str(self.root), str(candidate_path), "--json"],
+            ["python3", str(script), str(self.root), ".course-work/candidates/audit.json", "--json"],
             cwd=ROOT,
             text=True,
             capture_output=True,
@@ -304,12 +508,29 @@ class InstructionalAuditTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(json.loads(result.stdout)["ok"])
+        for raw in (
+            str(candidate_path),
+            ".course-work/candidates/./audit.json",
+            ".course-work/candidates//audit.json",
+            ".course-work/candidates/../audit.json",
+            ".course-work/candidates\\audit.json",
+        ):
+            with self.subTest(raw=raw):
+                result = subprocess.run(
+                    ["python3", str(script), str(self.root), raw, "--json"],
+                    cwd=ROOT,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 2)
+                self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-invalid-path")
         target = candidates / "target.json"
         write_json_atomic(target, _candidate(self.root))
         link = candidates / "linked.json"
         link.symlink_to(target)
         result = subprocess.run(
-            ["python3", str(script), str(self.root), str(link), "--json"],
+            ["python3", str(script), str(self.root), ".course-work/candidates/linked.json", "--json"],
             cwd=ROOT,
             text=True,
             capture_output=True,
@@ -317,6 +538,66 @@ class InstructionalAuditTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-symlink")
+        with tempfile.TemporaryDirectory() as path_fixture:
+            fixture = Path(path_fixture)
+            root_link = fixture / "root-link"
+            root_link.symlink_to(self.root, target_is_directory=True)
+            result = subprocess.run(
+                ["python3", str(script), str(root_link), ".course-work/candidates/audit.json", "--json"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout)["error"]["code"], "invalid-root")
+            for kind in ("course-work", "candidates"):
+                with self.subTest(kind=kind):
+                    candidate_root = fixture / f"{kind}-root"
+                    candidate_root.mkdir()
+                    real = fixture / f"{kind}-real"
+                    (real / "candidates").mkdir(parents=True)
+                    if kind == "course-work":
+                        (candidate_root / ".course-work").symlink_to(real, target_is_directory=True)
+                    else:
+                        (candidate_root / ".course-work").mkdir()
+                        (candidate_root / ".course-work/candidates").symlink_to(real / "candidates", target_is_directory=True)
+                    result = subprocess.run(
+                        ["python3", str(script), str(candidate_root), ".course-work/candidates/audit.json", "--json"],
+                        cwd=ROOT,
+                        text=True,
+                        capture_output=True,
+                        check=False,
+                    )
+                    self.assertEqual(result.returncode, 2)
+                    self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-directory-required")
+        real = candidates / "real"
+        real.mkdir()
+        write_json_atomic(real / "audit.json", _candidate(self.root))
+        nested = candidates / "nested"
+        nested.symlink_to(real, target_is_directory=True)
+        result = subprocess.run(
+            ["python3", str(script), str(self.root), ".course-work/candidates/nested/audit.json", "--json"],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-symlink")
+        with tempfile.TemporaryDirectory(dir=self.root.parent, prefix="sibling-course-") as sibling_path:
+            sibling = Path(sibling_path)
+            (sibling / ".course-work/candidates").mkdir(parents=True)
+            write_json_atomic(sibling / ".course-work/candidates/audit.json", {"candidate": "live sibling"})
+            result = subprocess.run(
+                ["python3", str(script), str(self.root), f".course-work/candidates/../../../{sibling.name}/.course-work/candidates/audit.json", "--json"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(json.loads(result.stdout)["error"]["code"], "candidate-invalid-path")
 
 
 if __name__ == "__main__":

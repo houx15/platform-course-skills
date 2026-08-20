@@ -12,7 +12,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Dict, Iterable, List, Mapping, Set, Tuple
 
-from .blueprint import index_blueprint_targets
 from .course_package_validation import (
     VALIDATION_REPORT_RELATIVE_PATH,
     build_course_validation_report,
@@ -57,6 +56,8 @@ _ENTRY_FIELDS = frozenset(
         "evidence",
         "plausibleArrangements",
         "decisionId",
+        "reviewContextHash",
+        "decisionRecordHash",
     }
 )
 _STATUS = frozenset({"pass", "blocker", "review"})
@@ -183,37 +184,71 @@ def _slice_keys(plan: Mapping[str, object]) -> List[Tuple[str, str]]:
     return keys
 
 
-def _declared_plan_targets(plan: Mapping[str, object]) -> Set[str]:
-    targets: Set[str] = set()
+def _declared_plan_targets(plan: Mapping[str, object]) -> Dict[Tuple[str, str], Set[str]]:
+    targets: Dict[Tuple[str, str], Set[str]] = {}
     for part in plan.get("parts", []) if isinstance(plan.get("parts"), list) else []:
-        if not isinstance(part, dict):
+        if not isinstance(part, dict) or not isinstance(part.get("partId"), str):
             continue
         for slice_data in part.get("slices", []) if isinstance(part.get("slices"), list) else []:
-            if not isinstance(slice_data, dict):
+            if not isinstance(slice_data, dict) or not isinstance(slice_data.get("sliceId"), str):
                 continue
+            slice_targets = targets.setdefault((part["partId"], slice_data["sliceId"]), set())
             action = slice_data.get("learnerAction")
             if isinstance(action, dict) and isinstance(action.get("targetId"), str):
-                targets.add(action["targetId"])
+                slice_targets.add(action["targetId"])
             for field in ("coVisibleRequirements", "imageRelationships"):
                 values = slice_data.get(field)
                 if isinstance(values, list):
                     for value in values:
                         if isinstance(value, dict) and isinstance(value.get("targetId"), str):
-                            targets.add(value["targetId"])
+                            slice_targets.add(value["targetId"])
     return targets
 
 
-def _known_ids(coverage: Mapping[str, object], blueprint: Mapping[str, object], plan: Mapping[str, object]) -> Tuple[Set[str], Set[str]]:
-    source_ids: Set[str] = set()
+def _slice_known_ids(
+    coverage: Mapping[str, object],
+    plan: Mapping[str, object],
+    course: Mapping[str, object],
+) -> Dict[Tuple[str, str], Tuple[Set[str], Set[str]]]:
+    """Return only sources and targets that actually belong to each Slice."""
+    source_bindings: Dict[Tuple[str, str], Set[str]] = {}
     for item in coverage.get("items", []) if isinstance(coverage.get("items"), list) else []:
         if isinstance(item, dict) and isinstance(item.get("sourceId"), str):
-            source_ids.add(item["sourceId"])
-    try:
-        target_ids = set(index_blueprint_targets(dict(blueprint)))
-    except (KeyError, TypeError, ValueError) as exc:
-        raise InstructionalAuditError("invalid-blueprint-targets", "Blueprint has no valid stable target index", path=".course-work/course-blueprint.json") from exc
-    target_ids.update(_declared_plan_targets(plan))
-    return source_ids, target_ids
+            for binding in item.get("bindings", []) if isinstance(item.get("bindings"), list) else []:
+                if isinstance(binding, dict) and isinstance(binding.get("partId"), str) and isinstance(binding.get("sliceId"), str):
+                    source_bindings.setdefault((binding["partId"], binding["sliceId"]), set()).add(item["sourceId"])
+
+    planned_sources: Dict[Tuple[str, str], Set[str]] = {}
+    for part in plan.get("parts", []) if isinstance(plan.get("parts"), list) else []:
+        if not isinstance(part, dict) or not isinstance(part.get("partId"), str):
+            continue
+        for slice_data in part.get("slices", []) if isinstance(part.get("slices"), list) else []:
+            if not isinstance(slice_data, dict) or not isinstance(slice_data.get("sliceId"), str):
+                continue
+            key = (part["partId"], slice_data["sliceId"])
+            planned_sources[key] = {
+                source_use["sourceId"]
+                for source_use in slice_data.get("sourceUses", []) if isinstance(slice_data.get("sourceUses"), list)
+                if isinstance(source_use, dict) and isinstance(source_use.get("sourceId"), str)
+            }
+
+    targets = _declared_plan_targets(plan)
+    course_data = course.get("course") if isinstance(course.get("course"), dict) else {}
+    for part in course_data.get("parts", []) if isinstance(course_data.get("parts"), list) else []:
+        if not isinstance(part, dict) or not isinstance(part.get("id"), str):
+            continue
+        for slice_data in part.get("slices", []) if isinstance(part.get("slices"), list) else []:
+            if not isinstance(slice_data, dict) or not isinstance(slice_data.get("id"), str):
+                continue
+            key = (part["id"], slice_data["id"])
+            slice_targets = targets.setdefault(key, set())
+            for block in slice_data.get("blocks", []) if isinstance(slice_data.get("blocks"), list) else []:
+                if isinstance(block, dict) and isinstance(block.get("id"), str):
+                    slice_targets.add(f"block:{block['id']}")
+    return {
+        key: (planned_sources.get(key, set()).intersection(source_bindings.get(key, set())), targets.get(key, set()))
+        for key in set(planned_sources).union(targets)
+    }
 
 
 def _review_context_hash(entry: Mapping[str, object], artifact_hashes: Mapping[str, str]) -> str:
@@ -238,8 +273,8 @@ def _validate_entry(
     *,
     index: int,
     slice_keys: Set[Tuple[str, str]],
-    source_ids: Set[str],
-    target_ids: Set[str],
+    slice_ids: Mapping[Tuple[str, str], Tuple[Set[str], Set[str]]],
+    allow_pending_resolution: bool,
 ) -> dict:
     path = f"entries[{index}]"
     if not isinstance(value, dict):
@@ -270,7 +305,8 @@ def _validate_entry(
         "check": check,
         "status": status,
     }
-    for field, known, code in (("sourceIds", source_ids, "unknown-source"), ("targetIds", target_ids, "unknown-target")):
+    known_source_ids, known_target_ids = slice_ids.get((part_id, slice_id), (set(), set()))
+    for field, known, code in (("sourceIds", known_source_ids, "source-not-in-slice"), ("targetIds", known_target_ids, "target-not-in-slice")):
         ids = value.get(field)
         if not isinstance(ids, list) or not ids or not all(isinstance(item, str) and item for item in ids):
             raise InstructionalAuditError("stable-ids-required", f"{field} must be a nonempty list of stable IDs", path=f"{path}.{field}")
@@ -284,22 +320,57 @@ def _validate_entry(
 
     arrangements = value.get("plausibleArrangements")
     decision_id = value.get("decisionId")
+    review_context_hash = value.get("reviewContextHash")
+    decision_record_hash = value.get("decisionRecordHash")
     if status == "review":
         if not isinstance(arrangements, list) or len(arrangements) != 2 or not all(_nonempty(item, maximum=_MAX_ARRANGEMENT_CHARS) for item in arrangements):
             raise InstructionalAuditError("review-arrangements-required", "a review needs exactly two concrete plausible arrangements", path=f"{path}.plausibleArrangements")
         normalized_arrangements = [item.strip() for item in arrangements]
         if normalized_arrangements[0] == normalized_arrangements[1]:
             raise InstructionalAuditError("review-arrangements-required", "review arrangements must be genuinely distinct", path=f"{path}.plausibleArrangements")
-        if decision_id is not None:
+        if decision_id is not None or review_context_hash is not None or decision_record_hash is not None:
             raise InstructionalAuditError("review-unresolved", "a review remains unresolved until a later teacher decision records pass", path=f"{path}.decisionId")
         normalized["plausibleArrangements"] = normalized_arrangements
-    else:
-        if arrangements is not None:
-            raise InstructionalAuditError("status-field-invalid", "only review entries may declare plausible arrangements", path=f"{path}.plausibleArrangements")
-        if decision_id is not None:
-            if not isinstance(decision_id, str) or not decision_id.strip() or status != "pass":
-                raise InstructionalAuditError("status-field-invalid", "only a pass resolving an earlier review may declare a decision ID", path=f"{path}.decisionId")
+    elif status == "pass":
+        resolution_fields = (arrangements, decision_id, review_context_hash, decision_record_hash)
+        if all(value is None for value in resolution_fields):
+            return normalized
+        if (
+            isinstance(decision_id, str)
+            and decision_id.strip()
+            and arrangements is None
+            and review_context_hash is None
+            and decision_record_hash is None
+            and allow_pending_resolution
+        ):
             normalized["decisionId"] = decision_id.strip()
+            return normalized
+        if (
+            not isinstance(arrangements, list)
+            or len(arrangements) != 2
+            or not all(_nonempty(item, maximum=_MAX_ARRANGEMENT_CHARS) for item in arrangements)
+            or not isinstance(decision_id, str)
+            or not decision_id.strip()
+            or not isinstance(review_context_hash, str)
+            or not review_context_hash
+            or not isinstance(decision_record_hash, str)
+            or not decision_record_hash
+        ):
+            raise InstructionalAuditError("resolution-provenance-required", "a resolved review pass must retain its arrangements and decision provenance", path=path)
+        normalized_arrangements = [item.strip() for item in arrangements]
+        if normalized_arrangements[0] == normalized_arrangements[1]:
+            raise InstructionalAuditError("review-arrangements-required", "review arrangements must be genuinely distinct", path=f"{path}.plausibleArrangements")
+        normalized.update(
+            {
+                "plausibleArrangements": normalized_arrangements,
+                "decisionId": decision_id.strip(),
+                "reviewContextHash": review_context_hash,
+                "decisionRecordHash": decision_record_hash,
+            }
+        )
+    else:
+        if any(value is not None for value in (arrangements, decision_id, review_context_hash, decision_record_hash)):
+            raise InstructionalAuditError("status-field-invalid", "blocker entries may not carry review resolution fields", path=path)
     return normalized
 
 
@@ -310,6 +381,8 @@ def _validate_payload(
     plan: Mapping[str, object],
     coverage: Mapping[str, object],
     blueprint: Mapping[str, object],
+    course: Mapping[str, object],
+    allow_pending_resolution: bool = False,
 ) -> dict:
     if not isinstance(payload, dict):
         raise InstructionalAuditError("invalid-payload", "audit payload must be an object")
@@ -331,14 +404,14 @@ def _validate_payload(
         raise InstructionalAuditError("entries-required", "audit payload entries must be a list", path="entries")
     ordered_slices = _slice_keys(plan)
     slice_set = set(ordered_slices)
-    source_ids, target_ids = _known_ids(coverage, blueprint, plan)
+    slice_ids = _slice_known_ids(coverage, plan, course)
     normalized = [
         _validate_entry(
             entry,
             index=index,
             slice_keys=slice_set,
-            source_ids=source_ids,
-            target_ids=target_ids,
+            slice_ids=slice_ids,
+            allow_pending_resolution=allow_pending_resolution,
         )
         for index, entry in enumerate(entries)
     ]
@@ -382,18 +455,53 @@ def _existing_entries(root: Path) -> dict[Tuple[str, str, str], dict]:
     return result
 
 
-def _require_confirmed_review_decision(root: Path, decision_id: str, old_entry: Mapping[str, object], hashes: Mapping[str, str]) -> None:
+def _confirmed_review_decision(
+    root: Path,
+    *,
+    decision_id: str,
+    arrangements: List[str],
+    context_hash: str,
+) -> str:
+    """Validate the concrete teacher decision without loose model coercion."""
     path = root / ".course-work" / "decisions.json"
     if not path.exists():
         raise InstructionalAuditError("review-decision-missing", "a review cannot become pass without a confirmed teacher decision", path=".course-work/decisions.json")
     try:
-        decision = DecisionStore.load(path).get(decision_id)
-    except (KeyError, TypeError, ValueError) as exc:
-        raise InstructionalAuditError("review-decision-missing", "review resolution names no current teacher decision", path=".course-work/decisions.json") from exc
-    if decision.status != "confirmed":
+        document = _safe_json(root, ".course-work/decisions.json")
+    except InstructionalAuditError:
+        raise
+    if not isinstance(document, dict) or document.get("schemaVersion") != DECISION_STORE_SCHEMA_VERSION or not isinstance(document.get("decisions"), list):
+        raise InstructionalAuditError("invalid-decisions", "teacher decision record is invalid", path=".course-work/decisions.json")
+    matches = [item for item in document["decisions"] if isinstance(item, dict) and item.get("id") == decision_id]
+    if len(matches) != 1:
+        raise InstructionalAuditError("review-decision-missing", "review resolution names no current teacher decision", path=".course-work/decisions.json")
+    decision = matches[0]
+    if decision.get("status") != "confirmed":
         raise InstructionalAuditError("review-decision-unconfirmed", "review resolution requires an explicit confirmed teacher decision", path=".course-work/decisions.json")
-    if decision.context_hash != _review_context_hash(old_entry, hashes):
+    if not _nonempty(decision.get("question")) or not _nonempty(decision.get("decidedAt")) or not _nonempty(decision.get("answer")):
+        raise InstructionalAuditError("review-decision-invalid", "teacher decision needs a substantive question, answer, and decision time", path=".course-work/decisions.json")
+    if decision.get("contextHash") != context_hash:
         raise InstructionalAuditError("review-decision-stale", "teacher decision does not bind this exact semantic review", path=".course-work/decisions.json")
+    if decision["answer"].strip() not in arrangements:
+        raise InstructionalAuditError("review-decision-answer-invalid", "teacher decision answer must choose one recorded plausible arrangement", path=".course-work/decisions.json")
+    return canonical_json_hash(decision)
+
+
+def _validate_resolved_passes(root: Path, report: Mapping[str, object], hashes: Mapping[str, str]) -> None:
+    for entry in report["entries"]:
+        if entry["status"] != "pass" or "decisionId" not in entry:
+            continue
+        expected_context_hash = _review_context_hash(entry, hashes)
+        if entry.get("reviewContextHash") != expected_context_hash:
+            raise InstructionalAuditError("review-context-stale", "resolved review context does not match current semantic evidence", path="entries")
+        actual_decision_hash = _confirmed_review_decision(
+            root,
+            decision_id=entry["decisionId"],
+            arrangements=entry["plausibleArrangements"],
+            context_hash=entry["reviewContextHash"],
+        )
+        if entry.get("decisionRecordHash") != actual_decision_hash:
+            raise InstructionalAuditError("review-decision-changed", "bound teacher decision has changed since the review was resolved", path="entries")
 
 
 def _validate_lifecycle(root: Path, report: Mapping[str, object], hashes: Mapping[str, str]) -> None:
@@ -404,9 +512,7 @@ def _validate_lifecycle(root: Path, report: Mapping[str, object], hashes: Mappin
     for entry in report["entries"]:
         key = (entry["partId"], entry["sliceId"], entry["check"])
         old = previous.get(key)
-        if entry["status"] == "pass" and "decisionId" in entry and (
-            old is None or old.get("status") != "review"
-        ):
+        if entry["status"] == "pass" and "decisionId" in entry and old is None:
             raise InstructionalAuditError(
                 "status-field-invalid",
                 "decision ID may resolve only an earlier review",
@@ -422,7 +528,27 @@ def _validate_lifecycle(root: Path, report: Mapping[str, object], hashes: Mappin
             decision_id = entry.get("decisionId")
             if not isinstance(decision_id, str):
                 raise InstructionalAuditError("review-decision-missing", "a review cannot become pass without a teacher decision", path="entries")
-            _require_confirmed_review_decision(root, decision_id, old, hashes)
+            arrangements = old.get("plausibleArrangements")
+            if not isinstance(arrangements, list) or not all(isinstance(item, str) for item in arrangements):
+                raise InstructionalAuditError("review-arrangements-required", "previous review has no valid alternatives", path="entries")
+            context_hash = _review_context_hash(old, hashes)
+            decision_hash = _confirmed_review_decision(
+                root,
+                decision_id=decision_id,
+                arrangements=arrangements,
+                context_hash=context_hash,
+            )
+            entry.update(
+                {
+                    "plausibleArrangements": arrangements,
+                    "reviewContextHash": context_hash,
+                    "decisionRecordHash": decision_hash,
+                }
+            )
+        elif old_status == "pass" and "decisionId" in old:
+            required = ("decisionId", "plausibleArrangements", "reviewContextHash", "decisionRecordHash")
+            if any(entry.get(field) != old.get(field) for field in required):
+                raise InstructionalAuditError("review-provenance-lost", "a resolved review pass must preserve its exact teacher decision binding", path="entries")
 
 
 def record_instructional_audit(root: Path, payload: dict) -> dict:
@@ -432,9 +558,11 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
     candidate therefore leaves an earlier valid report byte-for-byte intact.
     """
     root = _safe_root(root)
-    hashes, plan, coverage, blueprint, _course = _current_artifact_hashes(root)
-    report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint)
+    hashes, plan, coverage, blueprint, course = _current_artifact_hashes(root)
+    report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
     _validate_lifecycle(root, report, hashes)
+    report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
+    _validate_resolved_passes(root, report, hashes)
     write_json_atomic(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH, report, reject_symlinks=True)
     return report
 
@@ -442,9 +570,10 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
 def verify_instructional_audit(root: Path) -> Dict[str, str]:
     """Return current gate evidence, or fail closed for stale/blocking audit."""
     root = _safe_root(root)
-    hashes, plan, coverage, blueprint, _course = _current_artifact_hashes(root)
+    hashes, plan, coverage, blueprint, course = _current_artifact_hashes(root)
     payload = _safe_json(root, INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
-    report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint)
+    report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
+    _validate_resolved_passes(root, report, hashes)
     blockers = [entry for entry in report["entries"] if entry["status"] == "blocker"]
     if blockers:
         raise InstructionalAuditError("semantic-audit-blocked", "semantic audit contains one or more blockers")
