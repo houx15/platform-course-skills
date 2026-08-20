@@ -10,6 +10,7 @@ from course_toolkit.issues import IssueStore, make_registered_issue
 from course_toolkit.workflow import (
     G3_EVIDENCE_KEYS,
     G4_EVIDENCE_KEYS,
+    G4_PREREQUISITE_COVERAGE_KEY,
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
@@ -18,9 +19,11 @@ from course_toolkit.workflow import (
     complete_gate,
     load_session,
     save_session,
+    verify_g3_plan,
+    verify_g4_media_design,
 )
 from course_toolkit.instructional_plan import approve_plan
-from tests.test_instructional_plan import write_root
+from tests.test_instructional_plan import write_root, write_valid_media_design
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
@@ -76,10 +79,7 @@ class WorkflowCliTests(unittest.TestCase):
             approved_at="2026-08-21T00:00:00Z",
         )
         if media:
-            (self.root / ".course-work" / "media-design.json").write_text(
-                json.dumps({"schemaVersion": "1.0", "designId": "media-design-1"}),
-                encoding="utf-8",
-            )
+            write_valid_media_design(self.root)
 
     def test_init_creates_session_and_stable_json_summary(self):
         material = self.root / "materials" / "a.md"
@@ -170,10 +170,7 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(missing_media.returncode, 2)
         self.assertIn("media-design.json", missing_media_payload["error"]["message"])
 
-        (self.root / ".course-work" / "media-design.json").write_text(
-            json.dumps({"schemaVersion": "1.0", "designId": "media-design-1"}),
-            encoding="utf-8",
-        )
+        write_valid_media_design(self.root)
         completed, payload = self.json_result("complete-gate", self.root, "G4", "--json")
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(payload["completedGates"][-1], "G4")
@@ -211,12 +208,17 @@ class WorkflowCliTests(unittest.TestCase):
             decision_id="decision-plan-2",
             approved_at="2026-08-22T00:00:00Z",
         )
+        write_valid_media_design(self.root)
 
         blocked, blocked_payload = self.json_result(
             "complete-gate", self.root, "G4", "--json"
         )
         self.assertEqual(blocked.returncode, 2)
         self.assertIn("G4 requires G3", blocked_payload["error"]["message"])
+        self.assertEqual(blocked_payload["phase"], "course-design")
+        self.assertEqual(blocked_payload["completedGates"], ["G0", "G1", "G2"])
+        self.assertTrue(blocked_payload["issues"])
+        self.assertNotIn(str(self.root), blocked_payload["error"]["message"])
         invalidated = load_session(self.root)
         self.assertEqual(invalidated.completed_gate_ids, ["G0", "G1", "G2"])
         self.assertTrue(
@@ -282,15 +284,13 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g10_cannot_be_manually_completed_without_publication_adapter(self):
         self.init()
+        self.prepare_approved_page_plan()
         for index in range(10):
             session = load_session(self.root)
             if index == 3:
-                evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+                evidence = verify_g3_plan(self.root)
             elif index == 4:
-                evidence = {
-                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-                    for key in G4_EVIDENCE_KEYS
-                }
+                evidence = verify_g4_media_design(self.root)
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
@@ -320,15 +320,13 @@ class WorkflowCliTests(unittest.TestCase):
 
     def test_g9_cannot_be_manually_completed_without_current_evidence(self):
         self.init()
+        self.prepare_approved_page_plan()
         session = load_session(self.root)
         for index in range(9):
             if index == 3:
-                evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+                evidence = verify_g3_plan(self.root)
             elif index == 4:
-                evidence = {
-                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-                    for key in G4_EVIDENCE_KEYS
-                }
+                evidence = verify_g4_media_design(self.root)
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
             elif index == 6:
@@ -363,8 +361,12 @@ class WorkflowCliTests(unittest.TestCase):
                 evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
             elif index == 4:
                 evidence = {
-                    key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-                    for key in G4_EVIDENCE_KEYS
+                    key: (
+                        "3" * 64
+                        if key in {".course-work/course-storyboard.json", G4_PREREQUISITE_COVERAGE_KEY}
+                        else "4" * 64
+                    )
+                    for key in (*G4_EVIDENCE_KEYS, G4_PREREQUISITE_COVERAGE_KEY)
                 }
             elif index == 5:
                 evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}

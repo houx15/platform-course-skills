@@ -15,6 +15,7 @@ from course_toolkit.course_package_validation import (
 )
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.jsonio import load_json, write_json_atomic
+from course_toolkit.instructional_plan import approve_plan
 from course_toolkit.live_publication import (
     DECISION_ID,
     LivePublicationBlocked,
@@ -34,17 +35,18 @@ from course_toolkit.package_review import (
 from course_toolkit.preview_evidence import record_preview_evidence, verify_g7_preview
 from course_toolkit.workflow import (
     complete_gate,
-    G3_EVIDENCE_KEYS,
-    G4_EVIDENCE_KEYS,
     load_session,
     new_session,
     reconcile_artifacts,
     save_session,
     verify_g5_compilation,
     verify_g6_validation,
+    verify_g3_plan,
+    verify_g4_media_design,
 )
 from tests.test_package_review_v2 import approve
 from tests.test_publication_manifest import NOW, prepare_g6
+from tests.test_instructional_plan import write_root, write_valid_media_design
 
 
 class FakeMindApi:
@@ -120,7 +122,9 @@ def prepare_g8(root: Path):
     report = build_course_validation_report(root)
     write_current_validation_report(root, report)
     sync_validation_issues(root, report, NOW)
-    write_json_atomic(root / ".course-work/source-coverage.json", {"schemaVersion": "1.0", "items": []})
+    write_root(root)
+    approve_plan(root, decision_id="decision-plan-1", approved_at=NOW)
+    write_valid_media_design(root)
     write_json_atomic(root / ".course-work/decisions.json", {"schemaVersion": "1.0", "decisions": []})
     write_json_atomic(root / ".course-work/unresolved.json", {"schemaVersion": "1.0", "items": []})
     document = load_json(root / "course/course.json")
@@ -138,21 +142,14 @@ def prepare_g8(root: Path):
     for gate in ("G0", "G1", "G2"):
         complete_gate(session, gate, NOW)
     complete_gate(
-        session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+        session, "G3", NOW, gate_evidence=verify_g3_plan(root)
     )
     complete_gate(
         session,
         "G4",
         NOW,
-        gate_evidence={
-            key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-            for key in G4_EVIDENCE_KEYS
-        },
+        gate_evidence=verify_g4_media_design(root),
     )
-    # This publication fixture predates the Task 3 page-plan artifacts. Keep it
-    # readable as a legacy session rather than fabricating current G3/G4 proof.
-    for key in (*G3_EVIDENCE_KEYS, *G4_EVIDENCE_KEYS):
-        session.artifact_hashes.pop(key, None)
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))
     complete_gate(session, "G7", NOW, gate_evidence=verify_g7_preview(root))

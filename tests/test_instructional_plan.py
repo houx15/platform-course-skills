@@ -158,6 +158,55 @@ def write_root(root: Path, *, plan=None, coverage=None, extracted=None):
     write_json_atomic(root / ".course-work/materials-extracted.json", extracted or extracted_document())
 
 
+def write_valid_media_design(root: Path) -> None:
+    """Write the focused G4 media/narration plan used by workflow fixtures."""
+    from course_toolkit.instructional_plan import plan_content_hash
+    from course_toolkit.workflow import MEDIA_KINDS_BY_EXTENSION
+
+    plan = load_json(root / ".course-work/course-storyboard.json")
+    coverage = load_json(root / ".course-work/source-coverage.json")
+    source_by_id = {item["sourceId"]: item for item in coverage["items"]}
+    items = []
+    narrations = []
+    for part in plan["parts"]:
+        for slice_data in part["slices"]:
+            narrations.append(
+                {
+                    "partId": slice_data["partId"],
+                    "sliceId": slice_data["sliceId"],
+                    "status": "planned",
+                }
+            )
+            for source_use in slice_data["sourceUses"]:
+                source = source_by_id[source_use["sourceId"]]
+                source_path = source["sourceFile"]
+                kind = MEDIA_KINDS_BY_EXTENSION.get(Path(source_path).suffix.lower())
+                if kind is None:
+                    continue
+                asset = root / source_path
+                asset.parent.mkdir(parents=True, exist_ok=True)
+                asset.write_bytes(b"fixture media source")
+                items.append(
+                    {
+                        "sourceId": source_use["sourceId"],
+                        "partId": slice_data["partId"],
+                        "sliceId": slice_data["sliceId"],
+                        "kind": kind,
+                        "sourcePath": source_path,
+                        "status": "planned",
+                    }
+                )
+    write_json_atomic(
+        root / ".course-work/media-design.json",
+        {
+            "schemaVersion": "1.0",
+            "planContentHash": plan_content_hash(plan),
+            "items": items,
+            "narrations": narrations,
+        },
+    )
+
+
 class InstructionalPlanTests(unittest.TestCase):
     def api(self):
         import course_toolkit.instructional_plan as api

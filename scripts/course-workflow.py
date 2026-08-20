@@ -44,7 +44,9 @@ def course_root(path: Path, *, create: bool = False) -> Path:
         path.mkdir(parents=True, exist_ok=True)
     if not path.exists() or not path.is_dir():
         raise WorkflowError(f"Course root is not a directory: {path}")
-    root = path.resolve()
+    root = path.absolute()
+    if root.is_symlink():
+        raise WorkflowError("Course root may not be a symlink")
     work_dir = root / ".course-work"
     if work_dir.is_symlink():
         raise WorkflowError(".course-work must not be a symlink")
@@ -112,6 +114,24 @@ def error_payload(code: str, message: str, status: str) -> dict:
         "nextAction": "resolve error",
         "error": {"code": code, "message": message},
     }
+
+
+def persisted_error_payload(args: argparse.Namespace, code: str, message: str, status: str) -> dict:
+    """Return saved reconciliation state when a later gate check is blocked."""
+    try:
+        root = course_root(args.root)
+        session = load_session(root)
+        payload = result_payload(root, session)
+    except (OSError, ValueError, WorkflowError):
+        return error_payload(code, message, status)
+    payload.update(
+        {
+            "ok": False,
+            "status": status,
+            "error": {"code": code, "message": message},
+        }
+    )
+    return payload
 
 
 def print_result(payload: dict, as_json: bool) -> None:
@@ -310,7 +330,7 @@ def main(argv: Optional[list] = None) -> int:
         return EXIT_SUCCESS
     except WorkflowError as exc:
         print_result(
-            error_payload("workflow-blocked", str(exc), "blocked"),
+            persisted_error_payload(args, "workflow-blocked", str(exc), "blocked"),
             args.json,
         )
         return EXIT_WORKFLOW_BLOCKED
@@ -318,7 +338,7 @@ def main(argv: Optional[list] = None) -> int:
         if args.json:
             print(
                 json.dumps(
-                    error_payload("tool-error", str(exc), "failed"),
+                    persisted_error_payload(args, "tool-error", str(exc), "failed"),
                     ensure_ascii=False,
                     indent=2,
                 )

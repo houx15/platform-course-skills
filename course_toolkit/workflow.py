@@ -122,6 +122,30 @@ G4_EVIDENCE_KEYS = (
     ".course-work/media-design.json",
     "@decision/course-plan-approval",
 )
+G4_PREREQUISITE_COVERAGE_KEY = "@upstream/g3-source-coverage"
+G4_PREREQUISITE_EVIDENCE_KEYS = (G4_PREREQUISITE_COVERAGE_KEY,)
+MEDIA_DESIGN_RELATIVE_PATH = ".course-work/media-design.json"
+MEDIA_DESIGN_SCHEMA_VERSION = "1.0"
+MEDIA_KINDS_BY_EXTENSION = {
+    ".pdf": "pdf",
+    ".png": "image",
+    ".jpg": "image",
+    ".jpeg": "image",
+    ".gif": "image",
+    ".webp": "image",
+    ".svg": "image",
+    ".mp4": "video",
+    ".webm": "video",
+    ".mov": "video",
+    ".html": "html",
+    ".htm": "html",
+    ".mp3": "audio",
+    ".wav": "audio",
+    ".m4a": "audio",
+    ".aac": "audio",
+    ".ogg": "audio",
+}
+MEDIA_DESIGN_STATUSES = frozenset({"planned", "ready"})
 
 G5_EVIDENCE_KEYS = (
     ".course-work/course-blueprint.json",
@@ -303,11 +327,57 @@ def new_session(
 
 
 def load_session(root: Path) -> CourseProductionSession:
-    return CourseProductionSession.from_dict(load_json(root / SESSION_RELATIVE_PATH))
+    session = CourseProductionSession.from_dict(load_json(root / SESSION_RELATIVE_PATH))
+    missing_gate = _first_unproved_page_plan_gate(Path(root).absolute(), session)
+    if missing_gate is not None:
+        invalidate_from_gate(session, missing_gate, session.updated_at)
+    return session
 
 
 def save_session(root: Path, session: CourseProductionSession) -> None:
     write_json_atomic(root / SESSION_RELATIVE_PATH, session.as_dict())
+
+
+def _has_sha256_evidence(session: CourseProductionSession, key: str) -> bool:
+    value = session.artifact_hashes.get(key)
+    return isinstance(value, str) and SHA256_HEX.fullmatch(value) is not None
+
+
+def _first_unproved_page_plan_gate(
+    root: Path,
+    session: CourseProductionSession,
+) -> Optional[str]:
+    if "G3" in session.completed_gate_ids and not all(
+        _has_sha256_evidence(session, key) for key in G3_EVIDENCE_KEYS
+    ):
+        return "G3"
+    if "G4" in session.completed_gate_ids and not all(
+        _has_sha256_evidence(session, key)
+        for key in (
+            ".course-work/media-design.json",
+            "@decision/course-plan-approval",
+        )
+    ):
+        return "G4"
+    if "G3" in session.completed_gate_ids:
+        try:
+            current_g3 = verify_g3_plan(root)
+        except WorkflowError:
+            return "G3"
+        if any(
+            session.artifact_hashes.get(key) != value
+            for key, value in current_g3.items()
+        ):
+            return "G3"
+    if "G4" in session.completed_gate_ids:
+        try:
+            current_g4 = verify_g4_media_design(root)
+        except WorkflowError:
+            return "G4"
+        for key in (".course-work/media-design.json", "@decision/course-plan-approval"):
+            if session.artifact_hashes.get(key) != current_g4[key]:
+                return "G4"
+    return None
 
 
 def _validate_gate_evidence(
@@ -360,12 +430,18 @@ def _validate_gate_evidence(
             raise WorkflowError("G4 requires current G3 source-coverage evidence")
         if evidence[".course-work/course-storyboard.json"] != g3_storyboard_hash:
             raise WorkflowError("G4 page plan differs from completed G3")
+        if evidence[G4_PREREQUISITE_COVERAGE_KEY] != g3_coverage_hash:
+            raise WorkflowError("G4 source coverage differs from completed G3")
         # The storyboard semantic hash belongs to G3. G4 verifies it but never
         # replaces that baseline with approval-era evidence.
         return {
             key: value
             for key, value in evidence.items()
-            if key != ".course-work/course-storyboard.json"
+            if key
+            not in {
+                ".course-work/course-storyboard.json",
+                G4_PREREQUISITE_COVERAGE_KEY,
+            }
         }
     return dict(evidence)
 
@@ -404,7 +480,10 @@ def complete_gate(
         )
     evidence_requirements = {
         "G3": (G3_EVIDENCE_KEYS, "current page-plan evidence"),
-        "G4": (G4_EVIDENCE_KEYS, "current approved page-plan and media-design evidence"),
+        "G4": (
+            (*G4_EVIDENCE_KEYS, *G4_PREREQUISITE_EVIDENCE_KEYS),
+            "current approved page-plan and media-design evidence",
+        ),
         "G5": (G5_EVIDENCE_KEYS, "current compilation evidence"),
         "G6": (G6_EVIDENCE_KEYS, "current package validation evidence"),
         "G7": (G7_EVIDENCE_KEYS, "current renderer preview evidence"),
@@ -454,7 +533,7 @@ def resolve_completed_evidence_issues(
         # G4 observes the G3 storyboard hash but does not own or replace it.
         "G4": set(G4_EVIDENCE_KEYS).difference(
             {".course-work/course-storyboard.json"}
-        ),
+        ).union({".course-work/media/"}),
     }.get(gate_id)
     if not evidence_paths:
         return ()
@@ -575,9 +654,110 @@ def _safe_json_object(root: Path, relative_path: str, *, gate_id: str) -> Tuple[
     return path, document
 
 
+def _media_design_error(code: str) -> WorkflowError:
+    return WorkflowError(f"G4 media design is invalid: {code}")
+
+
+def _plan_media_uses(plan: dict, coverage: dict) -> Tuple[set, set]:
+    coverage_by_id = {
+        item.get("sourceId"): item
+        for item in coverage.get("items", [])
+        if isinstance(item, dict) and isinstance(item.get("sourceId"), str)
+    }
+    media_uses = set()
+    slices = set()
+    for part in plan.get("parts", []):
+        if not isinstance(part, dict):
+            continue
+        part_id = part.get("partId")
+        for slice_data in part.get("slices", []):
+            if not isinstance(slice_data, dict):
+                continue
+            slice_id = slice_data.get("sliceId")
+            if not isinstance(part_id, str) or not isinstance(slice_id, str):
+                continue
+            slices.add((part_id, slice_id))
+            for source_use in slice_data.get("sourceUses", []):
+                if not isinstance(source_use, dict):
+                    continue
+                source_id = source_use.get("sourceId")
+                source = coverage_by_id.get(source_id)
+                source_path = source.get("sourceFile") if isinstance(source, dict) else None
+                if not isinstance(source_id, str) or not isinstance(source_path, str):
+                    continue
+                kind = MEDIA_KINDS_BY_EXTENSION.get(Path(source_path).suffix.lower())
+                if kind is not None:
+                    media_uses.add((source_id, part_id, slice_id, source_path, kind))
+    return media_uses, slices
+
+
+def _validate_media_design(root: Path, document: dict, plan: dict, coverage: dict) -> None:
+    """Validate lightweight G4 source-use and narration preparation evidence.
+
+    This is deliberately a plan for media/narration work, not a delivery asset
+    schema: every planned Slice names narration readiness, while every media
+    source the plan exposes names how it will be prepared.
+    """
+    if set(document).difference({"schemaVersion", "planContentHash", "items", "narrations"}):
+        raise _media_design_error("unknown-field")
+    if document.get("schemaVersion") != MEDIA_DESIGN_SCHEMA_VERSION:
+        raise _media_design_error("schema-version")
+    if document.get("planContentHash") != plan_content_hash(plan):
+        raise _media_design_error("stale-plan")
+    items = document.get("items")
+    narrations = document.get("narrations")
+    if not isinstance(items, list) or not isinstance(narrations, list):
+        raise _media_design_error("items-and-narrations-required")
+    expected_media, expected_slices = _plan_media_uses(plan, coverage)
+    actual_media = set()
+    for item in items:
+        if not isinstance(item, dict):
+            raise _media_design_error("media-item-shape")
+        if set(item).difference({"sourceId", "partId", "sliceId", "kind", "sourcePath", "status"}):
+            raise _media_design_error("media-item-unknown-field")
+        values = {field: item.get(field) for field in ("sourceId", "partId", "sliceId", "kind", "sourcePath", "status")}
+        if not all(isinstance(value, str) and value.strip() for value in values.values()):
+            raise _media_design_error("media-item-required-field")
+        key = (values["sourceId"], values["partId"], values["sliceId"], values["sourcePath"], values["kind"])
+        if key in actual_media:
+            raise _media_design_error("duplicate-media-item")
+        if values["status"] not in MEDIA_DESIGN_STATUSES:
+            raise _media_design_error("media-status")
+        if key not in expected_media:
+            raise _media_design_error("media-item-mismatch")
+        try:
+            source_path = _safe_course_path(root, values["sourcePath"])
+        except WorkflowError as exc:
+            raise _media_design_error("media-path") from exc
+        if source_path.is_symlink() or not source_path.is_file():
+            raise _media_design_error("media-source-missing")
+        actual_media.add(key)
+    if actual_media != expected_media:
+        raise _media_design_error("media-items-incomplete")
+    actual_narrations = set()
+    for narration in narrations:
+        if not isinstance(narration, dict):
+            raise _media_design_error("narration-shape")
+        if set(narration).difference({"partId", "sliceId", "status"}):
+            raise _media_design_error("narration-unknown-field")
+        part_id = narration.get("partId")
+        slice_id = narration.get("sliceId")
+        status = narration.get("status")
+        if not all(isinstance(value, str) and value.strip() for value in (part_id, slice_id, status)):
+            raise _media_design_error("narration-required-field")
+        key = (part_id, slice_id)
+        if key in actual_narrations:
+            raise _media_design_error("duplicate-narration")
+        if status not in MEDIA_DESIGN_STATUSES:
+            raise _media_design_error("narration-status")
+        actual_narrations.add(key)
+    if actual_narrations != expected_slices:
+        raise _media_design_error("narrations-incomplete")
+
+
 def verify_g3_plan(root: Path) -> Dict[str, str]:
     """Verify the current semantic Part/Slice plan and source coverage for G3."""
-    root = root.resolve()
+    root = Path(root).absolute()
     try:
         issues = validate_plan_at_root(root)
     except PlanValidationError as exc:
@@ -604,7 +784,7 @@ def _approval_evidence_hash(root: Path) -> Optional[str]:
 
 def verify_g4_media_design(root: Path) -> Dict[str, str]:
     """Verify G4's approved plan identity and strict local media-design object."""
-    root = root.resolve()
+    root = Path(root).absolute()
     plan_evidence = verify_g3_plan(root)
     try:
         approval = verify_plan_approval(root)
@@ -612,15 +792,21 @@ def verify_g4_media_design(root: Path) -> Dict[str, str]:
         raise _plan_validation_error("G4", exc.issues) from exc
     except PlanApprovalError as exc:
         raise WorkflowError(f"G4 page-plan approval is {exc.code}: {exc}") from exc
-    media_path, _ = _safe_json_object(
-        root, ".course-work/media-design.json", gate_id="G4"
+    media_path, media_design = _safe_json_object(
+        root, MEDIA_DESIGN_RELATIVE_PATH, gate_id="G4"
     )
+    _, plan = _safe_json_object(root, PLAN_RELATIVE_PATH, gate_id="G4")
+    _, coverage = _safe_json_object(root, COVERAGE_RELATIVE_PATH, gate_id="G4")
+    _validate_media_design(root, media_design, plan, coverage)
     return {
         ".course-work/course-storyboard.json": plan_evidence[
             ".course-work/course-storyboard.json"
         ],
-        ".course-work/media-design.json": hash_path(media_path),
+        MEDIA_DESIGN_RELATIVE_PATH: hash_path(media_path),
         "@decision/course-plan-approval": canonical_json_hash(approval),
+        G4_PREREQUISITE_COVERAGE_KEY: plan_evidence[
+            ".course-work/source-coverage.json"
+        ],
     }
 
 
@@ -857,6 +1043,9 @@ def verify_g10_remote_publication(root: Path) -> Dict[str, str]:
 
 
 def _safe_course_path(root: Path, relative_path: str) -> Path:
+    root = Path(root).absolute()
+    if root.is_symlink():
+        raise WorkflowError("Course root may not be a symlink")
     relative = Path(relative_path)
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
         raise WorkflowError(
@@ -900,11 +1089,17 @@ def reconcile_artifacts(
     session: CourseProductionSession,
     now: str,
 ) -> ArtifactReconciliationResult:
-    root = root.resolve()
+    root = Path(root).absolute()
+    if root.is_symlink():
+        raise WorkflowError("Course root may not be a symlink")
     issue_store = IssueStore.load(root / ".course-work" / "issues.json")
     changed_paths: List[str] = []
     missing_sources: List[str] = []
     changed_gate_ids: List[str] = []
+    legacy_gate = _first_unproved_page_plan_gate(root, session)
+    if legacy_gate is not None:
+        changed_paths.append("@workflow/unproved-page-plan-evidence")
+        changed_gate_ids.append(legacy_gate)
 
     for source_path in session.source_paths:
         source = _safe_course_path(root, source_path)

@@ -8,6 +8,8 @@ from course_toolkit.workflow import (
     ArtifactReconciliationResult,
     G3_EVIDENCE_KEYS,
     G4_EVIDENCE_KEYS,
+    G4_PREREQUISITE_COVERAGE_KEY,
+    MEDIA_DESIGN_RELATIVE_PATH,
     G5_EVIDENCE_KEYS,
     G6_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
@@ -35,7 +37,7 @@ from course_toolkit.course_package_validation import (
     write_current_validation_report,
 )
 from tests.test_course_package_validation import build_full_package
-from tests.test_instructional_plan import write_root
+from tests.test_instructional_plan import write_root, write_valid_media_design
 
 
 NOW = "2026-08-16T00:00:00Z"
@@ -48,8 +50,12 @@ def fully_gated_through(gate_id):
             evidence = {key: "3" * 64 for key in G3_EVIDENCE_KEYS}
         elif index == 4:
             evidence = {
-                key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-                for key in G4_EVIDENCE_KEYS
+                key: (
+                    "3" * 64
+                    if key in {".course-work/course-storyboard.json", G4_PREREQUISITE_COVERAGE_KEY}
+                    else "4" * 64
+                )
+                for key in (*G4_EVIDENCE_KEYS, G4_PREREQUISITE_COVERAGE_KEY)
             }
         elif index == 5:
             evidence = {key: "a" * 64 for key in G5_EVIDENCE_KEYS}
@@ -73,6 +79,15 @@ def legacy_without_page_plan_evidence(session):
     """Model pre-Task-3 sessions, which remain readable without new evidence."""
     for key in (*G3_EVIDENCE_KEYS, *G4_EVIDENCE_KEYS):
         session.artifact_hashes.pop(key, None)
+    return session
+
+
+def bind_current_page_plan_evidence(root, session):
+    write_root(root)
+    approve_plan(root, decision_id="decision-plan-fixture", approved_at=NOW)
+    write_valid_media_design(root)
+    session.artifact_hashes.update(verify_g3_plan(root))
+    session.artifact_hashes.update(verify_g4_media_design(root))
     return session
 
 
@@ -294,7 +309,7 @@ class ArtifactReconciliationTests(unittest.TestCase):
     def test_blueprint_change_invalidates_g5_and_downstream_only(self):
         blueprint = self.root / ".course-work" / "course-blueprint.json"
         write_json_atomic(blueprint, {"title": "new"})
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         session.artifact_hashes[".course-work/course-blueprint.json"] = "old"
 
         result = reconcile_artifacts(self.root, session, NOW)
@@ -308,7 +323,7 @@ class ArtifactReconciliationTests(unittest.TestCase):
     def test_revalidated_artifact_resolves_prior_change_warning(self):
         blueprint = self.root / ".course-work" / "course-blueprint.json"
         write_json_atomic(blueprint, {"title": "new"})
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         session.artifact_hashes[".course-work/course-blueprint.json"] = "old"
 
         first = reconcile_artifacts(self.root, session, NOW)
@@ -328,7 +343,7 @@ class ArtifactReconciliationTests(unittest.TestCase):
     def test_renderer_version_change_invalidates_preview_not_compilation(self):
         manifest = self.root / ".course-work" / "preview-manifest.json"
         write_json_atomic(manifest, {"rendererVersion": "1"})
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         for key in G5_EVIDENCE_KEYS:
             session.artifact_hashes.pop(key, None)
         for key in G6_EVIDENCE_KEYS:
@@ -359,7 +374,7 @@ class ArtifactReconciliationTests(unittest.TestCase):
         self.assertEqual(session.completed_gate_ids, ["G0", "G1", "G2"])
 
     def test_publisher_code_change_invalidates_g9_only(self):
-        session = legacy_without_page_plan_evidence(fully_gated_through("G9"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G9"))
         for key in (
             *G5_EVIDENCE_KEYS,
             *G6_EVIDENCE_KEYS,
@@ -424,10 +439,7 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
 
     def approve_and_design_media(self, *, decision_id="decision-plan-1"):
         approve_plan(self.root, decision_id=decision_id, approved_at=NOW)
-        write_json_atomic(
-            self.root / ".course-work" / "media-design.json",
-            {"schemaVersion": "1.0", "designId": "media-design-1"},
-        )
+        write_valid_media_design(self.root)
 
     def complete_through_g4(self):
         session = fully_gated_through("G2")
@@ -473,6 +485,145 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
                 gate_evidence=verify_g4_media_design(self.root),
             )
         self.assertNotIn("G4", session.completed_gate_ids)
+
+    def test_g4_direct_api_rejects_current_coverage_drift_from_g3(self):
+        session = fully_gated_through("G2")
+        complete_gate(session, "G3", NOW, gate_evidence=verify_g3_plan(self.root))
+        coverage_path = self.root / ".course-work" / "source-coverage.json"
+        coverage = load_json(coverage_path)
+        coverage["items"][0]["summary"] = "更新后的覆盖证据"
+        write_json_atomic(coverage_path, coverage)
+        self.approve_and_design_media(decision_id="decision-plan-coverage-2")
+
+        with self.assertRaisesRegex(WorkflowError, "source coverage differs from completed G3"):
+            complete_gate(
+                session,
+                "G4",
+                NOW,
+                gate_evidence=verify_g4_media_design(self.root),
+            )
+
+    def test_media_design_requires_complete_current_media_and_narration_plan(self):
+        self.approve_and_design_media()
+        media_path = self.root / ".course-work" / "media-design.json"
+        self.assertIn(MEDIA_DESIGN_RELATIVE_PATH, verify_g4_media_design(self.root))
+
+        write_json_atomic(media_path, {})
+        with self.assertRaisesRegex(WorkflowError, "schema-version"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["planContentHash"] = "0" * 64
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "stale-plan"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["items"] = []
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "media-items-incomplete"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["items"].append(dict(media["items"][0]))
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "duplicate-media-item"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["items"][0]["status"] = "draft"
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "media-status"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["items"][0]["kind"] = "video"
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "media-item-mismatch"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        media["items"][0]["sourcePath"] = "materials/not-the-approved-source.pdf"
+        write_json_atomic(media_path, media)
+        with self.assertRaisesRegex(WorkflowError, "media-item-mismatch"):
+            verify_g4_media_design(self.root)
+
+        write_valid_media_design(self.root)
+        media = load_json(media_path)
+        (self.root / media["items"][0]["sourcePath"]).unlink()
+        with self.assertRaisesRegex(WorkflowError, "media-source-missing"):
+            verify_g4_media_design(self.root)
+
+    def test_media_design_allows_empty_items_only_for_a_text_only_plan(self):
+        coverage_path = self.root / ".course-work" / "source-coverage.json"
+        coverage = load_json(coverage_path)
+        for item in coverage["items"][:2]:
+            item["sourceFile"] = item["sourceFile"].rsplit(".", 1)[0] + ".txt"
+        write_json_atomic(coverage_path, coverage)
+        extracted_path = self.root / ".course-work" / "materials-extracted.json"
+        extracted = load_json(extracted_path)
+        for item in extracted["items"][:2]:
+            item["sourceFile"] = item["sourceFile"].rsplit(".", 1)[0] + ".txt"
+        write_json_atomic(extracted_path, extracted)
+        self.approve_and_design_media()
+
+        design = load_json(self.root / ".course-work" / "media-design.json")
+        self.assertEqual(design["items"], [])
+        self.assertIn(MEDIA_DESIGN_RELATIVE_PATH, verify_g4_media_design(self.root))
+
+    def test_media_source_symlink_is_rejected(self):
+        self.approve_and_design_media()
+        media = load_json(self.root / ".course-work" / "media-design.json")
+        source = self.root / media["items"][0]["sourcePath"]
+        target = self.root / "replacement-source.pdf"
+        target.write_bytes(b"replacement")
+        source.unlink()
+        source.symlink_to(target)
+
+        with self.assertRaisesRegex(WorkflowError, "media-path"):
+            verify_g4_media_design(self.root)
+
+    def test_media_deletion_and_reappearance_require_g4_recompletion(self):
+        session = self.complete_through_g4()
+        media_path = self.root / ".course-work" / "media-design.json"
+        media_path.unlink()
+
+        deleted = reconcile_artifacts(self.root, session, NOW)
+        self.assertEqual(deleted.earliest_invalidated_gate_id, "G4")
+        write_valid_media_design(self.root)
+        reconcile_artifacts(self.root, session, NOW)
+        complete_gate(session, "G4", NOW, gate_evidence=verify_g4_media_design(self.root))
+        self.assertIn("G4", session.completed_gate_ids)
+
+    def test_legacy_missing_page_plan_evidence_invalidates_on_load_and_reconcile(self):
+        session = fully_gated_through("G4")
+        for key in G3_EVIDENCE_KEYS:
+            session.artifact_hashes.pop(key, None)
+        save_session(self.root, session)
+
+        restored = load_session(self.root)
+        self.assertEqual(restored.completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertEqual(restored.invalidated_gate_ids[:2], ["G3", "G4"])
+
+        result = reconcile_artifacts(self.root, session, NOW)
+        self.assertEqual(result.earliest_invalidated_gate_id, "G3")
+
+    def test_symlink_course_root_is_rejected_by_g3_and_g4(self):
+        parent = Path(self.temporary.name).parent
+        alias = parent / f"course-root-link-{self.root.name}"
+        alias.symlink_to(self.root, target_is_directory=True)
+        self.addCleanup(lambda: alias.unlink(missing_ok=True))
+
+        with self.assertRaisesRegex(WorkflowError, "symlink-root"):
+            verify_g3_plan(alias)
+        with self.assertRaisesRegex(WorkflowError, "symlink-root"):
+            verify_g4_media_design(alias)
 
     def test_plan_body_or_source_coverage_change_invalidates_g3_onward(self):
         session = self.complete_through_g4()
@@ -601,7 +752,7 @@ class CompilationEvidenceTests(unittest.TestCase):
             verify_g5_compilation(self.root)
 
     def test_blueprint_change_invalidates_completed_g5_and_downstream(self):
-        session = legacy_without_page_plan_evidence(fully_gated_through("G5"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G5"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         blueprint_path = self.root / ".course-work" / "course-blueprint.json"
         blueprint = load_json(blueprint_path)
@@ -614,7 +765,7 @@ class CompilationEvidenceTests(unittest.TestCase):
         self.assertEqual(session.phase, "compile")
 
     def test_compiler_evidence_change_invalidates_g5_and_downstream(self):
-        session = legacy_without_page_plan_evidence(fully_gated_through("G7"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G7"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes["@toolkit/course-compiler"] = "0" * 64
 
@@ -624,7 +775,7 @@ class CompilationEvidenceTests(unittest.TestCase):
         self.assertEqual(result.earliest_invalidated_gate_id, "G5")
 
     def test_contract_snapshot_evidence_change_invalidates_g5_and_downstream(self):
-        session = legacy_without_page_plan_evidence(fully_gated_through("G7"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G7"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes["@toolkit/course-contract-snapshot"] = "0" * 64
 
@@ -666,7 +817,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
 
     def test_asset_change_invalidates_g6_and_downstream(self):
         self.validate()
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         (self.root / "course/assets/images/diagram.png").write_bytes(b"changed")
@@ -681,7 +832,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
 
     def test_revalidated_asset_resolves_prior_change_warning(self):
         self.validate()
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         asset = self.root / "course/assets/images/diagram.png"
@@ -696,7 +847,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
 
     def test_unchanged_course_asset_does_not_invalidate_g6(self):
         self.validate()
-        session = legacy_without_page_plan_evidence(fully_gated_through("G8"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G8"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
 
@@ -711,7 +862,7 @@ class PackageValidationEvidenceTests(unittest.TestCase):
 
     def test_validator_hash_change_invalidates_g6(self):
         self.validate()
-        session = legacy_without_page_plan_evidence(fully_gated_through("G7"))
+        session = bind_current_page_plan_evidence(self.root, fully_gated_through("G7"))
         session.artifact_hashes.update(verify_g5_compilation(self.root))
         session.artifact_hashes.update(verify_g6_validation(self.root))
         session.artifact_hashes["@toolkit/course-package-validator"] = "0" * 64

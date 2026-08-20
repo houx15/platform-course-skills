@@ -10,6 +10,7 @@ from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore
 from course_toolkit.jsonio import write_json_atomic
+from course_toolkit.instructional_plan import approve_plan
 from course_toolkit.publication import (
     PUBLICATION_DECISION_ID,
     PUBLICATION_PREFLIGHT_RELATIVE_PATH,
@@ -25,8 +26,6 @@ from course_toolkit.publication import (
 )
 from course_toolkit.workflow import (
     complete_gate,
-    G3_EVIDENCE_KEYS,
-    G4_EVIDENCE_KEYS,
     G7_EVIDENCE_KEYS,
     G8_EVIDENCE_KEYS,
     hash_path,
@@ -34,26 +33,29 @@ from course_toolkit.workflow import (
     save_session,
     verify_g5_compilation,
     verify_g6_validation,
+    verify_g3_plan,
+    verify_g4_media_design,
 )
 from tests.helpers import ROOT
 from tests.test_publication_manifest import NOW, prepare_g6
+from tests.test_instructional_plan import write_root, write_valid_media_design
 
 
 def complete_through_g8(root: Path) -> None:
+    write_root(root)
+    approve_plan(root, decision_id="decision-plan-1", approved_at=NOW)
+    write_valid_media_design(root)
     session = new_session("course-local-a", [], NOW)
     for gate_id in ("G0", "G1", "G2"):
         complete_gate(session, gate_id, NOW)
     complete_gate(
-        session, "G3", NOW, gate_evidence={key: "3" * 64 for key in G3_EVIDENCE_KEYS}
+        session, "G3", NOW, gate_evidence=verify_g3_plan(root)
     )
     complete_gate(
         session,
         "G4",
         NOW,
-        gate_evidence={
-            key: ("3" * 64 if key == ".course-work/course-storyboard.json" else "4" * 64)
-            for key in G4_EVIDENCE_KEYS
-        },
+        gate_evidence=verify_g4_media_design(root),
     )
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))
