@@ -7,14 +7,17 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 import re
+import tempfile
 from typing import Dict, Iterable, List, Mapping, Sequence, Set, Tuple
 
+from .blueprint import ID_RE
 from .course_compiler import canonical_json_hash
 from .coverage import validate_coverage_inventory
 from .errors import ValidationIssue
-from .instructional_bindings import load_instructional_coverage
+from .hashing import hash_path
+from .instructional_bindings import load_instructional_coverage, validate_instructional_coverage
 from .jsonio import load_json, write_json_atomic
-from .workflow import hash_path
+from .materials import validate_material_inventory
 
 
 PLAN_RELATIVE_PATH = ".course-work/course-storyboard.json"
@@ -38,8 +41,10 @@ REQUIRED_SLICE_FIELDS = (
     "proposedExclusions",
 )
 ACTION_KINDS_REQUIRING_EVIDENCE = frozenset({"answer", "interaction"})
-STABLE_TARGET = re.compile(r"^(?:question|claim):[A-Za-z0-9][A-Za-z0-9._-]*$")
+STABLE_TARGET = re.compile(r"^(?:question|claim):" + ID_RE.pattern[1:-1] + r"$")
 BACKTRACKING = re.compile(r"backtrack|go back|previous (?:page|slice)|回看|回退|返回上一", re.IGNORECASE)
+REFERENCE_LANGUAGE = re.compile(r"consult|reference|read|look at|compare|source|material|图表|材料|参考|查看|阅读|对照|比对|依据|引用", re.IGNORECASE)
+REFERENCE_POLICIES = frozenset({"none", "co-visible", "justified-dependency"})
 
 
 class PlanValidationError(ValueError):
@@ -104,28 +109,20 @@ def _layout_catalog() -> dict:
 
 def _coverage_index(coverage: object) -> Tuple[Dict[str, dict], List[ValidationIssue]]:
     issues: List[ValidationIssue] = []
-    if not isinstance(coverage, dict) or coverage.get("schemaVersion") != "2.0":
-        return {}, [_issue(COVERAGE_RELATIVE_PATH, "invalid-shape", "source coverage must be schemaVersion 2.0")]
-    items = coverage.get("items")
+    items = coverage.get("items") if isinstance(coverage, dict) else None
     if not isinstance(items, list):
-        return {}, [_issue(f"{COVERAGE_RELATIVE_PATH}.items", "required", "source coverage items are required")]
+        return {}, issues
     indexed: Dict[str, dict] = {}
     for index, item in enumerate(items):
         path = f"{COVERAGE_RELATIVE_PATH}.items[{index}]"
         if not isinstance(item, dict):
-            issues.append(_issue(path, "invalid-shape", "source coverage item must be an object"))
             continue
         source_id = item.get("sourceId")
         if not _nonempty(source_id):
-            issues.append(_issue(f"{path}.sourceId", "required", "sourceId is required"))
             continue
         if source_id in indexed:
-            issues.append(_issue(f"{path}.sourceId", "duplicate-source-id", "sourceId must be unique"))
             continue
         indexed[source_id] = item
-        for field in ("sourceFile", "location", "summary", "disposition"):
-            if not _nonempty(item.get(field)):
-                issues.append(_issue(f"{path}.{field}", "required", f"{field} is required for source traceability"))
     return indexed, issues
 
 
@@ -191,11 +188,16 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
     part_id = slice_data.get("partId")
     if not _nonempty(part_id):
         issues.append(_issue(f"{path}.partId", "required", "slice partId is required"))
+    elif not ID_RE.fullmatch(part_id):
+        issues.append(_issue(f"{path}.partId", "invalid-stable-id", "partId must use the pinned lowercase hyphenated ID grammar"))
     elif part_id != expected_part_id:
         issues.append(_issue(f"{path}.partId", "part-id-mismatch", "slice partId must match its containing Part"))
     slice_id = slice_data.get("sliceId")
     if not _nonempty(slice_id):
         issues.append(_issue(f"{path}.sliceId", "required", "sliceId is required"))
+        slice_id = None
+    elif not ID_RE.fullmatch(slice_id):
+        issues.append(_issue(f"{path}.sliceId", "invalid-stable-id", "sliceId must use the pinned lowercase hyphenated ID grammar"))
         slice_id = None
     for field in ("title", "teachingPurpose", "learnerSees"):
         if not _nonempty(slice_data.get(field)):
@@ -224,7 +226,8 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
 
     _validate_layout(slice_data.get("layoutIntent"), f"{path}.layoutIntent", issues)
     covisible = slice_data.get("coVisibleRequirements")
-    visible_sources: Set[str] = set()
+    covisible_by_source: Dict[str, List[str]] = {}
+    covisible_targets: List[Tuple[str, object]] = []
     if not isinstance(covisible, list):
         issues.append(_issue(f"{path}.coVisibleRequirements", "required", "coVisibleRequirements must be a list"))
     else:
@@ -239,26 +242,50 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
             elif source_id not in sources:
                 issues.append(_issue(f"{requirement_path}.sourceId", "unknown-source", "co-visible requirement references an unknown source"))
             else:
-                visible_sources.add(source_id)
+                covisible_by_source.setdefault(source_id, []).append(requirement.get("targetId"))
+                covisible_targets.append((requirement_path, requirement.get("targetId")))
             if not STABLE_TARGET.match(requirement.get("targetId", "")):
                 issues.append(_issue(f"{requirement_path}.targetId", "stable-target-required", "co-visible target must be a stable question: or claim: ID"))
             if not _nonempty(requirement.get("reason")):
                 issues.append(_issue(f"{requirement_path}.reason", "required", "co-visible requirement needs a reason"))
 
-    reference_ids = action.get("referenceSourceIds") if isinstance(action, dict) else None
-    if reference_ids is not None and not isinstance(reference_ids, list):
-        issues.append(_issue(f"{path}.learnerAction.referenceSourceIds", "invalid-shape", "referenceSourceIds must be a list"))
+    policy = action.get("referencePolicy")
+    if policy not in REFERENCE_POLICIES:
+        issues.append(_issue(f"{path}.learnerAction.referencePolicy", "reference-policy-required", "learner action needs an explicit reference policy"))
+    reference_ids = action.get("referenceSourceIds", [])
+    if not isinstance(reference_ids, list) or not all(_nonempty(source_id) for source_id in reference_ids):
+        issues.append(_issue(f"{path}.learnerAction.referenceSourceIds", "invalid-shape", "referenceSourceIds must be a string list"))
         reference_ids = []
-    if isinstance(reference_ids, list):
+    elif len(set(reference_ids)) != len(reference_ids):
+        issues.append(_issue(f"{path}.learnerAction.referenceSourceIds", "duplicate-source", "referenceSourceIds must be unique"))
+    target_id = action.get("targetId")
+    dependency = action.get("dependencyJustification")
+    if policy == "none":
+        if reference_ids or target_id is not None or dependency is not None or REFERENCE_LANGUAGE.search(_action_description(action)):
+            issues.append(_issue(f"{path}.learnerAction", "reference-policy-inconsistent", "reference-dependent wording needs an explicit co-visible or justified-dependency policy"))
+    elif policy in {"co-visible", "justified-dependency"}:
+        if not reference_ids:
+            issues.append(_issue(f"{path}.learnerAction.referenceSourceIds", "reference-sources-required", "reference-dependent action needs explicit source IDs"))
+        if not isinstance(target_id, str) or not STABLE_TARGET.match(target_id):
+            issues.append(_issue(f"{path}.learnerAction.targetId", "stable-target-required", "reference-dependent action needs a stable question or claim target"))
+        if policy == "co-visible" and dependency is not None:
+            issues.append(_issue(f"{path}.learnerAction.dependencyJustification", "reference-policy-inconsistent", "co-visible references may not use a dependency justification"))
+        if policy == "justified-dependency" and (not _nonempty(dependency) or BACKTRACKING.search(dependency)):
+            issues.append(_issue(f"{path}.learnerAction.dependencyJustification", "invalid-dependency", "dependency must be concrete and may not be ordinary assessment backtracking"))
         for index, source_id in enumerate(reference_ids):
             reference_path = f"{path}.learnerAction.referenceSourceIds[{index}]"
-            if not _nonempty(source_id) or source_id not in sources:
+            if source_id not in sources:
                 issues.append(_issue(reference_path, "unknown-source", "reference-dependent action needs a known source"))
                 continue
-            if source_id not in visible_sources:
-                justification = action.get("dependencyJustification")
-                if not _nonempty(justification) or BACKTRACKING.search(justification):
-                    issues.append(_issue(reference_path, "reference-not-covisible", "reference-dependent action needs a co-visible source or a justified dependency"))
+            targets = covisible_by_source.get(source_id, [])
+            if policy == "co-visible" and target_id not in targets:
+                issues.append(_issue(reference_path, "reference-not-covisible", "each reference source must be co-visible at the action's question or claim target"))
+            if targets and any(value != target_id for value in targets):
+                issues.append(_issue(reference_path, "covisible-target-mismatch", "co-visible source must point to the same target as the learner action"))
+        if isinstance(target_id, str):
+            for requirement_path, requirement_target in covisible_targets:
+                if requirement_target != target_id:
+                    issues.append(_issue(f"{requirement_path}.targetId", "covisible-target-mismatch", "co-visible requirement must point to the learner action target"))
 
     images = slice_data.get("imageRelationships")
     if not isinstance(images, list):
@@ -302,7 +329,9 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
 
 def validate_instructional_plan(document: object, coverage: object) -> List[ValidationIssue]:
     """Validate the v2 teacher-facing plan without requiring an approval record."""
-    sources, issues = _coverage_index(coverage)
+    issues = list(validate_instructional_coverage(coverage))
+    sources, index_issues = _coverage_index(coverage)
+    issues.extend(index_issues)
     if not isinstance(document, dict):
         return issues + [_issue(PLAN_RELATIVE_PATH, "invalid-shape", "page plan must be an object")]
     if document.get("schemaVersion") != "2.0":
@@ -321,6 +350,9 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
         part_id = part.get("partId")
         if not _nonempty(part_id):
             issues.append(_issue(f"{part_path}.partId", "required", "Part needs a stable partId"))
+            continue
+        if not ID_RE.fullmatch(part_id):
+            issues.append(_issue(f"{part_path}.partId", "invalid-stable-id", "partId must use the pinned lowercase hyphenated ID grammar"))
             continue
         if part_id in part_ids:
             issues.append(_issue(f"{part_path}.partId", "duplicate-part-id", "partId must be unique"))
@@ -367,8 +399,8 @@ def _load_plan_evidence(root: Path) -> Tuple[dict | None, dict | None, dict | No
         return None, None, None, [_issue(COVERAGE_RELATIVE_PATH, "invalid-shape", "source coverage cannot be loaded")]
     if not isinstance(coverage, dict):
         return None, None, None, [_issue(COVERAGE_RELATIVE_PATH, "invalid-shape", "source coverage must be an object")]
-    if not isinstance(extracted.get("items"), list):
-        issues.append(_issue(INVENTORY_RELATIVE_PATH, "invalid-shape", "materials inventory items are required"))
+    issues.extend(_prefix_inventory_issues(validate_instructional_coverage(coverage)))
+    issues.extend(_prefix_inventory_issues(validate_material_inventory(extracted)))
     issues.extend(_prefix_inventory_issues(validate_coverage_inventory(extracted, coverage)))
     return plan, coverage, extracted, issues
 
@@ -459,8 +491,13 @@ def verify_plan_approval(root: Path) -> Dict[str, str]:
     }
 
 
-def _markdown_cell(value: object) -> str:
-    return str(value).replace("|", "\\|").replace("\n", "<br>")
+def _markdown_safe(value: object) -> str:
+    """Render text as CommonMark text, never as HTML/table/heading syntax."""
+    text = str(value)
+    text = text.replace("\\", "\\\\")
+    text = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    text = text.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    return text.replace("|", "\\|")
 
 
 def _slice_rows(plan: dict) -> Iterable[dict]:
@@ -504,14 +541,11 @@ def _dependency_text(slice_data: dict) -> str:
 def render_teacher_plan(plan: dict, coverage: dict) -> str:
     """Generate the teacher view; this Markdown is deliberately never approval evidence."""
     title = plan.get("title") if _nonempty(plan.get("title")) else "课程页计划"
-    lines = [f"# {title}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生行动 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- |"]
-    used_sources: Set[str] = set()
+    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生行动 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- |"]
     for slice_data in _slice_rows(plan):
         source_uses = slice_data.get("sourceUses")
-        if isinstance(source_uses, list):
-            used_sources.update(item.get("sourceId") for item in source_uses if isinstance(item, dict) and _nonempty(item.get("sourceId")))
         identity = f"{slice_data.get('partId', '—')} / {slice_data.get('sliceId', '—')}"
-        lines.append("| " + " | ".join(_markdown_cell(value) for value in (
+        lines.append("| " + " | ".join(_markdown_safe(value) for value in (
             identity,
             slice_data.get("teachingPurpose", "—"),
             _source_text(source_uses),
@@ -526,11 +560,12 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
             continue
         disposition = item.get("disposition")
         source_id = item.get("sourceId")
-        relevant = disposition in {"authoring-only", "exclude-proposed", "exclude-approved"} or (disposition == "optional-support" and source_id not in used_sources)
+        bindings = item.get("bindings", [])
+        relevant = disposition in {"authoring-only", "exclude-proposed", "exclude-approved"} or (disposition == "optional-support" and (not isinstance(bindings, list) or not bindings))
         if relevant:
             rows.append((source_id or "—", disposition or "—", item.get("location") or "—", item.get("reason") or item.get("summary") or "—"))
     if rows:
-        lines.extend("| " + " | ".join(_markdown_cell(value) for value in row) + " |" for row in rows)
+        lines.extend("| " + " | ".join(_markdown_safe(value) for value in row) + " |" for row in rows)
     else:
         lines.append("| 无 | — | — | — |")
     return "\n".join(lines) + "\n"
@@ -540,11 +575,26 @@ def render_plan_at_root(root: Path) -> Path:
     safe_root, plan, coverage, _ = _validated_current(root)
     output = safe_root / PLAN_MARKDOWN_RELATIVE_PATH
     content = render_teacher_plan(plan, coverage)
-    temporary = output.with_name(f".{output.name}.{os.getpid()}.tmp")
-    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.parent.is_symlink():
+        raise PlanValidationError([_issue(".course-work", "symlink-file", "output directory may not be a symlink")])
+    if output.is_symlink():
+        raise PlanValidationError([_issue(PLAN_MARKDOWN_RELATIVE_PATH, "symlink-file", "output may not be a symlink")])
+    if not output.parent.is_dir():
+        raise PlanValidationError([_issue(".course-work", "missing-file", "output directory is missing")])
+    descriptor, temporary_name = tempfile.mkstemp(prefix=".course-storyboard-", suffix=".tmp", dir=str(output.parent))
+    temporary = Path(temporary_name)
     try:
-        temporary.write_text(content, encoding="utf-8")
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(content.encode("utf-8"))
+            handle.flush()
+            os.fsync(handle.fileno())
         temporary.replace(output)
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+        directory_fd = os.open(output.parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     finally:
         if temporary.exists():
             temporary.unlink()

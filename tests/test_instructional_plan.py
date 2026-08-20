@@ -17,7 +17,7 @@ def coverage_document():
                 "location": "page:2/figure:1",
                 "summary": "待检验的主张",
                 "disposition": "required-core",
-                "bindings": [],
+                "bindings": [{"partId": "part-evidence", "sliceId": "slice-compare", "blockId": "claim-block"}],
             },
             {
                 "sourceId": "source-image",
@@ -25,7 +25,7 @@ def coverage_document():
                 "location": "image:chart-1",
                 "summary": "对比图",
                 "disposition": "required-evidence",
-                "bindings": [],
+                "bindings": [{"partId": "part-evidence", "sliceId": "slice-compare", "blockId": "image-block"}],
             },
             {
                 "sourceId": "source-support",
@@ -71,6 +71,9 @@ def extracted_document():
             }
             for item in coverage_document()["items"]
         ],
+        "ignored": [],
+        "unsupported": [],
+        "errors": [],
     }
 
 
@@ -104,7 +107,9 @@ def plan_document():
                         "learnerAction": {
                             "kind": "answer",
                             "description": "比较图表后写出判断。",
+                            "referencePolicy": "co-visible",
                             "referenceSourceIds": ["source-image"],
+                            "targetId": "question:compare-claim",
                         },
                         "completionEvidence": "提交一条引用图表的判断。",
                         "layoutIntent": {"preset": "split-horizontal", "ratio": "1:1"},
@@ -157,6 +162,15 @@ class InstructionalPlanTests(unittest.TestCase):
         self.assertIn("duplicate-part-id", codes)
         self.assertIn("duplicate-slice-id", codes)
 
+    def test_part_and_slice_ids_use_pinned_lowercase_hyphenated_grammar(self):
+        for invalid in (" Part", "part ", "Part-evidence", "part_evidence", "part/evidence"):
+            with self.subTest(invalid=invalid):
+                data = plan_document()
+                data["parts"][0]["partId"] = invalid
+                data["parts"][0]["slices"][0]["partId"] = invalid
+                data["parts"][0]["slices"][0]["sliceId"] = invalid
+                self.assertIn("invalid-stable-id", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
+
     def test_teacher_markdown_has_rows_and_every_unused_material(self):
         coverage = coverage_document()
         coverage["items"].append(
@@ -177,6 +191,15 @@ class InstructionalPlanTests(unittest.TestCase):
             self.assertIn(source_id, rendered)
         self.assertNotIn("G0", rendered)
         self.assertNotIn("workflow", rendered.lower())
+
+    def test_unused_optional_summary_uses_coverage_bindings_not_plan_mentions(self):
+        coverage = coverage_document()
+        plan = plan_document()
+        plan["parts"][0]["slices"][0]["sourceUses"].append({"sourceId": "source-support", "locator": "page:9", "materialRole": "可选延伸"})
+        self.assertIn("source-support", self.api().render_teacher_plan(plan, coverage))
+        coverage["items"][2]["bindings"] = [{"partId": "part-evidence", "sliceId": "slice-compare", "blockId": "support-block"}]
+        unused = self.api().render_teacher_plan(plan, coverage).split("## 未使用或仅用于备课", 1)[1]
+        self.assertNotIn("source-support", unused)
 
     def test_unknown_source_empty_purpose_and_action_are_rejected(self):
         data = plan_document()
@@ -209,10 +232,28 @@ class InstructionalPlanTests(unittest.TestCase):
         data = plan_document()
         action = data["parts"][0]["slices"][0]["learnerAction"]
         data["parts"][0]["slices"][0]["coVisibleRequirements"] = []
+        action["referencePolicy"] = "justified-dependency"
         action["dependencyJustification"] = "学生已在纸质材料上标注同一张图表。"
         self.assertNotIn("reference-not-covisible", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
         action["dependencyJustification"] = "学生可以回看上一页图表。"
-        self.assertIn("reference-not-covisible", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
+        self.assertIn("invalid-dependency", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
+
+    def test_reference_wording_cannot_bypass_closed_reference_policy_or_target_linkage(self):
+        data = plan_document()
+        action = data["parts"][0]["slices"][0]["learnerAction"]
+        action["referencePolicy"] = "none"
+        action["referenceSourceIds"] = []
+        action.pop("targetId")
+        action["description"] = "先查看材料图表，再写出判断。"
+        data["parts"][0]["slices"][0]["coVisibleRequirements"] = []
+        self.assertIn("reference-policy-inconsistent", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
+        action["referencePolicy"] = "co-visible"
+        action["referenceSourceIds"] = ["source-image"]
+        action["targetId"] = "question:compare-claim"
+        data["parts"][0]["slices"][0]["coVisibleRequirements"] = [{"sourceId": "source-image", "targetId": "claim:other", "reason": "错误关联"}]
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertIn("reference-not-covisible", codes)
+        self.assertIn("covisible-target-mismatch", codes)
 
     def test_invalid_layout_preset_and_ratio_are_rejected(self):
         data = plan_document()
@@ -288,6 +329,80 @@ class InstructionalPlanTests(unittest.TestCase):
             (root / ".course-work/source-coverage.json").symlink_to(target)
             issues = api.validate_plan_at_root(root)
             self.assertIn((".course-work/source-coverage.json", "symlink-file"), {(item.path, item.code) for item in issues})
+
+    def test_approval_rejects_complete_evidence_schema_failures(self):
+        api = self.api()
+        invalid_cases = {
+            "bad-disposition": ("coverage", lambda value: value["items"][0].update({"disposition": "bogus"})),
+            "bad-inventory-item": ("extracted", lambda value: value["items"].__setitem__(0, "not-an-object")),
+            "duplicate-inventory": ("extracted", lambda value: value["items"].append(value["items"][0].copy())),
+            "missing-trace": ("coverage", lambda value: value["items"][0].pop("location")),
+            "mismatch": ("extracted", lambda value: value["items"][0].update({"location": "page:99"})),
+        }
+        for name, (target, mutate) in invalid_cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                write_root(root)
+                filename = "source-coverage.json" if target == "coverage" else "materials-extracted.json"
+                path = root / ".course-work" / filename
+                value = load_json(path)
+                mutate(value)
+                write_json_atomic(path, value)
+                with self.assertRaises(api.PlanValidationError):
+                    api.approve_plan(root, decision_id="decision-1", approved_at="2026-08-21T00:00:00Z")
+
+    def test_markdown_escapes_adversarial_titles_and_cells_deterministically(self):
+        data = plan_document()
+        data["title"] = "标题\\<b>|\n## 注入"
+        data["parts"][0]["slices"][0]["teachingPurpose"] = "目的|<script>&\r\n# 假标题"
+        rendered = self.api().render_teacher_plan(data, coverage_document())
+        self.assertEqual(rendered, self.api().render_teacher_plan(data, coverage_document()))
+        self.assertIn("标题\\\\&lt;b&gt;\\| ## 注入", rendered)
+        self.assertIn("目的\\|&lt;script&gt;&amp; # 假标题", rendered)
+        self.assertNotIn("<script>", rendered)
+
+    def test_render_rejects_symlinked_output_and_never_reports_absolute_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            output = root / ".course-work/course-storyboard.md"
+            target = root / "outside.md"
+            target.write_text("outside", encoding="utf-8")
+            output.symlink_to(target)
+            script = Path(__file__).resolve().parents[1] / "scripts/manage-course-plan.py"
+            result = subprocess.run(["python3", str(script), str(root), "render"], text=True, capture_output=True, check=False)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertNotIn(str(root), result.stdout + result.stderr)
+            self.assertEqual(target.read_text(encoding="utf-8"), "outside")
+
+    def test_render_does_not_follow_precreated_temp_symlink_and_reports_relative_output(self):
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            target = root / "outside.md"
+            target.write_text("outside", encoding="utf-8")
+            trap = root / ".course-work/.course-storyboard-trap.tmp"
+            trap.symlink_to(target)
+            api.render_plan_at_root(root)
+            self.assertEqual(target.read_text(encoding="utf-8"), "outside")
+            script = Path(__file__).resolve().parents[1] / "scripts/manage-course-plan.py"
+            result = subprocess.run(["python3", str(script), str(root), "render"], text=True, capture_output=True, check=False)
+            self.assertEqual(result.returncode, 0)
+            self.assertEqual(result.stdout.strip(), ".course-work/course-storyboard.md")
+
+    def test_render_rejects_symlinked_course_work_directory(self):
+        api = self.api()
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_root(root)
+            work = root / ".course-work"
+            target = root / "work-target"
+            work.rename(target)
+            work.symlink_to(target, target_is_directory=True)
+            with self.assertRaises(api.PlanValidationError) as caught:
+                api.render_plan_at_root(root)
+            self.assertEqual(caught.exception.issues[0].code, "symlink-file")
 
     def test_cli_validate_render_approve_and_status(self):
         with tempfile.TemporaryDirectory() as temporary:

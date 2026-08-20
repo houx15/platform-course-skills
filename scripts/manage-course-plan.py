@@ -46,7 +46,8 @@ def main() -> int:
             print("页面计划可供教师审批。")
             return 0
         if args.command == "render":
-            print(render_plan_at_root(args.root))
+            render_plan_at_root(args.root)
+            print(".course-work/course-storyboard.md")
             return 0
         if args.command == "approve":
             approval = approve_plan(args.root, decision_id=args.decision_id, approved_at=current_timestamp())

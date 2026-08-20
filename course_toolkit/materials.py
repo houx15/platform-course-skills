@@ -7,6 +7,8 @@ from pathlib import Path
 from typing import List, Sequence, Tuple
 from xml.etree import ElementTree
 
+from .errors import ValidationIssue
+
 
 @dataclass(frozen=True)
 class MaterialItem:
@@ -40,6 +42,35 @@ class ExtractionResult:
             "unsupported": [str(path) for path in self.unsupported],
             "errors": list(self.errors),
         }
+
+
+def validate_material_inventory(data: object) -> List[ValidationIssue]:
+    """Validate the complete persisted shape emitted by ``ExtractionResult``."""
+    if not isinstance(data, dict):
+        return [ValidationIssue("materials-extracted.json", "invalid-shape", "materials inventory must be an object")]
+    issues: List[ValidationIssue] = []
+    items = data.get("items")
+    if not isinstance(items, list):
+        return [ValidationIssue("materials-extracted.json.items", "required", "materials inventory items are required")]
+    for field in ("ignored", "unsupported", "errors"):
+        value = data.get(field, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+            issues.append(ValidationIssue(f"materials-extracted.json.{field}", "invalid-shape", f"{field} must be a string list"))
+    source_ids = set()
+    for index, item in enumerate(items):
+        path = f"materials-extracted.json.items[{index}]"
+        if not isinstance(item, dict):
+            issues.append(ValidationIssue(path, "invalid-shape", "material item must be an object"))
+            continue
+        for field in ("sourceId", "sourceFile", "location", "kind", "text"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                issues.append(ValidationIssue(f"{path}.{field}", "required", f"{field} is required for material traceability"))
+        source_id = item.get("sourceId")
+        if isinstance(source_id, str) and source_id.strip():
+            if source_id in source_ids:
+                issues.append(ValidationIssue(f"{path}.sourceId", "duplicate-source", "sourceId must be unique"))
+            source_ids.add(source_id)
+    return issues
 
 
 def _source_label(path: Path) -> str:

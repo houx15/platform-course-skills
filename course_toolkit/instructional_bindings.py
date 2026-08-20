@@ -248,6 +248,62 @@ def load_instructional_coverage(root: Path) -> dict:
     return migrate_coverage_v1(coverage, course)
 
 
+def validate_instructional_coverage(coverage: object) -> List[ValidationIssue]:
+    """Validate the v2 coverage record itself before runtime destinations exist.
+
+    This deliberately validates traceability, disposition, exclusion evidence,
+    and binding *shape*. Destination/provenance verification remains in
+    ``audit_instructional_bindings`` because it requires a compiled course.
+    """
+    if not isinstance(coverage, dict) or coverage.get("schemaVersion") != "2.0":
+        return [_issue("source-coverage.json", "invalid-version", "coverage schemaVersion must be 2.0")]
+    items = coverage.get("items")
+    if not isinstance(items, list):
+        return [_issue("source-coverage.json.items", "coverage-items-required", "coverage items are required")]
+    issues: List[ValidationIssue] = []
+    seen_sources: Set[str] = set()
+    for index, item in enumerate(items):
+        path = f"source-coverage.json.items[{index}]"
+        if not isinstance(item, dict):
+            issues.append(_issue(path, "coverage-item-invalid", "coverage item must be an object"))
+            continue
+        source_id = item.get("sourceId")
+        if not _nonempty_string(source_id):
+            issues.append(_issue(f"{path}.sourceId", "source-field-required", "sourceId is required for source traceability"))
+        elif source_id in seen_sources:
+            issues.append(_issue(f"{path}.sourceId", "duplicate-source", "sourceId must be unique"))
+        else:
+            seen_sources.add(source_id)
+        for field in ("sourceFile", "location", "summary"):
+            if not _nonempty_string(item.get(field)):
+                issues.append(_issue(f"{path}.{field}", "source-field-required", f"{field} is required for source traceability"))
+        disposition = item.get("disposition")
+        if disposition not in DISPOSITIONS:
+            issues.append(_issue(f"{path}.disposition", "invalid-disposition", "unsupported instructional disposition"))
+        bindings = item.get("bindings", [])
+        if not isinstance(bindings, list):
+            issues.append(_issue(f"{path}.bindings", "bindings-invalid", "bindings must be a list"))
+            bindings = []
+        if disposition in REQUIRED_DISPOSITIONS and not bindings:
+            issues.append(_issue(f"{path}.bindings", "required-binding-missing", "required material needs a learner binding"))
+        if disposition == "optional-support" and not bindings and not _nonempty_string(item.get("reason")):
+            issues.append(_issue(f"{path}.reason", "optional-support-reason-missing", "unbound optional support needs a concrete non-use reason"))
+        if disposition == "exclude-proposed" and not _nonempty_string(item.get("reason")):
+            issues.append(_issue(f"{path}.reason", "exclude-proposed-reason-missing", "proposed exclusion needs a concrete reason"))
+        if disposition == "exclude-approved":
+            if not _nonempty_string(item.get("reason")):
+                issues.append(_issue(f"{path}.reason", "exclude-approved-reason-missing", "approved exclusion needs a concrete reason"))
+            if not _nonempty_string(item.get("decisionId")):
+                issues.append(_issue(f"{path}.decisionId", "exclude-approved-decision-missing", "approved exclusion needs a decision ID"))
+            if item.get("teacherConfirmed") is not True:
+                issues.append(_issue(f"{path}.teacherConfirmed", "exclude-approved-teacher-confirmation-missing", "approved exclusion needs explicit teacher confirmation"))
+        for binding_index, binding in enumerate(bindings):
+            binding_path = f"{path}.bindings[{binding_index}]"
+            if not isinstance(binding, dict) or not all(_nonempty_string(binding.get(field)) for field in ("partId", "sliceId", "blockId")):
+                issues.append(_issue(binding_path, "binding-target-missing", "binding must name a Part, Slice, and Block"))
+    return issues
+
+
 def _asset_sources_by_destination(course: dict) -> Dict[Destination, Set[str]]:
     indexed: Dict[Destination, Set[str]] = {}
     for reference in iter_asset_references(course):

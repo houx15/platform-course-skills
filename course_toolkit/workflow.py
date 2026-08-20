@@ -1,4 +1,3 @@
-import hashlib
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
@@ -14,6 +13,7 @@ from course_toolkit.course_compiler import (
     canonical_json_hash,
     verify_compilation_evidence,
 )
+from course_toolkit.hashing import hash_path
 from course_toolkit.jsonio import load_json, write_json_atomic
 
 
@@ -456,41 +456,6 @@ def workflow_summary(session: CourseProductionSession) -> dict:
         "pendingAnnotations": list(session.pending_annotation_ids),
         "nextAction": next_action,
     }
-
-
-def _hash_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def hash_path(path: Path) -> str:
-    if path.is_symlink():
-        raise ValueError(f"Cannot hash symlink: {path}")
-    if not path.exists():
-        raise ValueError(f"Cannot hash missing path: {path}")
-    if path.is_file():
-        return _hash_file(path)
-    if not path.is_dir():
-        raise ValueError(f"Cannot hash unsupported path: {path}")
-
-    entries = []
-    for candidate in path.rglob("*"):
-        if candidate.is_symlink():
-            raise ValueError(f"Cannot hash tree containing symlink: {candidate}")
-        if not candidate.is_file() or candidate.suffix.lower() == ".zip":
-            continue
-        relative = candidate.relative_to(path).as_posix()
-        entries.append((relative, _hash_file(candidate)))
-    digest = hashlib.sha256()
-    for relative, file_hash in sorted(entries):
-        digest.update(relative.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(file_hash.encode("ascii"))
-        digest.update(b"\n")
-    return digest.hexdigest()
 
 
 def verify_g5_compilation(root: Path) -> Dict[str, str]:
