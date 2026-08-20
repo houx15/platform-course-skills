@@ -100,6 +100,17 @@ class InstructionalValidationTests(unittest.TestCase):
             {(issue.path, issue.code) for issue in issues},
         )
 
+    def test_instructional_evidence_root_symlink_is_rejected(self):
+        linked = self.root.parent / f"linked-instructional-evidence-{self.root.name}"
+        linked.symlink_to(self.root, target_is_directory=True)
+
+        issues = validate_plan_correspondence(linked, course_document())
+
+        self.assertIn(
+            (".course-work/course-storyboard.json", "plan-evidence-unsafe-path"),
+            {(issue.path, issue.code) for issue in issues},
+        )
+
     def test_split_stack_with_empty_side_has_stable_block_path(self):
         course = course_document()
         course["course"]["parts"][0]["slices"][0]["layout"]["slots"] = [
@@ -378,6 +389,18 @@ class InstructionalValidationTests(unittest.TestCase):
             {(issue.path, issue.code) for issue in validate_workflow_availability(course)},
         )
 
+    def test_paused_narration_retains_replayable_identity_but_stopped_track_does_not_end(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["narrations"] = [{"id": "intro", "text": "Intro", "audio": "audio/intro.mp3"}]
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["reference-text"], "enabledBlockIds": []}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playNarration", "narrationId": "intro"}], "transitions": [{"on": {"type": "student.continue"}, "to": "paused"}]},
+            {"id": "paused", "enterActions": [{"type": "pauseNarration", "narrationId": "intro"}], "transitions": [{"on": {"type": "student.continue"}, "to": "replay"}]},
+            {"id": "replay", "enterActions": [{"type": "playNarration", "narrationId": "intro"}], "transitions": [{"on": {"type": "narration.ended", "sourceId": "intro"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []},
+        ]}
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course)})
+
     def test_one_shot_block_completion_cannot_be_reused_across_steps(self):
         course = course_document()
         slice_data = course["course"]["parts"][0]["slices"][0]
@@ -638,3 +661,69 @@ class InstructionalValidationTests(unittest.TestCase):
         }
 
         self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_html_completion_cascade_obeys_interaction_id_and_destination_ownership(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([
+            {"id": "html", "type": "interactiveHtml", "source": "interactions/html/check.html", "protocolVersion": "1.0", "aspectRatio": "4:3", "completion": {"rule": "interaction-complete"}},
+            {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}},
+        ])
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "html-step",
+            "initialState": {"visibleBlockIds": ["html"], "enabledBlockIds": ["html"]},
+            "steps": [
+                {"id": "html-step", "enterActions": [], "transitions": [{"on": {"type": "interaction.completed", "sourceId": "html", "interactionId": "html"}, "to": "dead"}, {"on": {"type": "block.completed", "sourceId": "html"}, "to": "reveal"}]},
+                {"id": "dead", "enterActions": [], "transitions": []},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_html_completion_with_wrong_interaction_id_cannot_reveal(self):
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([
+            {"id": "html", "type": "interactiveHtml", "source": "interactions/html/check.html", "protocolVersion": "1.0", "aspectRatio": "4:3", "completion": {"rule": "interaction-complete"}},
+            {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}},
+        ])
+        slice_data["workflow"] = {
+            "version": "1.0", "initialStepId": "html-step",
+            "initialState": {"visibleBlockIds": ["html"], "enabledBlockIds": ["html"]},
+            "steps": [
+                {"id": "html-step", "enterActions": [], "transitions": [{"on": {"type": "interaction.completed", "sourceId": "html", "interactionId": "ghost"}, "to": "reveal"}]},
+                {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+            ],
+        }
+
+        self.assertIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(issue.path, issue.code) for issue in validate_workflow_availability(course)})
+
+    def test_timer_id_only_matcher_reveals_after_nine_legal_callbacks(self):
+        course = course_document()
+        steps = [{"id": "start", "enterActions": [{"type": "startTimer", "timerId": "many", "durationSeconds": 1} for _ in range(9)], "transitions": [{"on": {"type": "timer.elapsed", "timerId": "many"}, "to": "step-1"}]}]
+        for number in range(1, 9):
+            steps.append({"id": f"step-{number}", "enterActions": [], "transitions": [{"on": {"type": "timer.elapsed", "timerId": "many"}, "to": "reveal" if number == 8 else f"step-{number + 1}"}]})
+        steps.append({"id": "reveal", "enterActions": [{"type": "show", "targetId": "answer-block"}, {"type": "enable", "targetId": "answer-block"}], "transitions": []})
+        course["course"]["parts"][0]["slices"][0]["workflow"] = {"version": "1.0", "initialStepId": "start", "initialState": {"visibleBlockIds": ["reference-text", "source-pdf", "source-image"], "enabledBlockIds": []}, "steps": steps}
+
+        findings = {(issue.path, issue.code) for issue in validate_workflow_availability(course)}
+        self.assertNotIn((f"{PATH}/block:answer-block", "workflow-answer-unavailable"), findings)
+        self.assertNotIn((PATH, "workflow-state-space-exceeded"), findings)
+
+    def test_file_backed_video_cue_events_follow_declared_ids_and_order(self):
+        cue_document = {"schemaVersion": "1.1", "video": {"blockId": "video", "source": "materials/video.mp4", "durationSeconds": 10, "cues": [{"id": "cue-1", "atSeconds": 1, "pauseVideo": True, "required": True, "prompt": "Check", "activity": {"type": "singleChoice", "options": [{"id": "a", "label": "A"}, {"id": "b", "label": "B"}], "assessment": {"mode": "survey"}, "completion": {"rule": "submit-any"}}}]}}
+        write_json_atomic(self.root / "course/interactions/video/cues.json", cue_document)
+        course = course_document()
+        slice_data = course["course"]["parts"][0]["slices"][0]
+        slice_data["blocks"].extend([
+            {"id": "video", "type": "video", "source": "materials/video.mp4", "interaction": {"source": "interactions/video/cues.json"}, "completion": {"rule": "video-ended-and-interactions-completed"}},
+            {"id": "followup", "type": "fillBlank", "prompt": "后续", "assessment": {"mode": "reflection", "rubric": "说明"}, "completion": {"rule": "submit-any"}},
+        ])
+        slice_data["workflow"] = {"version": "1.0", "initialStepId": "play", "initialState": {"visibleBlockIds": ["video"], "enabledBlockIds": ["video"]}, "steps": [
+            {"id": "play", "enterActions": [{"type": "playBlock", "targetId": "video"}], "transitions": [{"on": {"type": "video.started", "sourceId": "video"}, "to": "cue"}]},
+            {"id": "cue", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.shown", "sourceId": "video", "interactionId": "cue-1"}, "to": "answer-cue"}]},
+            {"id": "answer-cue", "enterActions": [], "transitions": [{"on": {"type": "video.interaction.completed", "sourceId": "video", "interactionId": "cue-1"}, "to": "reveal"}]},
+            {"id": "reveal", "enterActions": [{"type": "show", "targetId": "followup"}, {"type": "enable", "targetId": "followup"}], "transitions": []},
+        ]}
+        self.assertNotIn((f"{PATH}/block:followup", "workflow-answer-unavailable"), {(item.path, item.code) for item in validate_workflow_availability(course, root=self.root)})

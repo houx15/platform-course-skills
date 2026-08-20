@@ -23,6 +23,7 @@ from .instructional_bindings import (
 )
 from .instructional_plan import validate_instructional_plan
 from .jsonio import load_json
+from .paths import resolve_course_path
 
 
 REFERENCE_TEXT = re.compile(
@@ -81,11 +82,11 @@ ONE_SHOT_BLOCK_EVENTS = frozenset(
 # ``timers.current`` owns only the latest handle for each ID, while overwritten
 # timeout callbacks remain pending.  A timer state therefore records whether
 # the current map still has a latest handle plus canonical ``(remaining, is_latest)``
-# pending callbacks.  Keeping at most eight callbacks per ID is a conservative
-# finite abstraction for cyclic authored workflows.
+# pending callbacks.  The global reachable-state bound, rather than an
+# arbitrary timer-count cap, is the explicit indeterminate guard for cyclic
+# authored workflows.
 TimerState = Tuple[bool, Tuple[Tuple[Decimal, bool], ...]]
 TimerMap = Mapping[str, TimerState]
-MAX_PENDING_TIMER_HANDLES = 8
 
 
 def _timer_state(has_latest: bool, callbacks: Iterable[Tuple[Decimal, bool]]) -> TimerState:
@@ -130,8 +131,17 @@ def _block_index(course: dict) -> Dict[str, Tuple[str, str, dict]]:
 
 
 def _safe_load(root: Path, relative: str) -> Tuple[object | None, ValidationIssue | None]:
-    path = root / relative
-    if not path.is_file() or path.is_symlink():
+    root = Path(root).absolute()
+    path = root
+    # Evidence is a trusted local record only when root and every component
+    # remain real directories/files under the requested workspace.
+    if root.is_symlink():
+        return None, _issue(relative, "plan-evidence-unsafe-path", "instructional evidence root must not be a symlink")
+    for component in Path(relative).parts:
+        path = path / component
+        if path.is_symlink():
+            return None, _issue(relative, "plan-evidence-unsafe-path", "instructional evidence path must not traverse a symlink")
+    if not path.is_file():
         return None, _issue(relative, "plan-evidence-missing", "required instructional evidence is missing")
     try:
         return load_json(path), None
@@ -245,8 +255,23 @@ def _block_can_emit_event(block: dict, event_type: object, visible: Set[str], en
     return block_type == "pdf" and event_type == "pdf.opened"
 
 
-def _matcher_matches(on: object, event: Tuple[str, str]) -> bool:
-    return isinstance(on, dict) and on.get("type") == event[1] and (on.get("sourceId") is None or on.get("sourceId") == event[0])
+def _matcher_matches(on: object, event: Tuple[object, ...]) -> bool:
+    """Match the complete pinned workflow event identity.
+
+    Runtime events always have a source and can additionally carry an
+    interaction or timer identity.  Omitting a matcher field is a wildcard;
+    declaring it requires exact equality, mirroring the contract matcher.
+    """
+    if not isinstance(on, dict) or len(event) < 2 or on.get("type") != event[1]:
+        return False
+    source_id = event[0]
+    interaction_id = event[2] if len(event) > 2 else None
+    timer_id = event[3] if len(event) > 3 else None
+    return (
+        (on.get("sourceId") is None or on.get("sourceId") == source_id)
+        and (on.get("interactionId") is None or on.get("interactionId") == interaction_id)
+        and (on.get("timerId") is None or on.get("timerId") == timer_id)
+    )
 
 
 def _assessment_cascades(block: dict, attempt: int) -> List[Tuple[Tuple[Tuple[str, str], ...], bool]]:
@@ -288,6 +313,8 @@ def _external_event_updates(
     locked_assessments: Set[str],
     playing_videos: Set[str],
     submitted_handled_sources: Set[str] | None = None,
+    interaction_handled_sources: Set[str] | None = None,
+    video_cues: Mapping[str, Tuple[str, ...]] | None = None,
 ) -> List[Tuple[Set[str], Dict[str, TimerState], Set[Tuple[str, str]], Dict[str, int], Set[str], Set[str], Tuple[Tuple[str, str], ...]]]:
     """Return successor runtime facts for one externally produced event."""
     on = transition.get("on") if isinstance(transition, dict) else None
@@ -351,6 +378,13 @@ def _external_event_updates(
         event_fact = (block_id, event_type)
         if not isinstance(block, dict):
             continue
+        interaction_id = (
+            block_id if block.get("type") == "interactiveHtml" and event_type == "interaction.completed"
+            else on.get("interactionId") if block.get("type") == "video" and event_type in {"video.interaction.shown", "video.interaction.completed"}
+            else None
+        )
+        if not _matcher_matches(on, (block_id, event_type, interaction_id, None)):
+            continue
         if block.get("type") in ASSESSMENT_TYPES:
             if event_type != "answer.submitted" and block_id in (submitted_handled_sources or set()):
                 continue
@@ -379,14 +413,37 @@ def _external_event_updates(
                 elif event_type == "block.completed" and pending and pending[-1] == event_fact:
                     updates.append((set(active_narrations), dict(active_timers), set(consumed_events), {**next_attempts, block_id: attempt}, set(locked_assessments).union({block_id}), set(playing_videos), ()))
             continue
+        if (
+            block.get("type") == "interactiveHtml"
+            and event_type == "block.completed"
+            and block_id in (interaction_handled_sources or set())
+        ):
+            continue
         if block.get("type") == "video":
             if block_id not in visible or block_id not in enabled:
                 continue
             if event_type == "video.started":
                 updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).union({block_id}), ()))
+            elif event_type == "video.interaction.shown" and block_id in playing_videos:
+                cue_id = on.get("interactionId")
+                if isinstance(cue_id, str) and cue_id in (video_cues or {}).get(block_id, ()) and _matcher_matches(on, (block_id, event_type, cue_id, None)):
+                    next_consumed = set(consumed_events)
+                    next_consumed.add((block_id, f"cue-shown:{cue_id}"))
+                    updates.append((set(active_narrations), dict(active_timers), next_consumed, dict(attempts), set(locked_assessments), set(playing_videos), ((block_id, "video.interaction.completed", cue_id),)))
+            elif event_type == "video.interaction.completed" and block_id in playing_videos:
+                cue_id = on.get("interactionId")
+                if isinstance(cue_id, str) and cue_id in (video_cues or {}).get(block_id, ()) and (block_id, f"cue-shown:{cue_id}") in consumed_events:
+                    updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), ()))
             elif event_type == "video.ended" and block_id in playing_videos:
                 tail = ((block_id, "block.completed"),) if isinstance(block.get("completion"), dict) else ()
                 updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos).difference({block_id}), tail))
+            continue
+        if block.get("type") == "interactiveHtml" and event_type == "interaction.completed":
+            if not _block_can_emit_event(block, event_type, visible, enabled):
+                continue
+            completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+            tail = ((block_id, "block.completed"),) if completion.get("rule") == "interaction-complete" else ()
+            updates.append((set(active_narrations), dict(active_timers), set(consumed_events), dict(attempts), set(locked_assessments), set(playing_videos), tail))
             continue
         if not _block_can_emit_event(block, event_type, visible, enabled):
             continue
@@ -653,8 +710,33 @@ def _initial_state(slice_data: dict) -> Tuple[Set[str], Set[str]]:
     return visible.intersection(block_ids), enabled.intersection(block_ids)
 
 
+def _video_cue_ids(course_root: Path | None, slice_data: dict) -> Dict[str, Tuple[str, ...]]:
+    """Load declared cue IDs through the shared confined course-path resolver."""
+    if course_root is None:
+        return {}
+    result: Dict[str, Tuple[str, ...]] = {}
+    course_root = Path(course_root) / "course"
+    for block in _items(slice_data.get("blocks")):
+        interaction = block.get("interaction") if isinstance(block, dict) else None
+        source = interaction.get("source") if isinstance(interaction, dict) else None
+        if block.get("type") != "video" or not isinstance(block.get("id"), str) or not isinstance(source, str):
+            continue
+        try:
+            path = resolve_course_path(course_root, source)
+            data = load_json(path)
+        except (OSError, ValueError):
+            continue
+        cues = data.get("video", {}).get("cues", []) if isinstance(data, dict) and isinstance(data.get("video"), dict) else []
+        ids = tuple(cue["id"] for cue in cues if isinstance(cue, dict) and isinstance(cue.get("id"), str))
+        if ids:
+            result[block["id"]] = ids
+    return result
+
+
 def _effective_step_states(
     slice_data: dict,
+    *,
+    course_root: Path | None = None,
 ) -> Tuple[Dict[str, List[Tuple[Set[str], Set[str]]]], List[ValidationIssue]]:
     """Explore effective post-enter-action states without merging branches.
 
@@ -673,6 +755,7 @@ def _effective_step_states(
         for narration in _items(slice_data.get("narrations"))
         if isinstance(narration, dict) and isinstance(narration.get("id"), str)
     }
+    video_cues = _video_cue_ids(course_root, slice_data)
     initial_id = workflow.get("initialStepId")
     if initial_id not in steps:
         return {}, []
@@ -712,7 +795,11 @@ def _effective_step_states(
                 # longer arrive.
                 active_narrations = {action["narrationId"]}
                 continue
-            if action_type in {"pauseNarration", "stopNarration"} and isinstance(action.get("narrationId"), str):
+            if action_type == "pauseNarration" and isinstance(action.get("narrationId"), str):
+                # Pause retains the controller's active identity and can later
+                # be replayed; only stop detaches it permanently.
+                continue
+            if action_type == "stopNarration" and isinstance(action.get("narrationId"), str):
                 active_narrations.discard(action["narrationId"])
                 continue
             if action_type == "startTimer" and isinstance(action.get("timerId"), str):
@@ -730,8 +817,6 @@ def _effective_step_states(
                 # timers.current points only at this new handle.  Previous
                 # callbacks remain live, but become unowned by this ID.
                 demoted = [(remaining, False) for remaining, _is_latest in callbacks]
-                if len(demoted) >= MAX_PENDING_TIMER_HANDLES:
-                    demoted = demoted[: MAX_PENDING_TIMER_HANDLES - 1]
                 active_timers[timer_id] = _timer_state(True, [*demoted, (duration, True)])
                 continue
             if action_type == "cancelTimer" and isinstance(action.get("timerId"), str):
@@ -793,6 +878,15 @@ def _effective_step_states(
                 for candidate in _items(step.get("transitions"))
             )
         }
+        interaction_handled_sources = {
+            block_id
+            for block_id, block in blocks.items()
+            if block.get("type") == "interactiveHtml"
+            and any(
+                _matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, (block_id, "interaction.completed", block_id, None))
+                for candidate in _items(step.get("transitions"))
+            )
+        }
         for transition in _items(step.get("transitions")):
             destination = transition.get("to") if isinstance(transition, dict) else None
             if destination not in steps:
@@ -826,6 +920,8 @@ def _effective_step_states(
                 locked_assessments=locked_assessments,
                 playing_videos=playing_videos,
                 submitted_handled_sources=submitted_handled_sources,
+                interaction_handled_sources=interaction_handled_sources,
+                video_cues=video_cues,
             ):
                 pending.append((destination, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, True))
 
@@ -838,11 +934,22 @@ def _effective_step_states(
             if block.get("type") in ASSESSMENT_TYPES:
                 synthetic = {"on": {"type": "answer.submitted", "sourceId": block_id}}
             elif block.get("type") == "video":
-                event_type = "video.ended" if block_id in playing_videos else "video.started"
-                synthetic = {"on": {"type": event_type, "sourceId": block_id}}
+                cue_id = next((cue for cue in video_cues.get(block_id, ()) if (block_id, f"cue-shown:{cue}") not in consumed_events), None)
+                if block_id in playing_videos and cue_id is not None:
+                    synthetic = {"on": {"type": "video.interaction.shown", "sourceId": block_id, "interactionId": cue_id}}
+                else:
+                    event_type = "video.ended" if block_id in playing_videos else "video.started"
+                    synthetic = {"on": {"type": event_type, "sourceId": block_id}}
+            elif block.get("type") == "interactiveHtml":
+                synthetic = {"on": {"type": "interaction.completed", "sourceId": block_id, "interactionId": block_id}}
             else:
                 continue
-            event = (block_id, synthetic["on"]["type"])
+            event = (
+                block_id,
+                synthetic["on"]["type"],
+                synthetic["on"].get("interactionId"),
+                synthetic["on"].get("timerId"),
+            )
             if any(_matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, event) for candidate in _items(step.get("transitions"))):
                 continue
             for next_narrations, next_timers, next_consumed, next_attempts, next_locked, next_playing, next_events in _external_event_updates(
@@ -856,6 +963,7 @@ def _effective_step_states(
                 attempts=attempts,
                 locked_assessments=locked_assessments,
                 playing_videos=playing_videos,
+                video_cues=video_cues,
             ):
                 pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, False))
 
@@ -863,7 +971,7 @@ def _effective_step_states(
         # only when the current step has no matching timer transition; the
         # update function permits only globally earliest deadline ties.
         for timer_id in sorted(active_timers):
-            event = (timer_id, "timer.elapsed")
+            event = (timer_id, "timer.elapsed", None, timer_id)
             if any(_matcher_matches(candidate.get("on") if isinstance(candidate, dict) else None, event) for candidate in _items(step.get("transitions"))):
                 continue
             synthetic = {"on": {"type": "timer.elapsed", "sourceId": timer_id}}
@@ -878,18 +986,19 @@ def _effective_step_states(
                 attempts=attempts,
                 locked_assessments=locked_assessments,
                 playing_videos=playing_videos,
+                video_cues=video_cues,
             ):
                 pending.append((step_id, frozenset(visible), frozenset(enabled), frozenset(next_narrations), tuple(sorted(next_timers.items())), frozenset(next_consumed), tuple(sorted(next_attempts.items())), frozenset(next_locked), frozenset(next_playing), next_events, False))
     return effective, issues
 
 
-def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
+def validate_workflow_availability(course: dict, *, root: Path | None = None) -> List[ValidationIssue]:
     """Check reachable answer/completion availability and reveal-enable ordering."""
     issues: List[ValidationIssue] = []
     for part_id, slice_id, slice_data in _slice_entries(course):
         workflow = slice_data.get("workflow") if isinstance(slice_data.get("workflow"), dict) else {}
         steps = [step for step in _items(workflow.get("steps")) if isinstance(step, dict) and isinstance(step.get("id"), str)]
-        states, state_issues = _effective_step_states(slice_data)
+        states, state_issues = _effective_step_states(slice_data, course_root=root)
         block_by_id = {block["id"]: block for block in _items(slice_data.get("blocks")) if isinstance(block, dict) and isinstance(block.get("id"), str)}
         for issue in state_issues:
             if issue.path.startswith("block:"):
@@ -929,4 +1038,4 @@ def validate_workflow_availability(course: dict) -> List[ValidationIssue]:
 
 
 def _ordered(issues: Sequence[ValidationIssue]) -> List[ValidationIssue]:
-    return sorted(issues, key=lambda issue: (issue.path, issue.code, issue.message))
+    return sorted(set(issues), key=lambda issue: (issue.path, issue.code, issue.message))

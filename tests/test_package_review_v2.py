@@ -37,10 +37,9 @@ class CourseDefinitionTwoReviewTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
-        prepare_g6(self.root)
-        write_json_atomic(self.root / ".course-work/source-coverage.json", {"schemaVersion": "1.0", "items": []})
         write_json_atomic(self.root / ".course-work/decisions.json", {"schemaVersion": "1.0", "decisions": []})
         write_json_atomic(self.root / ".course-work/unresolved.json", {"schemaVersion": "1.0", "items": []})
+        prepare_g6(self.root, instructional_evidence=True)
         document = load_json(self.root / "course/course.json")
         slices = [slice_data["id"] for part in document["course"]["parts"] for slice_data in part["slices"]]
         record_preview_evidence(

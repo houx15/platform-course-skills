@@ -129,6 +129,9 @@ def prepare_g8(root: Path):
     write_valid_media_design(root)
     write_json_atomic(root / ".course-work/decisions.json", {"schemaVersion": "1.0", "decisions": []})
     write_json_atomic(root / ".course-work/unresolved.json", {"schemaVersion": "1.0", "items": []})
+    report = build_course_validation_report(root)
+    write_current_validation_report(root, report)
+    sync_validation_issues(root, report, NOW)
     document = load_json(root / "course/course.json")
     slices = [slice_data["id"] for part in document["course"]["parts"] for slice_data in part["slices"]]
     record_preview_evidence(root, {

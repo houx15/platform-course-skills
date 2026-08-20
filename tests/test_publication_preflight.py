@@ -9,6 +9,7 @@ from pathlib import Path
 from course_toolkit.course_compiler import canonical_json_hash
 from course_toolkit.decisions import DecisionStore
 from course_toolkit.issues import IssueStore
+from course_toolkit.course_package_validation import build_course_validation_report, sync_validation_issues, write_current_validation_report
 from course_toolkit.jsonio import write_json_atomic
 from course_toolkit.instructional_plan import approve_plan
 from course_toolkit.publication import (
@@ -62,6 +63,11 @@ def complete_through_g8(root: Path) -> None:
         gate_evidence=verify_g4_media_design(root),
     )
     complete_gate(session, "G5", NOW, gate_evidence=verify_g5_compilation(root))
+    # Bind G6 after the shared fixture has written its correspondence-current
+    # approved plan and coverage records.
+    report = build_course_validation_report(root)
+    write_current_validation_report(root, report)
+    sync_validation_issues(root, report, NOW)
     complete_gate(session, "G6", NOW, gate_evidence=verify_g6_validation(root))
     complete_gate(
         session,

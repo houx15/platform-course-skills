@@ -361,6 +361,18 @@ class CourseDefinitionTwoValidationTests(unittest.TestCase):
         self.assertEqual(report["layers"]["planCorrespondence"]["status"], "not-applicable")
         self.assertEqual(report["layers"]["layoutWorkflow"]["issues"], [])
 
+    def test_coverage_without_current_plan_blocks_the_top_level_report(self):
+        write_json_atomic(
+            self.root / ".course-work/source-coverage.json",
+            {"schemaVersion": "2.0", "items": []},
+        )
+
+        report = build_course_validation_report(self.root)
+
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["layers"]["planCorrespondence"]["status"], "not-current")
+        self.assertIn("plan-evidence-missing", {issue["code"] for issue in report["issues"]})
+
     def test_report_is_independent_of_absolute_course_root(self):
         first = build_course_validation_report(self.root)
         with tempfile.TemporaryDirectory() as temporary:

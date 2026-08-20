@@ -153,6 +153,22 @@ def write_root(root: Path, *, plan=None, coverage=None, extracted=None):
     """
     if root.resolve() == REPOSITORY_ROOT:
         raise AssertionError("fixture root must not be the repository root")
+    course_path = root / "course" / "course.json"
+    if plan is None and coverage is None and extracted is None and course_path.is_file():
+        course = load_json(course_path)["course"]
+        parts = []
+        for part in course["parts"]:
+            slices = []
+            for slice_data in part["slices"]:
+                layout = slice_data["layout"]
+                intent = {"preset": layout["preset"]}
+                if "ratio" in layout:
+                    intent["ratio"] = layout["ratio"]
+                slices.append({"partId": part["id"], "sliceId": slice_data["id"], "title": slice_data["title"], "teachingPurpose": "Practice the course objective.", "sourceUses": [], "learnerSees": "Prepared learning content.", "learnerAction": {"kind": "answer", "description": "Choose an answer.", "referencePolicy": "none", "referenceSourceIds": []}, "completionEvidence": {"event": "block.completed"}, "layoutIntent": intent, "coVisibleRequirements": [], "imageRelationships": [], "unresolvedBlockers": [], "proposedExclusions": []})
+            parts.append({"partId": part["id"], "title": part["title"], "slices": slices})
+        plan = {"schemaVersion": "2.0", "title": "Current fixture plan", "parts": parts}
+        coverage = {"schemaVersion": "2.0", "items": []}
+        extracted = {"schemaVersion": "1.0", "items": [], "ignored": [], "unsupported": [], "errors": []}
     write_json_atomic(root / ".course-work/course-storyboard.json", plan or plan_document())
     write_json_atomic(root / ".course-work/source-coverage.json", coverage or coverage_document())
     write_json_atomic(root / ".course-work/materials-extracted.json", extracted or extracted_document())

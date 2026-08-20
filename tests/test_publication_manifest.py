@@ -11,6 +11,7 @@ from course_toolkit.course_package_validation import (
     sync_validation_issues,
     write_current_validation_report,
 )
+from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.publication import (
     ASSET_MANIFEST_RELATIVE_PATH,
     build_asset_manifest,
@@ -24,11 +25,39 @@ from tests.test_course_package_validation import build_full_package, build_minim
 NOW = "2026-08-16T00:00:00Z"
 
 
-def prepare_g6(root: Path, *, full: bool = False):
+def _write_minimal_instructional_evidence(root: Path) -> None:
+    """Create current staged-authoring evidence before its G6 report is bound."""
+    document = load_json(root / "course/course.json")
+    plan_parts = []
+    for part in document["course"]["parts"]:
+        slices = []
+        for slice_data in part["slices"]:
+            layout = slice_data["layout"]
+            layout_intent = {"preset": layout["preset"]}
+            if "ratio" in layout:
+                layout_intent["ratio"] = layout["ratio"]
+            slices.append(
+                {
+                    "partId": part["id"], "sliceId": slice_data["id"], "title": slice_data["title"],
+                    "teachingPurpose": "Practice the approved course objective.", "sourceUses": [],
+                    "learnerSees": "The prepared learning content.",
+                    "learnerAction": {"kind": "answer", "description": "Choose an answer.", "referencePolicy": "none", "referenceSourceIds": []},
+                    "completionEvidence": {"event": "block.completed"}, "layoutIntent": layout_intent,
+                    "coVisibleRequirements": [], "imageRelationships": [], "unresolvedBlockers": [], "proposedExclusions": [],
+                }
+            )
+        plan_parts.append({"partId": part["id"], "title": part["title"], "slices": slices})
+    write_json_atomic(root / ".course-work/source-coverage.json", {"schemaVersion": "2.0", "items": []})
+    write_json_atomic(root / ".course-work/course-storyboard.json", {"schemaVersion": "2.0", "title": "Test plan", "parts": plan_parts})
+
+
+def prepare_g6(root: Path, *, full: bool = False, instructional_evidence: bool = False):
     if full:
         build_full_package(root)
     else:
         build_minimal_package(root)
+    if instructional_evidence:
+        _write_minimal_instructional_evidence(root)
     report = build_course_validation_report(root)
     write_current_validation_report(root, report)
     sync_validation_issues(root, report, NOW)

@@ -597,7 +597,7 @@ def _instructional_layers(root: Path, document: dict) -> Tuple[dict, List[Valida
     blockers: List[ValidationIssue] = []
     warnings: List[ValidationIssue] = []
 
-    layout_workflow = [*validate_layout_assignment(document), *validate_workflow_availability(document)]
+    layout_workflow = [*validate_layout_assignment(document), *validate_workflow_availability(document, root=root)]
     layers["layoutWorkflow"] = {
         "status": "blocked" if layout_workflow else "clear",
         "issues": [issue.as_dict() for issue in layout_workflow],
@@ -624,17 +624,17 @@ def _instructional_layers(root: Path, document: dict) -> Tuple[dict, List[Valida
         }
         blockers.extend(correspondence)
     elif has_coverage:
+        missing_plan = ValidationIssue(
+            ".course-work/course-storyboard.json",
+            "plan-evidence-missing",
+            "source coverage exists but the current approved page plan is missing",
+        )
         layers["planCorrespondence"] = {
             "status": "not-current",
-            "issues": [
-                ValidationIssue(
-                    ".course-work/course-storyboard.json",
-                    "plan-evidence-missing",
-                    "source coverage exists but the current approved page plan is missing",
-                ).as_dict()
-            ],
+            "issues": [missing_plan.as_dict()],
             "warnings": [],
         }
+        blockers.append(missing_plan)
     return layers, blockers, warnings
 
 
