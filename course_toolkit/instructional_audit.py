@@ -79,10 +79,16 @@ def _nonempty(value: object, *, maximum: int = _MAX_EVIDENCE_CHARS) -> bool:
 
 
 def _safe_root(root: Path) -> Path:
-    root = Path(root).absolute()
-    if root.is_symlink():
+    requested = Path(root).absolute()
+    # Keep the direct-root policy explicit, while resolving a symlink in an
+    # *ancestor* before any evidence or candidate path is derived.  Otherwise
+    # lexical containment below ``requested`` can be redirected after a check.
+    if requested.is_symlink():
         raise InstructionalAuditError("symlink-root", "course root may not be a symlink", path=".")
-    if not root.is_dir():
+    if not requested.is_dir():
+        raise InstructionalAuditError("invalid-root", "course root must be an existing directory", path=".")
+    root = requested.resolve()
+    if not root.is_dir():  # Defensive: the ancestor chain may have changed.
         raise InstructionalAuditError("invalid-root", "course root must be an existing directory", path=".")
     return root
 
@@ -118,9 +124,8 @@ def _decision_store_hash(root: Path) -> str:
     return canonical_json_hash(load_json(path))
 
 
-def _current_artifact_hashes(root: Path) -> Tuple[Dict[str, str], dict, dict, dict, dict]:
+def _current_artifact_hashes_at(root: Path) -> Tuple[Dict[str, str], dict, dict, dict, dict]:
     """Return trusted current evidence and its canonical identity hashes."""
-    root = _safe_root(root)
     try:
         plan_evidence = verify_plan_approval(root)
     except Exception as exc:
@@ -165,6 +170,11 @@ def _current_artifact_hashes(root: Path) -> Tuple[Dict[str, str], dict, dict, di
         "decisionStoreHash": _decision_store_hash(root),
     }
     return hashes, plan, coverage, blueprint, course
+
+
+def _current_artifact_hashes(root: Path) -> Tuple[Dict[str, str], dict, dict, dict, dict]:
+    """Canonicalize once for public/private callers that do not already have it."""
+    return _current_artifact_hashes_at(_safe_root(root))
 
 
 def _slice_keys(plan: Mapping[str, object]) -> List[Tuple[str, str]]:
@@ -545,7 +555,7 @@ def _validate_lifecycle(root: Path, report: Mapping[str, object], hashes: Mappin
                     "decisionRecordHash": decision_hash,
                 }
             )
-        elif old_status == "pass" and "decisionId" in old:
+        elif old_status == "pass" and new_status == "pass" and "decisionId" in old:
             required = ("decisionId", "plausibleArrangements", "reviewContextHash", "decisionRecordHash")
             if any(entry.get(field) != old.get(field) for field in required):
                 raise InstructionalAuditError("review-provenance-lost", "a resolved review pass must preserve its exact teacher decision binding", path="entries")
@@ -558,7 +568,7 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
     candidate therefore leaves an earlier valid report byte-for-byte intact.
     """
     root = _safe_root(root)
-    hashes, plan, coverage, blueprint, course = _current_artifact_hashes(root)
+    hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
     report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course, allow_pending_resolution=True)
     _validate_lifecycle(root, report, hashes)
     report = _validate_payload(report, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
@@ -570,7 +580,7 @@ def record_instructional_audit(root: Path, payload: dict) -> dict:
 def verify_instructional_audit(root: Path) -> Dict[str, str]:
     """Return current gate evidence, or fail closed for stale/blocking audit."""
     root = _safe_root(root)
-    hashes, plan, coverage, blueprint, course = _current_artifact_hashes(root)
+    hashes, plan, coverage, blueprint, course = _current_artifact_hashes_at(root)
     payload = _safe_json(root, INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
     report = _validate_payload(payload, hashes=hashes, plan=plan, coverage=coverage, blueprint=blueprint, course=course)
     _validate_resolved_passes(root, report, hashes)

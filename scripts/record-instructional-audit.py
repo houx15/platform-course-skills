@@ -11,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from course_toolkit.instructional_audit import (
     INSTRUCTIONAL_AUDIT_RELATIVE_PATH,
     InstructionalAuditError,
+    _safe_root,
     record_instructional_audit,
 )
 from course_toolkit.jsonio import load_json
@@ -20,9 +21,7 @@ MAX_CANDIDATE_BYTES = 512 * 1024
 
 
 def _candidate_path(root: Path, raw: str) -> Path:
-    root = Path(root).absolute()
-    if root.is_symlink() or not root.is_dir():
-        raise InstructionalAuditError("invalid-root", "course root must be a real directory", path=".")
+    root = _safe_root(root)
     if not raw or raw.startswith("/") or "\\" in raw:
         raise InstructionalAuditError("candidate-invalid-path", "candidate must be a relative path below .course-work/candidates", path="candidate")
     raw_parts = raw.split("/")
@@ -68,9 +67,10 @@ def main() -> int:
     try:
         if args.candidate is None:
             raise InstructionalAuditError("candidate-required", "candidate JSON file is required", path="candidate")
-        candidate = _candidate_path(args.root, args.candidate)
+        root = _safe_root(args.root)
+        candidate = _candidate_path(root, args.candidate)
         payload = load_json(candidate)
-        report = record_instructional_audit(args.root, payload)
+        report = record_instructional_audit(root, payload)
         _emit({"ok": True, "status": "recorded", "output": INSTRUCTIONAL_AUDIT_RELATIVE_PATH, "report": report}, args.json)
         return 0
     except InstructionalAuditError as exc:

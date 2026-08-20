@@ -259,6 +259,28 @@ class InstructionalAuditTests(unittest.TestCase):
     def tearDown(self):
         self.temporary.cleanup()
 
+    def resolve_first_review(self) -> dict:
+        review = _candidate(self.root)
+        review["entries"][0].update(
+            {
+                "status": "review",
+                "plausibleArrangements": ["保留当前左右并列安排。", "将主张置于题目上方后继续同屏呈现。"],
+            }
+        )
+        record_instructional_audit(self.root, review)
+        old_entry = load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)["entries"][0]
+        store = DecisionStore(self.root / ".course-work/decisions.json")
+        store.request(
+            "decision-semantic-layout",
+            "选择两种可行语义安排之一",
+            _review_context_hash(old_entry, review["artifactHashes"]),
+        )
+        store.confirm("decision-semantic-layout", "保留当前左右并列安排。", "2026-08-21T01:00:00Z")
+        store.save()
+        resolved = _candidate(self.root)
+        resolved["entries"][0]["decisionId"] = "decision-semantic-layout"
+        return record_instructional_audit(self.root, resolved)
+
     def test_exact_semantic_check_tuple_and_deterministic_root_independent_report(self):
         self.assertEqual(
             SEMANTIC_CHECKS,
@@ -332,6 +354,51 @@ class InstructionalAuditTests(unittest.TestCase):
         with self.assertRaises(InstructionalAuditError) as caught:
             record_instructional_audit(self.root, _candidate(self.root))
         self.assertEqual(caught.exception.code, "blocker-downgrade-forbidden")
+
+    def test_resolved_pass_can_escalate_to_new_blocker_or_review(self):
+        self.resolve_first_review()
+        blocker = _candidate(self.root, status="blocker")
+        record_instructional_audit(self.root, blocker)
+        stored = load_json(self.root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
+        self.assertEqual(stored["entries"][0]["status"], "blocker")
+        self.assertNotIn("decisionId", stored["entries"][0])
+        with self.assertRaises(InstructionalAuditError) as caught:
+            verify_instructional_audit(self.root)
+        self.assertEqual(caught.exception.code, "semantic-audit-blocked")
+
+        # A new root proves a previous resolution may also return to a genuine
+        # two-option review rather than being forced to remain a stale pass.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            _write_root(root)
+            review = _candidate(root)
+            review["entries"][0].update(
+                {
+                    "status": "review",
+                    "plausibleArrangements": ["保留当前左右并列安排。", "将主张置于题目上方后继续同屏呈现。"],
+                }
+            )
+            record_instructional_audit(root, review)
+            old = load_json(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)["entries"][0]
+            store = DecisionStore(root / ".course-work/decisions.json")
+            store.request("decision-semantic-layout", "选择两种可行语义安排之一", _review_context_hash(old, review["artifactHashes"]))
+            store.confirm("decision-semantic-layout", "保留当前左右并列安排。", "2026-08-21T01:00:00Z")
+            store.save()
+            resolved = _candidate(root)
+            resolved["entries"][0]["decisionId"] = "decision-semantic-layout"
+            record_instructional_audit(root, resolved)
+            escalated_review = _candidate(root)
+            escalated_review["entries"][0].update(
+                {
+                    "status": "review",
+                    "plausibleArrangements": ["保留当前左右并列安排。", "把题目移到主张之下。"],
+                }
+            )
+            record_instructional_audit(root, escalated_review)
+            stored = load_json(root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH)
+            self.assertEqual(stored["entries"][0]["status"], "review")
+            self.assertNotIn("decisionId", stored["entries"][0])
+            self.assertIn("instructionalAuditHash", verify_instructional_audit(root))
 
     def test_review_needs_two_arrangements_and_confirmed_bound_teacher_decision_before_pass(self):
         invalid = _candidate(self.root, status="review")
@@ -508,6 +575,24 @@ class InstructionalAuditTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(json.loads(result.stdout)["ok"])
+        with tempfile.TemporaryDirectory(dir="/tmp", prefix="link-parent-") as temporary:
+            container = Path(temporary)
+            real_parent = container / "real-parent"
+            linked_parent = container / "link-parent"
+            linked_root = real_parent / "course"
+            _write_root(linked_root)
+            (linked_root / ".course-work/candidates").mkdir()
+            write_json_atomic(linked_root / ".course-work/candidates/audit.json", _candidate(linked_root))
+            linked_parent.symlink_to(real_parent, target_is_directory=True)
+            result = subprocess.run(
+                ["python3", str(script), str(linked_parent / "course"), ".course-work/candidates/audit.json", "--json"],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue((linked_root / INSTRUCTIONAL_AUDIT_RELATIVE_PATH).is_file())
         for raw in (
             str(candidate_path),
             ".course-work/candidates/./audit.json",
@@ -550,7 +635,7 @@ class InstructionalAuditTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(result.returncode, 2)
-            self.assertEqual(json.loads(result.stdout)["error"]["code"], "invalid-root")
+            self.assertEqual(json.loads(result.stdout)["error"]["code"], "symlink-root")
             for kind in ("course-work", "candidates"):
                 with self.subTest(kind=kind):
                     candidate_root = fixture / f"{kind}-root"
