@@ -55,6 +55,37 @@ REQUIRED_SLICE_FIELDS = (
     "unresolvedBlockers",
     "proposedExclusions",
 )
+TEACHING_DESIGN_SLICE_FIELDS = (
+    "arcPhaseId",
+    "instructionalRole",
+    "methodStepIds",
+    "learnerStateBefore",
+    "learnerStateAfter",
+    "artifactUpdate",
+    "whyOwnSlice",
+)
+INSTRUCTIONAL_ROLES = frozenset({
+    "hook",
+    "activate-prior-knowledge",
+    "teach",
+    "model",
+    "guided-practice",
+    "independent-practice",
+    "feedback",
+    "synthesis",
+    "transfer",
+})
+TEACHING_ROLES = frozenset({"teach", "model"})
+PRACTICE_ROLES = frozenset({"guided-practice", "independent-practice", "synthesis", "transfer"})
+STUDENT_REVIEW_CRITERIA = (
+    "purpose-clarity",
+    "method-before-practice",
+    "scaffolding",
+    "assessment-load",
+    "cumulative-progress",
+    "motivation-and-pacing",
+    "transfer",
+)
 ACTION_KINDS_REQUIRING_EVIDENCE = frozenset({"answer", "interaction"})
 STABLE_TARGET = re.compile(r"^(?:question|claim):" + ID_RE.pattern[1:-1] + r"$")
 BACKTRACKING = re.compile(r"backtrack|go back|previous (?:page|slice)|回看|回退|返回上一", re.IGNORECASE)
@@ -209,14 +240,198 @@ def _validate_source_use(value: object, path: str, sources: Mapping[str, dict], 
             issues.append(_issue(f"{path}.locator", "source-locator-mismatch", "source locator must preserve the current coverage locator"))
 
 
-def _validate_slice(slice_data: object, path: str, expected_part_id: str, sources: Mapping[str, dict], issues: List[ValidationIssue]) -> str | None:
+def _validate_teaching_design(value: object, path: str, issues: List[ValidationIssue]) -> Tuple[Set[str], Dict[str, Set[str]]]:
+    if not isinstance(value, dict):
+        issues.append(_issue(path, "invalid-shape", "teachingDesign must be an object"))
+        return set(), {}
+    allowed = {
+        "essentialQuestion",
+        "learnerStartingPoint",
+        "learnerDestination",
+        "methodologies",
+        "casePractice",
+        "cumulativeArtifact",
+        "learningArc",
+        "studentPerspectiveReview",
+    }
+    _unknown_fields(value, allowed, path, issues)
+    for field in ("essentialQuestion", "learnerStartingPoint", "learnerDestination"):
+        if not _nonempty(value.get(field)):
+            issues.append(_issue(f"{path}.{field}", "required", f"teachingDesign requires {field}"))
+
+    method_step_ids: Set[str] = set()
+    methodologies = value.get("methodologies")
+    if not isinstance(methodologies, list) or not methodologies:
+        issues.append(_issue(f"{path}.methodologies", "methodologies-required", "teachingDesign needs at least one transferable methodology"))
+    else:
+        methodology_ids: Set[str] = set()
+        for method_index, methodology in enumerate(methodologies):
+            method_path = f"{path}.methodologies[{method_index}]"
+            if not isinstance(methodology, dict):
+                issues.append(_issue(method_path, "invalid-shape", "methodology must be an object"))
+                continue
+            _unknown_fields(methodology, {"id", "name", "purpose", "steps", "commonMistakes"}, method_path, issues)
+            method_id = methodology.get("id")
+            if not _nonempty(method_id) or not ID_RE.fullmatch(method_id):
+                issues.append(_issue(f"{method_path}.id", "invalid-stable-id", "methodology id must use the pinned lowercase hyphenated ID grammar"))
+            elif method_id in methodology_ids:
+                issues.append(_issue(f"{method_path}.id", "duplicate-methodology-id", "methodology id must be unique"))
+            else:
+                methodology_ids.add(method_id)
+            for field in ("name", "purpose"):
+                if not _nonempty(methodology.get(field)):
+                    issues.append(_issue(f"{method_path}.{field}", "required", f"methodology requires {field}"))
+            mistakes = methodology.get("commonMistakes")
+            if not isinstance(mistakes, list) or not mistakes or not all(_nonempty(item) for item in mistakes):
+                issues.append(_issue(f"{method_path}.commonMistakes", "common-mistakes-required", "methodology needs concrete common mistakes"))
+            steps = methodology.get("steps")
+            if not isinstance(steps, list) or not steps:
+                issues.append(_issue(f"{method_path}.steps", "method-steps-required", "methodology needs at least one teachable step"))
+                continue
+            for step_index, step in enumerate(steps):
+                step_path = f"{method_path}.steps[{step_index}]"
+                if not isinstance(step, dict):
+                    issues.append(_issue(step_path, "invalid-shape", "method step must be an object"))
+                    continue
+                _unknown_fields(step, {"id", "name", "learnerCapability"}, step_path, issues)
+                step_id = step.get("id")
+                if not _nonempty(step_id) or not ID_RE.fullmatch(step_id):
+                    issues.append(_issue(f"{step_path}.id", "invalid-stable-id", "method step id must use the pinned lowercase hyphenated ID grammar"))
+                elif step_id in method_step_ids:
+                    issues.append(_issue(f"{step_path}.id", "duplicate-method-step-id", "method step id must be unique across the course"))
+                else:
+                    method_step_ids.add(step_id)
+                for field in ("name", "learnerCapability"):
+                    if not _nonempty(step.get(field)):
+                        issues.append(_issue(f"{step_path}.{field}", "required", f"method step requires {field}"))
+
+    case_practice = value.get("casePractice")
+    if not isinstance(case_practice, dict):
+        issues.append(_issue(f"{path}.casePractice", "required", "teachingDesign needs a casePractice object"))
+    else:
+        _unknown_fields(case_practice, {"anchorCase", "caseRole", "transferTask"}, f"{path}.casePractice", issues)
+        for field in ("anchorCase", "caseRole", "transferTask"):
+            if not _nonempty(case_practice.get(field)):
+                issues.append(_issue(f"{path}.casePractice.{field}", "required", f"casePractice requires {field}"))
+
+    artifact = value.get("cumulativeArtifact")
+    if not isinstance(artifact, dict):
+        issues.append(_issue(f"{path}.cumulativeArtifact", "required", "teachingDesign needs a cumulativeArtifact object"))
+    else:
+        _unknown_fields(artifact, {"name", "description"}, f"{path}.cumulativeArtifact", issues)
+        for field in ("name", "description"):
+            if not _nonempty(artifact.get(field)):
+                issues.append(_issue(f"{path}.cumulativeArtifact.{field}", "required", f"cumulativeArtifact requires {field}"))
+
+    phase_method_steps: Dict[str, Set[str]] = {}
+    learning_arc = value.get("learningArc")
+    if not isinstance(learning_arc, list) or not learning_arc:
+        issues.append(_issue(f"{path}.learningArc", "learning-arc-required", "teachingDesign needs an ordered learning arc"))
+    else:
+        for phase_index, phase in enumerate(learning_arc):
+            phase_path = f"{path}.learningArc[{phase_index}]"
+            if not isinstance(phase, dict):
+                issues.append(_issue(phase_path, "invalid-shape", "learning arc phase must be an object"))
+                continue
+            _unknown_fields(
+                phase,
+                {"id", "title", "instructionalRoles", "methodStepIds", "learnerStartsWith", "learnerDoes", "learnerLeavesWith", "artifactUpdate"},
+                phase_path,
+                issues,
+            )
+            phase_id = phase.get("id")
+            valid_phase_id = _nonempty(phase_id) and bool(ID_RE.fullmatch(phase_id))
+            if not valid_phase_id:
+                issues.append(_issue(f"{phase_path}.id", "invalid-stable-id", "learning arc phase id must use the pinned lowercase hyphenated ID grammar"))
+            elif phase_id in phase_method_steps:
+                issues.append(_issue(f"{phase_path}.id", "duplicate-arc-phase-id", "learning arc phase id must be unique"))
+            for field in ("title", "learnerStartsWith", "learnerDoes", "learnerLeavesWith", "artifactUpdate"):
+                if not _nonempty(phase.get(field)):
+                    issues.append(_issue(f"{phase_path}.{field}", "required", f"learning arc phase requires {field}"))
+            roles = phase.get("instructionalRoles")
+            if not isinstance(roles, list) or not roles or not all(role in INSTRUCTIONAL_ROLES for role in roles):
+                issues.append(_issue(f"{phase_path}.instructionalRoles", "invalid-instructional-role", "learning arc phase needs supported instructional roles"))
+            elif len(set(roles)) != len(roles):
+                issues.append(_issue(f"{phase_path}.instructionalRoles", "duplicate-instructional-role", "instructional roles must be unique within a phase"))
+            phase_steps = phase.get("methodStepIds")
+            if not isinstance(phase_steps, list) or not all(_nonempty(step_id) for step_id in phase_steps):
+                issues.append(_issue(f"{phase_path}.methodStepIds", "invalid-shape", "methodStepIds must be a string list"))
+                phase_steps = []
+            elif len(set(phase_steps)) != len(phase_steps):
+                issues.append(_issue(f"{phase_path}.methodStepIds", "duplicate-method-step-id", "methodStepIds must be unique within a phase"))
+            for step_index, step_id in enumerate(phase_steps):
+                if step_id not in method_step_ids:
+                    issues.append(_issue(f"{phase_path}.methodStepIds[{step_index}]", "unknown-method-step", "learning arc phase references an unknown methodology step"))
+            if valid_phase_id and phase_id not in phase_method_steps:
+                phase_method_steps[phase_id] = set(phase_steps)
+
+    student_review = value.get("studentPerspectiveReview")
+    review_path = f"{path}.studentPerspectiveReview"
+    if not isinstance(student_review, dict):
+        issues.append(_issue(review_path, "student-review-required", "teachingDesign needs a student-perspective review before teacher confirmation"))
+    else:
+        _unknown_fields(student_review, {"status", "studentJourneySummary", "checks", "revisionsMade", "remainingConcerns"}, review_path, issues)
+        if student_review.get("status") != "ready-for-teacher":
+            issues.append(_issue(f"{review_path}.status", "student-review-not-ready", "student-perspective review must resolve revisions before teacher confirmation"))
+        if not _nonempty(student_review.get("studentJourneySummary")):
+            issues.append(_issue(f"{review_path}.studentJourneySummary", "required", "student-perspective review needs a concrete journey summary"))
+        checks = student_review.get("checks")
+        seen_criteria: Set[str] = set()
+        if not isinstance(checks, list):
+            issues.append(_issue(f"{review_path}.checks", "required", "student-perspective review checks must be a list"))
+        else:
+            for check_index, check in enumerate(checks):
+                check_path = f"{review_path}.checks[{check_index}]"
+                if not isinstance(check, dict):
+                    issues.append(_issue(check_path, "invalid-shape", "student-perspective check must be an object"))
+                    continue
+                _unknown_fields(check, {"criterion", "status", "evidence"}, check_path, issues)
+                criterion = check.get("criterion")
+                if criterion not in STUDENT_REVIEW_CRITERIA:
+                    issues.append(_issue(f"{check_path}.criterion", "invalid-review-criterion", "student-perspective check uses an unsupported criterion"))
+                elif criterion in seen_criteria:
+                    issues.append(_issue(f"{check_path}.criterion", "duplicate-review-criterion", "student-perspective criterion must be reviewed once"))
+                else:
+                    seen_criteria.add(criterion)
+                if check.get("status") != "pass":
+                    issues.append(_issue(f"{check_path}.status", "student-review-not-ready", "every student-perspective check must pass before teacher confirmation"))
+                if not _nonempty(check.get("evidence")):
+                    issues.append(_issue(f"{check_path}.evidence", "review-evidence-required", "student-perspective check needs concrete evidence"))
+        for criterion in STUDENT_REVIEW_CRITERIA:
+            if criterion not in seen_criteria:
+                issues.append(_issue(f"{review_path}.checks", "review-criterion-missing", f"student-perspective review is missing {criterion}"))
+        for field in ("revisionsMade", "remainingConcerns"):
+            items = student_review.get(field)
+            if not isinstance(items, list) or not all(_nonempty(item) for item in items):
+                issues.append(_issue(f"{review_path}.{field}", "invalid-shape", f"{field} must be a string list"))
+    return method_step_ids, phase_method_steps
+
+
+def _validate_slice(
+    slice_data: object,
+    path: str,
+    expected_part_id: str,
+    sources: Mapping[str, dict],
+    issues: List[ValidationIssue],
+    *,
+    teaching_design: dict | None = None,
+    method_step_ids: Set[str] | None = None,
+    phase_method_steps: Mapping[str, Set[str]] | None = None,
+) -> str | None:
     if not isinstance(slice_data, dict):
         issues.append(_issue(path, "invalid-shape", "slice must be an object"))
         return None
-    _unknown_fields(slice_data, set(REQUIRED_SLICE_FIELDS), path, issues)
+    allowed_fields = set(REQUIRED_SLICE_FIELDS)
+    if teaching_design is not None:
+        allowed_fields.update(TEACHING_DESIGN_SLICE_FIELDS)
+    _unknown_fields(slice_data, allowed_fields, path, issues)
     for field in REQUIRED_SLICE_FIELDS:
         if field not in slice_data:
             issues.append(_issue(f"{path}.{field}", "required", f"slice requires {field}"))
+    if teaching_design is not None:
+        for field in TEACHING_DESIGN_SLICE_FIELDS:
+            if field not in slice_data:
+                issues.append(_issue(f"{path}.{field}", "required", f"teaching-design page plan requires {field}"))
     part_id = slice_data.get("partId")
     if not _nonempty(part_id):
         issues.append(_issue(f"{path}.partId", "required", "slice partId is required"))
@@ -234,6 +449,36 @@ def _validate_slice(slice_data: object, path: str, expected_part_id: str, source
     for field in ("title", "teachingPurpose", "learnerSees"):
         if not _nonempty(slice_data.get(field)):
             issues.append(_issue(f"{path}.{field}", "required", f"{field} is required"))
+
+    if teaching_design is not None:
+        phase_id = slice_data.get("arcPhaseId")
+        phases = phase_method_steps or {}
+        if not _nonempty(phase_id) or phase_id not in phases:
+            issues.append(_issue(f"{path}.arcPhaseId", "unknown-arc-phase", "Slice must reference a learning-arc phase from teachingDesign"))
+        role = slice_data.get("instructionalRole")
+        if role not in INSTRUCTIONAL_ROLES:
+            issues.append(_issue(f"{path}.instructionalRole", "invalid-instructional-role", "Slice needs a supported instructional role"))
+        else:
+            phase = next((item for item in teaching_design.get("learningArc", []) if isinstance(item, dict) and item.get("id") == phase_id), None)
+            phase_roles = phase.get("instructionalRoles", []) if isinstance(phase, dict) else []
+            if role not in phase_roles:
+                issues.append(_issue(f"{path}.instructionalRole", "role-phase-mismatch", "Slice role must be declared by its learning-arc phase"))
+        slice_steps = slice_data.get("methodStepIds")
+        if not isinstance(slice_steps, list) or not all(_nonempty(step_id) for step_id in slice_steps):
+            issues.append(_issue(f"{path}.methodStepIds", "invalid-shape", "Slice methodStepIds must be a string list"))
+            slice_steps = []
+        elif len(set(slice_steps)) != len(slice_steps):
+            issues.append(_issue(f"{path}.methodStepIds", "duplicate-method-step-id", "Slice methodStepIds must be unique"))
+        for step_index, step_id in enumerate(slice_steps):
+            if step_id not in (method_step_ids or set()):
+                issues.append(_issue(f"{path}.methodStepIds[{step_index}]", "unknown-method-step", "Slice references an unknown methodology step"))
+            elif phase_id in phases and step_id not in phases[phase_id]:
+                issues.append(_issue(f"{path}.methodStepIds[{step_index}]", "method-step-phase-mismatch", "Slice method step must be declared by its learning-arc phase"))
+        for field in ("learnerStateBefore", "learnerStateAfter", "artifactUpdate", "whyOwnSlice"):
+            if not _nonempty(slice_data.get(field)):
+                issues.append(_issue(f"{path}.{field}", "required", f"teaching-design page plan requires {field}"))
+        if _nonempty(slice_data.get("learnerStateBefore")) and slice_data.get("learnerStateBefore").strip() == str(slice_data.get("learnerStateAfter", "")).strip():
+            issues.append(_issue(f"{path}.learnerStateAfter", "no-learning-state-change", "Slice must name a concrete learner-state change"))
 
     source_uses = slice_data.get("sourceUses")
     if not isinstance(source_uses, list):
@@ -380,15 +625,27 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
     issues.extend(index_issues)
     if not isinstance(document, dict):
         return issues + [_issue(PLAN_RELATIVE_PATH, "invalid-shape", "page plan must be an object")]
-    _unknown_fields(document, {"schemaVersion", "title", "parts", "approval"}, PLAN_RELATIVE_PATH, issues)
+    _unknown_fields(document, {"schemaVersion", "title", "teachingDesign", "parts", "approval"}, PLAN_RELATIVE_PATH, issues)
     if document.get("schemaVersion") != "2.0":
         issues.append(_issue(f"{PLAN_RELATIVE_PATH}.schemaVersion", "invalid-version", "page plan schemaVersion must be 2.0"))
+    teaching_design = document.get("teachingDesign")
+    method_step_ids: Set[str] = set()
+    phase_method_steps: Dict[str, Set[str]] = {}
+    if teaching_design is not None:
+        method_step_ids, phase_method_steps = _validate_teaching_design(
+            teaching_design,
+            f"{PLAN_RELATIVE_PATH}.teachingDesign",
+            issues,
+        )
     parts = document.get("parts")
     if not isinstance(parts, list) or not parts:
         issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "parts-required", "page plan needs at least one Part"))
         return issues
     part_ids: Set[str] = set()
     slice_ids: Set[str] = set()
+    planned_phase_ids: List[str] = []
+    method_roles: Dict[str, Set[str]] = {step_id: set() for step_id in method_step_ids}
+    all_roles: Set[str] = set()
     for part_index, part in enumerate(parts):
         part_path = f"{PLAN_RELATIVE_PATH}.parts[{part_index}]"
         if not isinstance(part, dict):
@@ -410,11 +667,52 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
             issues.append(_issue(f"{part_path}.slices", "part-slices-required", "Part needs at least one Slice"))
             continue
         for slice_index, slice_data in enumerate(slices):
-            slice_id = _validate_slice(slice_data, f"{part_path}.slices[{slice_index}]", part_id, sources, issues)
+            slice_id = _validate_slice(
+                slice_data,
+                f"{part_path}.slices[{slice_index}]",
+                part_id,
+                sources,
+                issues,
+                teaching_design=teaching_design if isinstance(teaching_design, dict) else None,
+                method_step_ids=method_step_ids,
+                phase_method_steps=phase_method_steps,
+            )
             if slice_id is not None:
                 if slice_id in slice_ids:
                     issues.append(_issue(f"{part_path}.slices[{slice_index}].sliceId", "duplicate-slice-id", "sliceId must be unique"))
                 slice_ids.add(slice_id)
+            if isinstance(teaching_design, dict) and isinstance(slice_data, dict):
+                phase_id = slice_data.get("arcPhaseId")
+                role = slice_data.get("instructionalRole")
+                if isinstance(phase_id, str):
+                    planned_phase_ids.append(phase_id)
+                if isinstance(role, str):
+                    all_roles.add(role)
+                for step_id in slice_data.get("methodStepIds", []) if isinstance(slice_data.get("methodStepIds"), list) else []:
+                    if step_id in method_roles and isinstance(role, str):
+                        method_roles[step_id].add(role)
+    if isinstance(teaching_design, dict):
+        arc_phase_ids = [
+            phase.get("id")
+            for phase in teaching_design.get("learningArc", [])
+            if isinstance(phase, dict) and isinstance(phase.get("id"), str)
+        ]
+        phase_positions = {phase_id: index for index, phase_id in enumerate(arc_phase_ids)}
+        used_positions = [phase_positions[phase_id] for phase_id in planned_phase_ids if phase_id in phase_positions]
+        if used_positions != sorted(used_positions):
+            issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "learning-arc-order-mismatch", "Slice order must follow the approved learning arc"))
+        for phase_id in arc_phase_ids:
+            if phase_id not in planned_phase_ids:
+                issues.append(_issue(f"{PLAN_RELATIVE_PATH}.teachingDesign.learningArc", "arc-phase-unused", f"learning arc phase {phase_id} needs at least one Slice"))
+        for step_id, roles in method_roles.items():
+            if not roles.intersection(TEACHING_ROLES):
+                issues.append(_issue(f"{PLAN_RELATIVE_PATH}.teachingDesign.methodologies", "method-step-not-taught", f"method step {step_id} must be explicitly taught or modelled before practice"))
+            if not roles.intersection(PRACTICE_ROLES):
+                issues.append(_issue(f"{PLAN_RELATIVE_PATH}.teachingDesign.methodologies", "method-step-not-practised", f"method step {step_id} needs guided, independent, synthesis, or transfer practice"))
+        if "model" not in all_roles:
+            issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "worked-example-required", "teaching-design page plan needs at least one worked model"))
+        if "transfer" not in all_roles:
+            issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "transfer-slice-required", "teaching-design page plan needs at least one transfer Slice"))
     _validate_coverage_placement(document, coverage, issues)
     return issues
 
@@ -749,10 +1047,90 @@ def _detail_list(value: object) -> str:
     return "；".join(str(item) for item in value)
 
 
+def _render_teaching_design(design: dict) -> List[str]:
+    lines = [
+        "## 教学设计总图",
+        "",
+        f"- 核心问题：{_markdown_safe(design.get('essentialQuestion', '—'))}",
+        f"- 学生起点：{_markdown_safe(design.get('learnerStartingPoint', '—'))}",
+        f"- 学习终点：{_markdown_safe(design.get('learnerDestination', '—'))}",
+    ]
+    case_practice = design.get("casePractice") if isinstance(design.get("casePractice"), dict) else {}
+    artifact = design.get("cumulativeArtifact") if isinstance(design.get("cumulativeArtifact"), dict) else {}
+    lines.extend([
+        f"- 核心案例：{_markdown_safe(case_practice.get('anchorCase', '—'))}；作用：{_markdown_safe(case_practice.get('caseRole', '—'))}",
+        f"- 迁移任务：{_markdown_safe(case_practice.get('transferTask', '—'))}",
+        f"- 累计学习成果：{_markdown_safe(artifact.get('name', '—'))}；{_markdown_safe(artifact.get('description', '—'))}",
+        "",
+        "### 核心方法论",
+        "",
+        "| 方法 | 解决的问题 | 教学步骤 | 常见错误 |",
+        "| --- | --- | --- | --- |",
+    ])
+    for methodology in design.get("methodologies", []) if isinstance(design.get("methodologies"), list) else []:
+        if not isinstance(methodology, dict):
+            continue
+        steps = methodology.get("steps") if isinstance(methodology.get("steps"), list) else []
+        step_text = "；".join(
+            f"{step.get('name', '—')}：{step.get('learnerCapability', '—')}"
+            for step in steps if isinstance(step, dict)
+        ) or "—"
+        lines.append("| " + " | ".join(_markdown_safe(value) for value in (
+            methodology.get("name", "—"),
+            methodology.get("purpose", "—"),
+            step_text,
+            _detail_list(methodology.get("commonMistakes")),
+        )) + " |")
+    lines.extend([
+        "",
+        "### 学习路径",
+        "",
+        "| 阶段 | 教学作用 | 进入时 | 学生经历 | 离开时 | 累计成果更新 |",
+        "| --- | --- | --- | --- | --- | --- |",
+    ])
+    for phase in design.get("learningArc", []) if isinstance(design.get("learningArc"), list) else []:
+        if not isinstance(phase, dict):
+            continue
+        lines.append("| " + " | ".join(_markdown_safe(value) for value in (
+            f"{phase.get('id', '—')} / {phase.get('title', '—')}",
+            "、".join(phase.get("instructionalRoles", [])) if isinstance(phase.get("instructionalRoles"), list) else "—",
+            phase.get("learnerStartsWith", "—"),
+            phase.get("learnerDoes", "—"),
+            phase.get("learnerLeavesWith", "—"),
+            phase.get("artifactUpdate", "—"),
+        )) + " |")
+    review = design.get("studentPerspectiveReview") if isinstance(design.get("studentPerspectiveReview"), dict) else {}
+    lines.extend([
+        "",
+        "### 学生视角预审",
+        "",
+        f"- 结论：{_markdown_safe(review.get('status', '—'))}",
+        f"- 学生旅程：{_markdown_safe(review.get('studentJourneySummary', '—'))}",
+        f"- 预审后已修改：{_markdown_safe(_detail_list(review.get('revisionsMade')))}",
+        f"- 仍需老师关注：{_markdown_safe(_detail_list(review.get('remainingConcerns')))}",
+        "",
+        "| 检查 | 结论 | 具体依据 |",
+        "| --- | --- | --- |",
+    ])
+    for check in review.get("checks", []) if isinstance(review.get("checks"), list) else []:
+        if isinstance(check, dict):
+            lines.append("| " + " | ".join(_markdown_safe(value) for value in (
+                check.get("criterion", "—"),
+                check.get("status", "—"),
+                check.get("evidence", "—"),
+            )) + " |")
+    return lines
+
+
 def render_teacher_plan(plan: dict, coverage: dict) -> str:
     """Generate the teacher view; this Markdown is deliberately never approval evidence."""
     title = plan.get("title") if _nonempty(plan.get("title")) else "课程页计划"
-    lines = [f"# {_markdown_safe(title)}", "", "## 页面计划", "", "| Part / Slice | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- |"]
+    lines = [f"# {_markdown_safe(title)}", ""]
+    teaching_design = plan.get("teachingDesign")
+    if isinstance(teaching_design, dict):
+        lines.extend(_render_teaching_design(teaching_design))
+        lines.append("")
+    lines.extend(["## 逐页计划", "", "| Part / Slice | 教学阶段 | 教学角色 | 方法步骤 | 理解变化 | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"])
     part_titles = {
         part.get("partId"): part.get("title", "—")
         for part in plan.get("parts", [])
@@ -770,6 +1148,10 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
         identity = f"{slice_data.get('partId', '—')} / {slice_data.get('sliceId', '—')}"
         lines.append("| " + " | ".join(_markdown_safe(value) for value in (
             identity,
+            slice_data.get("arcPhaseId", "—"),
+            slice_data.get("instructionalRole", "—"),
+            "、".join(slice_data.get("methodStepIds", [])) if isinstance(slice_data.get("methodStepIds"), list) else "—",
+            f"{slice_data.get('learnerStateBefore', '—')} → {slice_data.get('learnerStateAfter', '—')}",
             slice_data.get("teachingPurpose", "—"),
             _source_text(source_uses),
             slice_data.get("learnerSees", "—"),
@@ -786,6 +1168,11 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
             f"### {_markdown_safe(part_titles.get(slice_data.get('partId'), '—'))} / {_markdown_safe(slice_data.get('title', '—'))}",
             "",
             f"- 学生看到：{_markdown_safe(slice_data.get('learnerSees', '—'))}",
+            f"- 教学阶段与角色：{_markdown_safe(slice_data.get('arcPhaseId', '—'))}；{_markdown_safe(slice_data.get('instructionalRole', '—'))}",
+            f"- 对应方法步骤：{_markdown_safe(slice_data.get('methodStepIds', []))}",
+            f"- 学生理解变化：{_markdown_safe(slice_data.get('learnerStateBefore', '—'))} → {_markdown_safe(slice_data.get('learnerStateAfter', '—'))}",
+            f"- 累计成果更新：{_markdown_safe(slice_data.get('artifactUpdate', '—'))}",
+            f"- 独立成页理由：{_markdown_safe(slice_data.get('whyOwnSlice', '—'))}",
             f"- 完成证据：{_markdown_safe(slice_data.get('completionEvidence', '—'))}",
             f"- 学生行动类型与参考安排：{_markdown_safe(action.get('kind', '—'))}；{_markdown_safe(action.get('referencePolicy', '—'))}；{_markdown_safe(action.get('referenceSourceIds', []))}；{_markdown_safe(action.get('targetId', '—'))}；{_markdown_safe(action.get('dependencyJustification', '—'))}",
             f"- 同页参考/依赖：{_markdown_safe(_detail_list(slice_data.get('coVisibleRequirements')))}",

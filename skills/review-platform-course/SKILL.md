@@ -30,7 +30,7 @@ For every Part, complete all six dimensions with `pass|revise` and concrete evid
 - 练习与反馈 (`practiceFeedback`);
 - 资源与格式 (`resourcesFormat`).
 
-Within every Part, review every Slice's content purpose, one-screen desktop layout, workflow reachability and meaningful branches, interaction completion, and media behavior. Inspect actual G7 runtime events and errors. 任一维度 or Slice check marked `revise` makes the Part fail and blocks G8.
+Within every Part, review every Slice's content purpose, one-screen desktop layout, workflow reachability and meaningful branches, interaction completion, and media behavior. When the approved storyboard contains `teachingDesign`, independently verify that the rendered course still teaches the named methodology before asking for independent practice, includes a real worked model and scaffolding, advances the cumulative learner artifact, follows the approved learning arc, avoids repetitive test-like question pairs, and reaches the transfer task. Inspect actual G7 runtime events and errors. 任一维度 or Slice check marked `revise` makes the Part fail and blocks G8.
 
 Check each objective against its exact `evidenceBlockIds`, linking the 目标与真实 Part and at least one 学习证据 Block. That Block must sit inside a Part aligned to the objective and collect a real result; static text, images, or PDF alone do not count.
 

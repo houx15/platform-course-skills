@@ -143,6 +143,138 @@ def plan_document():
     }
 
 
+def teaching_plan_document():
+    plan = plan_document()
+    plan["teachingDesign"] = {
+        "essentialQuestion": "怎样用证据判断一个公开主张是否站得住？",
+        "learnerStartingPoint": "学生容易凭主张的语气或单一图表快速下结论。",
+        "learnerDestination": "学生能够使用证据核查步骤，并把方法迁移到新的公开主张。",
+        "methodologies": [
+            {
+                "id": "evidence-check",
+                "name": "证据核查",
+                "purpose": "把直觉判断转化为可复核的证据判断。",
+                "steps": [
+                    {
+                        "id": "evidence-compare",
+                        "name": "主张—证据对照",
+                        "learnerCapability": "指出证据支持、限制或无法回答主张的部分。",
+                    }
+                ],
+                "commonMistakes": ["只复述图表，不说明它与主张的关系。"],
+            }
+        ],
+        "casePractice": {
+            "anchorCase": "一条带图表的公开主张",
+            "caseRole": "让学生跟随示范完成一次完整证据核查。",
+            "transferTask": "独立判断另一条公开主张并说明证据边界。",
+        },
+        "cumulativeArtifact": {
+            "name": "证据判断记录",
+            "description": "持续记录主张、证据、判断和仍需核查的信息。",
+        },
+        "learningArc": [
+            {
+                "id": "phase-learn",
+                "title": "学习核查方法",
+                "instructionalRoles": ["teach", "model"],
+                "methodStepIds": ["evidence-compare"],
+                "learnerStartsWith": "只有直觉判断。",
+                "learnerDoes": "观看一次主张—证据对照示范。",
+                "learnerLeavesWith": "知道核查时要同时写出支持和边界。",
+                "artifactUpdate": "建立证据判断记录的四个栏位。",
+            },
+            {
+                "id": "phase-practise",
+                "title": "跟随案例练习",
+                "instructionalRoles": ["guided-practice"],
+                "methodStepIds": ["evidence-compare"],
+                "learnerStartsWith": "知道步骤但尚未自己使用。",
+                "learnerDoes": "比较主张与图表并写出判断。",
+                "learnerLeavesWith": "完成一条有证据边界的判断。",
+                "artifactUpdate": "填写案例的主张、证据和判断。",
+            },
+            {
+                "id": "phase-transfer",
+                "title": "迁移到新主张",
+                "instructionalRoles": ["transfer"],
+                "methodStepIds": ["evidence-compare"],
+                "learnerStartsWith": "已经在示范案例中完成核查。",
+                "learnerDoes": "独立核查一个新的公开主张。",
+                "learnerLeavesWith": "能够不依赖示范迁移核查方法。",
+                "artifactUpdate": "新增一条独立核查记录。",
+            },
+        ],
+        "studentPerspectiveReview": {
+            "status": "ready-for-teacher",
+            "studentJourneySummary": "先理解方法并看示范，再跟随案例练习，最后独立迁移。",
+            "checks": [
+                {"criterion": criterion, "status": "pass", "evidence": f"已具体检查 {criterion}。"}
+                for criterion in (
+                    "purpose-clarity",
+                    "method-before-practice",
+                    "scaffolding",
+                    "assessment-load",
+                    "cumulative-progress",
+                    "motivation-and-pacing",
+                    "transfer",
+                )
+            ],
+            "revisionsMade": ["将原来连续两道题改为方法示范、案例练习和迁移。"],
+            "remainingConcerns": [],
+        },
+    }
+    practice_slice = plan["parts"][0]["slices"][0]
+    practice_slice.update({
+        "arcPhaseId": "phase-practise",
+        "instructionalRole": "guided-practice",
+        "methodStepIds": ["evidence-compare"],
+        "learnerStateBefore": "知道证据核查步骤，但尚未自己使用。",
+        "learnerStateAfter": "能够在提示下写出证据支持与边界。",
+        "artifactUpdate": "完成示范案例的证据判断记录。",
+        "whyOwnSlice": "需要让图表和作答区同屏，集中完成第一次方法练习。",
+    })
+    model_slice = {
+        "partId": "part-evidence",
+        "sliceId": "slice-model",
+        "title": "示范如何核查主张",
+        "teachingPurpose": "讲清证据核查步骤并展示完整思考过程。",
+        "sourceUses": [],
+        "learnerSees": "一份逐步展开的主张—证据对照示范。",
+        "learnerAction": {"kind": "observe", "description": "跟随示范标记支持与边界。", "referencePolicy": "none", "referenceSourceIds": []},
+        "completionEvidence": {"event": "block.completed"},
+        "layoutIntent": {"preset": "full"},
+        "coVisibleRequirements": [],
+        "imageRelationships": [],
+        "unresolvedBlockers": [],
+        "proposedExclusions": [],
+        "arcPhaseId": "phase-learn",
+        "instructionalRole": "model",
+        "methodStepIds": ["evidence-compare"],
+        "learnerStateBefore": "只有直觉判断。",
+        "learnerStateAfter": "知道核查步骤和完整判断的结构。",
+        "artifactUpdate": "建立证据判断记录的四个栏位。",
+        "whyOwnSlice": "完整示范需要独立呈现，避免和首次作答竞争注意力。",
+    }
+    transfer_slice = {
+        **copy.deepcopy(model_slice),
+        "sliceId": "slice-transfer",
+        "title": "独立核查新主张",
+        "teachingPurpose": "检验学生能否把证据核查方法迁移到新情境。",
+        "learnerSees": "一条新的公开主张及其证据。",
+        "learnerAction": {"kind": "answer", "description": "独立写出证据判断和边界。", "referencePolicy": "none", "referenceSourceIds": []},
+        "completionEvidence": {"artifact": "提交一条新的证据判断记录。"},
+        "arcPhaseId": "phase-transfer",
+        "instructionalRole": "transfer",
+        "learnerStateBefore": "已经在示范案例中完成核查。",
+        "learnerStateAfter": "能够独立迁移证据核查方法。",
+        "artifactUpdate": "新增一条独立核查记录。",
+        "whyOwnSlice": "迁移任务必须与示范案例分开，才能观察独立应用。",
+    }
+    plan["parts"][0]["slices"] = [model_slice, practice_slice, transfer_slice]
+    return plan
+
+
 def write_root(root: Path, *, plan=None, coverage=None, extracted=None):
     """Create a fixture only inside an explicit temporary course root.
 
@@ -235,6 +367,43 @@ class InstructionalPlanTests(unittest.TestCase):
         empty["parts"][0]["slices"] = []
         self.assertIn("part-slices-required", {issue.code for issue in self.api().validate_instructional_plan(empty, coverage_document())})
 
+    def test_new_teaching_design_plan_validates_and_renders_before_page_rows(self):
+        data = teaching_plan_document()
+        self.assertEqual(self.api().validate_instructional_plan(data, coverage_document()), [])
+        rendered = self.api().render_teacher_plan(data, coverage_document())
+        self.assertLess(rendered.index("## 教学设计总图"), rendered.index("## 逐页计划"))
+        self.assertIn("### 核心方法论", rendered)
+        self.assertIn("### 学生视角预审", rendered)
+        self.assertIn("证据核查", rendered)
+        self.assertIn("只有直觉判断。 → 知道核查步骤和完整判断的结构。", rendered)
+
+    def test_teaching_design_requires_student_review_before_teacher_confirmation(self):
+        data = teaching_plan_document()
+        del data["teachingDesign"]["studentPerspectiveReview"]
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertIn("student-review-required", codes)
+
+        data = teaching_plan_document()
+        data["teachingDesign"]["studentPerspectiveReview"]["checks"][0]["status"] = "revise"
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertIn("student-review-not-ready", codes)
+
+    def test_teaching_design_rejects_question_first_or_unpractised_method_steps(self):
+        data = teaching_plan_document()
+        data["parts"][0]["slices"][0]["instructionalRole"] = "feedback"
+        data["teachingDesign"]["learningArc"][0]["instructionalRoles"] = ["feedback"]
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertIn("method-step-not-taught", codes)
+
+        data = teaching_plan_document()
+        data["parts"][0]["slices"] = data["parts"][0]["slices"][:1]
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertTrue({"arc-phase-unused", "method-step-not-practised", "transfer-slice-required"}.issubset(codes))
+
+    def test_teaching_design_is_additive_for_existing_courses(self):
+        self.assertNotIn("teachingDesign", plan_document())
+        self.assertEqual(self.api().validate_instructional_plan(plan_document(), coverage_document()), [])
+
     def test_fixture_writer_refuses_repository_root(self):
         with self.assertRaisesRegex(AssertionError, "must not be the repository root"):
             write_root(REPOSITORY_ROOT)
@@ -277,13 +446,13 @@ class InstructionalPlanTests(unittest.TestCase):
         self.assertNotIn("G0", rendered)
         self.assertNotIn("workflow", rendered.lower())
 
-    def test_teacher_table_has_exactly_eight_cells_per_header_delimiter_and_row(self):
+    def test_teacher_table_has_exactly_twelve_cells_per_header_delimiter_and_row(self):
         rendered = self.api().render_teacher_plan(plan_document(), coverage_document())
-        table = rendered.split("## 页面计划", 1)[1].split("## 页面细节", 1)[0]
+        table = rendered.split("## 逐页计划", 1)[1].split("## 页面细节", 1)[0]
         rows = [line for line in table.splitlines() if line.startswith("|")]
         self.assertGreaterEqual(len(rows), 3)
         for row in rows:
-            self.assertEqual(len(row.split("|")[1:-1]), 8, row)
+            self.assertEqual(len(row.split("|")[1:-1]), 12, row)
 
     def test_unbound_optional_source_use_is_rejected_and_never_rendered_as_unused(self):
         coverage = coverage_document()

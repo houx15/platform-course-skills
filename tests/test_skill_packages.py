@@ -163,7 +163,7 @@ class SkillPackageTests(unittest.TestCase):
         self.assertIn("老师只需要用中文自然交流", readme)
         self.assertIn("不需要把批注或确认翻译成英文", readme)
 
-    def test_build_platform_course_uses_confirmed_page_plan_before_autonomous_production(self):
+    def test_build_platform_course_uses_confirmed_teaching_design_and_page_plan_before_autonomous_production(self):
         skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"
         ).read_text(encoding="utf-8")
@@ -179,7 +179,7 @@ class SkillPackageTests(unittest.TestCase):
 
         for phrase in (
             "理解材料",
-            "确认逐页计划",
+            "确认教学设计与逐页计划",
             "制作并自检",
             "预览并发布",
             "真正阻塞项",
@@ -190,6 +190,8 @@ class SkillPackageTests(unittest.TestCase):
 
         self.assertNotIn("等待教师确认 both tables as one complete design gate", skill)
         self.assertNotIn("confirm the material summary", skill.lower())
+        self.assertIn("studentPerspectiveReview", skill)
+        self.assertIn("experiences a course rather than a test", skill)
 
     def test_apply_preview_feedback_treats_exact_annotation_as_instruction(self):
         skill = (
@@ -209,7 +211,7 @@ class SkillPackageTests(unittest.TestCase):
             ROOT / "skills" / "design-course-blueprint" / "SKILL.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("approved page plan", skill)
+        self.assertIn("approved teaching design", skill)
         self.assertIn("continue directly to compilation", skill)
         self.assertIn("teacher reviews the rendered result later", skill)
         self.assertNotIn("Batch related semantic decisions for teacher confirmation", skill)

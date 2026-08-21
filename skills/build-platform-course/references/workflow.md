@@ -94,13 +94,15 @@ Checks: record audience, prior knowledge, course purpose, objectives, estimated 
 
 Exit: the source-backed brief is complete enough to generate; only genuinely unknowable meaning-changing choices remain pending.
 
-### G3 — Course design
+### G3 — Teaching design and page plan
 
 Inputs: source-backed brief and source coverage.
 
-Checks: design the 课程开场, Parts, Slices, Blocks, layouts, learner actions, evidence, and conclusion. Maintain `courseFrame` and `objectiveAlignment`. Persist the 课程首尾设计表 and one Part/Slice row per learning unit for traceability, but do not require the teacher to review these internal views before preview. Static text, images, or PDF alone do not prove objective attainment. Encode the current result as `.course-work/course-blueprint.json` with explicit source and AI-draft provenance.
+Checks: first define the core transferable methodology, learner starting point and destination, anchor case, ordered learning arc, cumulative learner artifact, worked model, scaffolded practice, and transfer task. Then derive Parts and Slices from that design rather than from the source-file count. Each Slice names its arc phase, instructional role, method steps, learner-state change, artifact update, and reason for existing as a separate page. Static text, images, or PDF alone do not prove objective attainment, but explanation and modelling Slices do not need artificial questions.
 
-Exit: the AI draft is internally complete, contract-shaped, and has no unresolved correctness or completion blocker.
+Before teacher review, conduct the required student-perspective pass over purpose clarity, method-before-practice, scaffolding, assessment load, cumulative progress, motivation/pacing, and transfer. Repair any `revise` result internally. Persist the complete teaching design, review evidence, and page plan in `.course-work/course-storyboard.json`, render the combined readable Markdown, and obtain one teacher approval for both. The readable view keeps the 课程首尾设计表 for exact 课程开场 and conclusion copy, and preserves `objectiveAlignment` from each objective to its real Part and evidence Blocks. Older courses without `teachingDesign` retain their existing valid status and are not sent backward solely to reconstruct this artifact.
+
+Exit: the approved teaching design and page plan are coherent, source-backed, internally student-reviewed, and have no unresolved correctness or completion blocker. Encode the current result as `.course-work/course-blueprint.json` with explicit source and AI-draft provenance.
 
 ### G4 — Media design
 

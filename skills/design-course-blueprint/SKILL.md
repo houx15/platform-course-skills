@@ -5,17 +5,17 @@ description: Use when a teacher course draft has its learning content and materi
 
 # Design Course Blueprint
 
-Complete the production experience for every Slice after the teacher has approved the page-by-page teaching plan. Preserve that plan and all valid authored content. The pinned shared student Zod contract defines valid data; the runtime catalog makes every supported choice available to the authoring agent.
+Complete the production experience for every Slice after the teacher has approved the methodology-centred teaching design and the derived page plan. Preserve that instructional spine and all valid authored content. The pinned shared student Zod contract defines valid data; the runtime catalog makes every supported choice available to the authoring agent.
 
 ## Required inputs
 
 - the selected course root;
-- current `.course-work/course-storyboard.json` and its teacher approval for new work;
+- current `.course-work/course-storyboard.json`, including `teachingDesign`, the student-perspective review, the derived Slice rows, and their single teacher approval for new work;
 - `.course-work/course-blueprint.json`, or the explicitly named draft;
 - `_course-toolkit/course_toolkit/runtime_authoring_catalog.json`;
 - [runtime-authoring-standard.md](references/runtime-authoring-standard.md).
 
-If the draft still lacks stable Parts, Slices, learning objectives, or chosen materials, return it to `build-platform-course` for content design. This Skill completes runtime experience design; it does not invent the course's core teaching intent in isolation.
+If the draft still lacks a core methodology, ordered learning arc, worked model, scaffolded practice, transfer task, stable Parts/Slices, learning objectives, or chosen materials, return it to `build-platform-course` for teaching design. This Skill completes runtime experience design; it does not invent the course's teaching logic in isolation or turn every source into a question.
 
 ## Workflow
 
@@ -29,7 +29,7 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
 
 2. Read `.course-work/course-completion-plan.json`. Work through every Slice record; do not stop after fixing the first invalid Slice.
 3. Read the complete `runtime_authoring_catalog.json`. It exposes all four contract layouts, all seven split weights, all seven Block types, all 16 种 Action, all 16 种 Event, matcher fields, navigation options, video cues, HTML protocol fields, and the narrower teacher-side media-composition policy. Contract support does not mean every layout is a good default: do not generate `split-vertical` by default or stack multiple Blocks in `full`.
-4. Preserve every valid authored field and the approved page plan. 不得静默覆盖 explicit teacher wording, source-backed objectives, source disposition, image/question pairing, answers, rubrics, feedback, source paths, media timing, or prior production decisions. When runtime completion requires layout or Workflow detail that the approved plan did not specify, infer it, record the rationale, and continue. Pause only when the detailed implementation would change the approved teaching purpose/material/action or when correctness cannot be inferred.
+4. Preserve every valid authored field, the approved teaching design, and the derived page plan. Each Slice implementation must retain its learning-arc phase, instructional role, method-step links, learner-state change, and cumulative-artifact update. 不得静默覆盖 explicit teacher wording, source-backed objectives, source disposition, image/question pairing, answers, rubrics, feedback, source paths, media timing, or prior production decisions. When runtime completion requires layout or Workflow detail that the approved plan did not specify, infer it, record the rationale, and continue. Pause only when the detailed implementation would change the approved teaching purpose/material/action or when correctness cannot be inferred.
 5. For 每个 Slice, draft the complete production design:
 
    - `objectiveIds` and `estimatedSeconds`;
@@ -49,7 +49,7 @@ If the draft still lacks stable Parts, Slices, learning objectives, or chosen ma
    | Slice | Layout | Initial view | Narration and sequence | Student action | Branches and completion | Navigation | Needs confirmation |
    | --- | --- | --- | --- | --- | --- | --- | --- |
 
-12. Apply source-backed production decisions to `.course-work/course-blueprint.json`, preserve the page-plan approval evidence, update provenance, and continue directly to compilation. The teacher reviews the rendered result later. Ask one batched question only for true blockers. Never edit generated `course/course.json` directly.
+12. Apply source-backed production decisions to `.course-work/course-blueprint.json`, preserve the combined teaching-design/page-plan approval evidence, update provenance, and continue directly to compilation. Do not add questions merely to create a completion event; explanation, modelling, and guided observation Slices may use an appropriate non-assessment completion path. The teacher reviews the rendered result later. Ask one batched question only for true blockers. Never edit generated `course/course.json` directly.
 13. Rerun `complete-course-draft.py`. Continue until every Slice is `ready-for-contract-validation` and course-level issues are empty.
 14. Compile and validate through the shared student Zod contract:
 
