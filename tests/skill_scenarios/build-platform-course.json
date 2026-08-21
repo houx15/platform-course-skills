@@ -7,9 +7,11 @@
   "requiredPhrases": [
     "唯一教师入口",
     "analyze-course-materials",
-    "默认连续工作到首次完整预览",
-    "AI 初稿",
-    "真正阻塞项",
+    "理解材料",
+    "确认逐页计划",
+    "制作并自检",
+    "预览并发布",
+    "true blocker",
     "design-video-interactions",
     "design-course-html",
     "design-course-blueprint",
@@ -26,11 +28,11 @@
     "不得默认使用 text",
     "authoring source of truth",
     "流程图、示意图或信息图",
-    "预览优先",
+    "逐页视觉自检",
     ".course-work",
     "never hand edit `course/course.json`",
     "review-platform-course",
-    "不得报告可上传",
+    "Local completion never implies upload",
     "`pdf`",
     "Blueprint-referenced local asset path",
     "原始字节",
@@ -52,6 +54,6 @@
     ".course-work/video-candidates/",
     "explicitly confirm the processed candidate",
     "semantic anchor rather than scaling timestamps",
-    "Auto 模式"
+    "现在发布到学生端吗？"
   ]
 }

@@ -70,6 +70,10 @@ html, body, #root { height: 100%; }
 body { margin: 0; min-width: 1280px; min-height: 100vh; background: var(--mk-paper); color: var(--mk-ink); }
 button, select, textarea, input { font: inherit; }
 
+/* The pinned renderer grows the image slot wrapper. The preview host also lets
+   the image block consume that space so its existing centering rule is visible. */
+.preview-stage .course-block--images { flex: 1 1 auto; }
+
 .preview-shell {
   position: relative;
   display: flex;
@@ -79,7 +83,6 @@ button, select, textarea, input { font: inherit; }
   overflow: hidden;
 }
 
-.preview-shell--inspection .preview-stage { width: 100%; }
 .inspection-toolbar {
   position: absolute;
   z-index: 40;

@@ -74,7 +74,7 @@ class SkillPackageTests(unittest.TestCase):
             "earliest incomplete or invalidated gate",
             "teacher-authored preview annotation is an explicit change instruction",
             "CourseDefinition 2.0",
-            "current implementation boundary",
+            "New steps apply when a course reaches them",
             "annotations invalidate G8 and G9",
             "dry run",
             "explicit publication approval",
@@ -163,7 +163,7 @@ class SkillPackageTests(unittest.TestCase):
         self.assertIn("老师只需要用中文自然交流", readme)
         self.assertIn("不需要把批注或确认翻译成英文", readme)
 
-    def test_build_platform_course_defaults_to_auto_preview_first_authoring(self):
+    def test_build_platform_course_uses_confirmed_page_plan_before_autonomous_production(self):
         skill = (
             ROOT / "skills" / "build-platform-course" / "SKILL.md"
         ).read_text(encoding="utf-8")
@@ -178,12 +178,12 @@ class SkillPackageTests(unittest.TestCase):
         combined = "\n".join((skill, workflow, readme))
 
         for phrase in (
-            "默认连续工作到首次完整预览",
-            "Auto 模式",
-            "预览优先",
-            "AI 初稿",
+            "理解材料",
+            "确认逐页计划",
+            "制作并自检",
+            "预览并发布",
             "真正阻塞项",
-            "第一次主要人工介入",
+            "逐页视觉自检",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
@@ -209,9 +209,9 @@ class SkillPackageTests(unittest.TestCase):
             ROOT / "skills" / "design-course-blueprint" / "SKILL.md"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("source-backed AI draft", skill)
+        self.assertIn("approved page plan", skill)
         self.assertIn("continue directly to compilation", skill)
-        self.assertIn("teacher reviews these choices in the renderer preview", skill)
+        self.assertIn("teacher reviews the rendered result later", skill)
         self.assertNotIn("Batch related semantic decisions for teacher confirmation", skill)
 
     def test_material_analysis_returns_ai_draft_without_group_confirmation(self):
@@ -220,7 +220,7 @@ class SkillPackageTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("teacherConfirmed: false", skill)
-        self.assertIn("return the AI-draft classification without pausing", skill)
+        self.assertIn("Do not ask the teacher to confirm inventory categories separately", skill)
         self.assertIn("record that none was detected", skill)
         self.assertNotIn("Ask for one 分组确认", skill)
 
@@ -395,15 +395,17 @@ class SkillPackageTests(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)
 
-    def test_preview_reviews_v152_course_end_states(self):
+    def test_preview_runs_visual_check_and_preserves_teacher_freedom(self):
         preview = (ROOT / "skills/preview-platform-course/SKILL.md").read_text(encoding="utf-8")
 
         for phrase in (
-            "放大阅读",
-            "first-entry loading",
-            "正在生成课程小结",
-            "正在生成报告",
-            "report page scrolls",
+            "open every Slice",
+            "one screenshot per Slice",
+            "no empty side of a split",
+            "available on the same Slice",
+            "上一页",
+            "Existing annotations may be edited, deleted, marked complete, or reopened",
+            "现在发布到学生端吗？",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, preview)

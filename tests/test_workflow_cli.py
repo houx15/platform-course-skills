@@ -200,7 +200,7 @@ class WorkflowCliTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         self.assertEqual(payload["courseLocalId"], "demo")
 
-    def test_status_explicitly_reconciles_legacy_page_plan_proof(self):
+    def test_status_preserves_legacy_completion_without_new_page_plan_proof(self):
         self.init()
         self.prepare_approved_page_plan()
         for gate_id in ("G0", "G1", "G2", "G3", "G4"):
@@ -213,15 +213,10 @@ class WorkflowCliTests(unittest.TestCase):
         completed, payload = self.json_result("status", self.root, "--json")
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertEqual(payload["completedGates"], ["G0", "G1", "G2"])
-        self.assertEqual(payload["invalidatedGates"][:2], ["G3", "G4"])
-        self.assertTrue(
-            any(
-                issue["code"] == "workflow-page-plan-evidence-unproved"
-                for issue in payload["issues"]
-            )
-        )
-        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertEqual(payload["completedGates"], ["G0", "G1", "G2", "G3", "G4"])
+        self.assertEqual(payload["invalidatedGates"], [])
+        self.assertFalse(any(issue["code"] == "workflow-page-plan-evidence-unproved" for issue in payload["issues"]))
+        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2", "G3", "G4"])
 
     def test_reconcile_reports_missing_source_as_readable_issue(self):
         self.init("--source", "materials/missing.md")

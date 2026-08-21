@@ -211,16 +211,16 @@ class PublisherOrchestratorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "live publication adapter"):
             verify_g10_remote_publication(self.root)
 
-    def test_publication_readiness_reconciles_unproved_page_plan_gates(self):
+    def test_publication_readiness_preserves_legacy_completed_page_plan_gates(self):
         session = load_session(self.root)
         for key in G3_EVIDENCE_KEYS:
             session.artifact_hashes.pop(key, None)
         save_session(self.root, session)
 
-        with self.assertRaisesRegex(ValueError, "requires completed G8"):
-            verify_g9_publication_preflight(self.root)
+        evidence = verify_g9_publication_preflight(self.root)
 
-        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertIn(".course-work/publication-preflight.json", evidence)
+        self.assertIn("G8", load_session(self.root).completed_gate_ids)
 
     def test_local_workflow_cli_refuses_g9_even_with_approved_current_dry_run(self):
         completed = subprocess.run(

@@ -198,7 +198,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
           </AudioEngineProvider>
         </InteractionLoaderProvider>
       </section>
-      {!inspection ? <div
+      <div
         className={`annotation-sidebar ${annotationsOpen ? "annotation-sidebar--expanded" : "annotation-sidebar--collapsed"}`}
         style={{ width: annotationsOpen ? 330 : 46 }}
       >
@@ -227,7 +227,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
             <AnnotationPanel document={document} definitionHash={definitionHash} sliceIndex={progress.sliceIndex} events={events} visitedSliceIds={visitedSliceIds} runtimeErrors={runtimeErrors} selectedTargetKey={selectedTargetKey} />
           </div>
         ) : <span className="annotation-rail-label" aria-hidden="true">课程批注</span>}
-      </div> : null}
+      </div>
     </main>
   );
 }

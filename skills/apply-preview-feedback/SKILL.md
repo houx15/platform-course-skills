@@ -65,21 +65,17 @@ The tool updates `.course-work/course-blueprint.json` atomically. Always edit th
 
 ## Rebuild and verify
 
-Follow the returned commands without skipping:
+Follow the returned rebuild commands that apply to the current course:
 
 ```bash
 python _course-toolkit/scripts/course-workflow.py reconcile ROOT --json
-python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G3 --json
-python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G4 --json
 python _course-toolkit/scripts/compile-course.py ROOT --json
-python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G5 --json
 python _course-toolkit/scripts/validate-course-v2.py ROOT --json
-python _course-toolkit/scripts/course-workflow.py complete-gate ROOT G6 --json
 ```
 
-An annotation application changes the Blueprint, so reconciliation invalidates G3 and every downstream gate. Re-complete G3 and G4 from the annotation-backed decision context before compiling; never jump directly from reconciliation to G5.
+Do not make a previously processed course rebuild historical page-plan or audit records that did not exist when it was created. After compilation and contract/package validation, run the Agent's per-Slice visual check through `preview-platform-course --inspection`; fix any obvious regression before returning the new preview to the teacher.
 
-Then open a new renderer preview through `preview-platform-course`. Applied annotations remain unverified until the teacher reviews the rebuilt definition and a new renderer preview binds them to current G7 evidence. If any runtime-bug remains, do not claim G7 complete.
+Then open a new renderer preview through `preview-platform-course`. Applied annotations may be promoted to verified automatically when the teacher completes the current review. Preserve annotations that the teacher marked complete or dismissed; do not reopen them because an internal record is absent. If any runtime bug remains visible, report it plainly.
 
 ## Completion boundary
 

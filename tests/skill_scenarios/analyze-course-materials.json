@@ -16,7 +16,7 @@
     "reference",
     "proposed-exclusion",
     "teacherConfirmed: false",
-    "return the AI-draft classification without pausing",
+    "Do not ask the teacher to confirm inventory categories separately",
     "长视频",
     "HTML 交互",
     "record that none was detected",

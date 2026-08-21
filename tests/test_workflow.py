@@ -668,8 +668,8 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
         complete_gate(session, "G4", NOW, gate_evidence=verify_g4_media_design(self.root))
         self.assertIn("G4", session.completed_gate_ids)
 
-    def test_legacy_page_plan_proof_migrates_only_through_explicit_reconciliation(self):
-        session = fully_gated_through("G4")
+    def test_legacy_completed_course_is_not_retroactively_invalidated_by_new_plan_evidence(self):
+        session = self.complete_through_g4()
         for key in G3_EVIDENCE_KEYS:
             session.artifact_hashes.pop(key, None)
         save_session(self.root, session)
@@ -682,30 +682,21 @@ class PagePlanGateEvidenceTests(unittest.TestCase):
         self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G4")
 
         result = reconcile_current_session(self.root, restored, NOW)
-        self.assertEqual(restored.completed_gate_ids, ["G0", "G1", "G2"])
-        self.assertEqual(restored.invalidated_gate_ids[:2], ["G3", "G4"])
-        self.assertEqual(result.earliest_invalidated_gate_id, "G3")
-        self.assertEqual(result.page_plan_proof_gate_id, "G3")
-        self.assertEqual(
-            restored.last_successful_action["reason"],
-            "page-plan-evidence-unproved",
-        )
-        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
+        self.assertEqual(restored.completed_gate_ids[-1], "G4")
+        self.assertEqual(restored.invalidated_gate_ids, [])
+        self.assertIsNone(result.earliest_invalidated_gate_id)
+        self.assertIsNone(result.page_plan_proof_gate_id)
+        self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G4")
         active = [
             issue
             for issue in IssueStore.load(self.root / ".course-work" / "issues.json").all()
             if issue.status == "active"
         ]
-        self.assertTrue(
-            any(issue.code == "workflow-page-plan-evidence-unproved" for issue in active)
-        )
+        self.assertFalse(any(issue.code == "workflow-page-plan-evidence-unproved" for issue in active))
 
         repeated = reconcile_current_session(self.root, restored, NOW)
         self.assertIsNone(repeated.earliest_invalidated_gate_id)
-        self.assertEqual(
-            [issue.id for issue in repeated.active_issues],
-            [issue.id for issue in active],
-        )
+        self.assertEqual(list(repeated.active_issues), active)
 
     def test_symlink_course_root_is_rejected_by_g3_and_g4(self):
         parent = Path(self.temporary.name).parent

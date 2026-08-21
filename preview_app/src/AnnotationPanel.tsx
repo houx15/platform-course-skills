@@ -183,7 +183,10 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
         teacherConfirmed: true,
         completedAt: new Date().toISOString(),
       });
-      setMessage("本轮预览审查已记录，可以继续完成 G7。 ");
+      const pendingCount = store.annotations.filter((annotation) => !["verified", "dismissed"].includes(annotation.status)).length;
+      setMessage(pendingCount === 0
+        ? "本轮预览已完成，目前没有待处理批注。现在可以让 AI 发布到学生端；尚未选择课程时，AI 会先请你选择课程名称。"
+        : `本轮预览已完成，还有 ${pendingCount} 条批注待处理；修改后可以继续预览。`);
     } catch (error) {
       setMessage(`暂时不能完成预览审查：${(error as Error).message}`);
     }

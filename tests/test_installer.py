@@ -118,9 +118,9 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("apply-preview-feedback", readme)
         self.assertIn("稳定 slug", readme)
         self.assertIn("OSS_ADMIN_KEY", readme)
-        self.assertIn("课程首尾设计表", readme)
+        self.assertIn("逐页计划", readme)
         self.assertIn("开始学习", readme)
-        self.assertIn("G0–G10", readme)
+        self.assertIn("四阶段流程", readme)
 
     def test_readme_hands_the_workflow_to_another_agent(self):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -139,7 +139,7 @@ class InstallerTests(unittest.TestCase):
             "`index.md` 或主要入口材料",
             "由 Agent 自己执行",
             "不要在课程开始时索取 `OSS_ADMIN_KEY`",
-            "读取 `.course-work/session.json`",
+            "读取当前 `.course-work`",
             "存在 `.course-work/session.json` 时默认按继续处理",
             "不得上传或发布",
         )

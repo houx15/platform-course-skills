@@ -386,21 +386,15 @@ def reconcile_current_session(
     session: CourseProductionSession,
     now: str,
 ) -> ArtifactReconciliationResult:
-    """Reconcile current evidence and persist any page-plan proof migration.
+    """Reconcile evidence that the current session already records.
 
     Callers that act on a completed gate must use this rather than relying on
     ``load_session``: loading is intentionally a pure deserialization operation.
-    Both the IssueStore and session are written by this explicit operation.
+    New authoring steps are required when a new course reaches them, but their
+    absence never retroactively invalidates a legacy session that already
+    completed later work.
     """
     result = reconcile_artifacts(root, session, now)
-    if result.page_plan_proof_gate_id is not None:
-        session.last_successful_action = {
-            "action": "reconcile-current-session",
-            "reason": "page-plan-evidence-unproved",
-            "invalidatedFromGate": result.page_plan_proof_gate_id,
-            "at": now,
-        }
-        session.updated_at = now
     save_session(root, session)
     return result
 
@@ -1133,28 +1127,6 @@ def reconcile_artifacts(
     changed_paths: List[str] = []
     missing_sources: List[str] = []
     changed_gate_ids: List[str] = []
-    legacy_gate = _first_unproved_page_plan_gate(root, session)
-    if legacy_gate is not None:
-        changed_paths.append("@workflow/unproved-page-plan-evidence")
-        changed_gate_ids.append(legacy_gate)
-        issue_store.upsert(
-            make_registered_issue(
-                code="workflow-page-plan-evidence-unproved",
-                source="workflow",
-                message=(
-                    "Completed page-plan gate lacks current verified evidence; "
-                    f"re-complete {legacy_gate}."
-                ),
-                gate_id=legacy_gate,
-                seen_at=now,
-                target={"path": "@workflow/unproved-page-plan-evidence"},
-                remediation=(
-                    "Refresh the current page-plan evidence and re-complete "
-                    f"{legacy_gate}."
-                ),
-            )
-        )
-
     for source_path in session.source_paths:
         source = _safe_course_path(root, source_path)
         missing_issue = make_registered_issue(
@@ -1395,5 +1367,5 @@ def reconcile_artifacts(
         missing_source_paths=tuple(missing_sources),
         earliest_invalidated_gate_id=earliest_gate_id,
         active_issues=active_issues,
-        page_plan_proof_gate_id=legacy_gate,
+        page_plan_proof_gate_id=None,
     )

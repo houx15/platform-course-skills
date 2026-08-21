@@ -9,9 +9,9 @@ Handle the only externally mutating phase. Read [api-contract.md](references/api
 
 ## Preconditions
 
-1. Run `python _course-toolkit/scripts/course-workflow.py status ROOT --json`. Require current G8. If G8 is incomplete or invalidated, explain that you cannot publish and return to the responsible Skill.
+1. Run `python _course-toolkit/scripts/course-workflow.py status ROOT --json`. For a newly produced course, require the existing renderer review and independent review that precede publication. For a previously reviewed or published course, preserve its current status and publication identity; never block it solely because it predates the newly added page-plan, semantic-audit, or Agent visual-check records.
 2. Run `python _course-toolkit/scripts/manage-course-catalog.py status ROOT --json`. If no current teacher-confirmed catalog binding exists, propose matches from the course title and ask the teacher to select the correct human-readable course. This applies to old courses too. The binding deterministically supplies the fixed slug, title, blurb, category, structured `introduction`, `cardIds`, and catalog cover; do not ask the teacher to review, approve, or edit those values separately and never send `featured_rank`.
-3. Require the CourseDefinition ID and title to match that binding. Initialize publication identity without accepting a free-form slug:
+3. Initialize publication identity without accepting a free-form slug. The publisher applies the selected catalog's fixed ID and title to the outbound definition in memory; it does not rewrite the reviewed local CourseDefinition or require a second preview solely because the teacher selected the course at publication time:
 
    ```bash
    python _course-toolkit/scripts/publish-course.py init-state ROOT --json
@@ -21,7 +21,7 @@ Handle the only externally mutating phase. Read [api-contract.md](references/api
 4. `OSS_ADMIN_KEY` may come from the process environment or 课程目录的 `.env`; 进程环境变量优先. The publication command loads the course `.env` first and uses the toolkit checkout `.env` only as a local development fallback. If a teacher provides the key to the Agent, confirm that `/.env` is ignored, write only `OSS_ADMIN_KEY=...` to that local file, and keep `.env.example` empty. 老师不需要执行命令. 不得回显凭证 or place it in command arguments, ordinary output, generated course files, JSON evidence, or Git. Never print an Authorization header or presigned URL.
 5. The 33 approved covers are preseeded once by the platform administrator at the catalog's fixed OSS keys. Do not call image generation, ask the teacher to select or confirm a cover, copy a cover into the course root, or include it in the teacher asset manifest. For `publish`, always use the catalog-relative `coverAssetPath: "cover/course-cover.webp"` and verify the returned `coverUrl` bytes against the catalog SHA-256.
 
-## Prepare the dry run
+## Prepare the existing publication plan
 
 Choose `save-preview` for a new preview draft or `publish` to save and ship. A previously published course must use `publish`, because its PUT changes live bytes before ship finishes.
 

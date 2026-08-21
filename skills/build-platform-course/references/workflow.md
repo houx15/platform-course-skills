@@ -190,6 +190,8 @@ Inputs: approved definition hash, current G6 validation, renderer-backed G8 revi
 
 Require `.course-work/course-catalog-selection.json` even for a legacy course made before catalog support. It must match the pinned 33-course dictionary and supplies the only permitted slug, title, blurb, category, structured introduction, card IDs, and fixed cover record. A teacher selects only the course name. The 33 covers are preseeded once at their code-fixed OSS keys; they never enter the teacher asset manifest or teacher upload counts.
 
+Catalog selection may happen at publication time. The publisher applies its fixed slug and title only to the outbound definition and hashes both the reviewed source definition and that outbound payload; it does not rewrite the reviewed local course or force the teacher to repeat completed preview and review.
+
 Invoke `publish-platform-course`. Initialize publish state once; this command refuses to replace a different existing identity:
 
 ```bash

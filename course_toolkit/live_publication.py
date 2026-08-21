@@ -1,3 +1,4 @@
+import copy
 import mimetypes
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -77,6 +78,18 @@ def _empty_state(course_local_id: str, slug: str) -> dict:
     }
 
 
+def _publication_definition(root: Path, catalog_selection: dict) -> dict:
+    """Apply fixed catalog identity to the outbound definition only."""
+    definition = copy.deepcopy(load_json(root / "course/course.json"))
+    course = definition.get("course")
+    title = catalog_selection.get("title")
+    if not isinstance(course, dict) or not isinstance(title, str) or not title.strip():
+        raise LivePublicationBlocked("the reviewed CourseDefinition or fixed catalog title is invalid")
+    course["id"] = _slug(catalog_selection.get("slug"))
+    course["title"] = title
+    return definition
+
+
 def init_live_publish_state(root: Path) -> dict:
     root = root.resolve()
     try:
@@ -85,13 +98,6 @@ def init_live_publish_state(root: Path) -> dict:
         raise LivePublicationBlocked(str(exc)) from exc
     slug = _slug(selection["slug"])
     session = load_session(root)
-    document = load_json(root / "course/course.json")
-    course = document.get("course", {})
-    if course.get("id") != slug or course.get("title") != selection["title"]:
-        raise LivePublicationBlocked(
-            "CourseDefinition identity must match the selected fixed catalog slug and title; "
-            "update the Blueprint, then recompile, validate, preview, and review before publication"
-        )
     path = root / STATE_PATH
     if path.is_file():
         state = load_json(path)
@@ -119,7 +125,6 @@ def build_live_asset_manifest(root: Path, state: dict) -> dict:
     root = root.resolve()
     verify_g8_review(root)
     validation = load_json(root / ".course-work/course-validation-report.json")
-    definition = load_json(root / "course/course.json")
     slug = state["slug"]
     try:
         catalog_selection = load_confirmed_course_selection(root)
@@ -127,6 +132,7 @@ def build_live_asset_manifest(root: Path, state: dict) -> dict:
         raise LivePublicationBlocked(str(exc)) from exc
     if catalog_selection["slug"] != slug:
         raise LivePublicationBlocked("publish state does not match the selected fixed catalog slug")
+    definition = _publication_definition(root, catalog_selection)
     prior = state.get("uploadedAssets", {})
     entries = []
     for asset in validation.get("assets", []):
@@ -219,10 +225,8 @@ def prepare_live_preflight(
         raise LivePublicationBlocked("editing a published course must use publish so save and re-ship stay together")
     discovery = _remote_record(remote, now)
     write_json_atomic(root / DISCOVERY_PATH, {"schemaVersion": LIVE_SCHEMA_VERSION, **discovery})
-    definition = load_json(root / "course/course.json")
-    course = definition.get("course", {})
-    if course.get("id") != catalog_selection["slug"] or course.get("title") != catalog_selection["title"]:
-        raise LivePublicationBlocked("CourseDefinition identity differs from the selected fixed catalog course")
+    source_definition = load_json(root / "course/course.json")
+    definition = _publication_definition(root, catalog_selection)
     uploads = [entry for entry in manifest["entries"] if entry["state"] == "upload-required"]
     reuse = [entry for entry in manifest["entries"] if entry["state"] == "reuse-local-proof"]
     review_evidence = load_json(root / REVIEW_EVIDENCE_PATH)
@@ -233,7 +237,12 @@ def prepare_live_preflight(
         "mode": "create" if remote is None else "update",
         "action": action,
         "apiBase": api.api_base,
-        "definition": {"path": "course/course.json", "sha256": canonical_json_hash(definition)},
+        "definition": {
+            "path": "course/course.json",
+            "sourceSha256": canonical_json_hash(source_definition),
+            "sha256": canonical_json_hash(definition),
+            "catalogIdentityApplied": True,
+        },
         "catalog": {
             "catalogId": catalog_selection["catalogId"],
             "title": catalog_selection["title"],
@@ -327,9 +336,12 @@ def live_preflight_status(root: Path) -> dict:
     if preflight.get("schemaVersion") != LIVE_SCHEMA_VERSION:
         stale.append("unsupported-preflight-schema")
     try:
-        definition = load_json(root / "course/course.json")
+        source_definition = load_json(root / "course/course.json")
+        catalog_selection = load_confirmed_course_selection(root)
+        definition = _publication_definition(root, catalog_selection)
         checks = {
-            "definition": canonical_json_hash(definition),
+            "sourceDefinition": canonical_json_hash(source_definition),
+            "publicationDefinition": canonical_json_hash(definition),
             "validationReportHash": hash_path(root / ".course-work/course-validation-report.json"),
             "previewManifestHash": hash_path(root / ".course-work/preview-manifest.json"),
             "reviewReportHash": hash_path(root / ".course-work/review-report.json"),
@@ -337,8 +349,10 @@ def live_preflight_status(root: Path) -> dict:
             "assetManifestHash": hash_path(root / MANIFEST_PATH),
             "catalogSelectionHash": hash_path(root / ".course-work/course-catalog-selection.json"),
         }
-        if preflight["definition"]["sha256"] != checks.pop("definition"):
+        if preflight["definition"].get("sourceSha256") != checks.pop("sourceDefinition"):
             stale.append("course-definition-changed")
+        if preflight["definition"].get("sha256") != checks.pop("publicationDefinition"):
+            stale.append("publication-definition-changed")
         for key, value in checks.items():
             if preflight["evidence"].get(key) != value:
                 stale.append(f"{key}-changed")
@@ -492,7 +506,19 @@ def execute_live_publication(
         state["uploadedAssets"] = uploaded
         write_json_atomic(root / STATE_PATH, state)
         newly_uploaded_paths.append(asset["relativePath"])
-    definition = load_json(root / preflight["definition"]["path"])
+    try:
+        catalog_selection = load_confirmed_course_selection(root)
+    except CourseCatalogError as exc:
+        raise LivePublicationBlocked(str(exc)) from exc
+    if (
+        catalog_selection["slug"] != slug
+        or catalog_selection["catalogId"] != preflight["catalog"]["catalogId"]
+        or catalog_selection["catalogHash"] != preflight["catalog"]["catalogHash"]
+    ):
+        raise LivePublicationBlocked("selected fixed catalog course differs from the approved preflight")
+    definition = _publication_definition(root, catalog_selection)
+    if canonical_json_hash(definition) != preflight["definition"]["sha256"]:
+        raise LivePublicationBlocked("publication definition differs from the approved preflight")
     try:
         api.save_definition(
             slug,

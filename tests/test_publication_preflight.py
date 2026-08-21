@@ -192,7 +192,7 @@ class PublicationPreflightTests(unittest.TestCase):
         self.assertFalse(status["approved"])
         self.assertEqual(status["decisionStatus"], "pending")
 
-    def test_unproved_page_plan_makes_approved_preflight_not_current(self):
+    def test_legacy_completed_course_keeps_approved_preflight_without_new_page_plan_evidence(self):
         self.prepare()
         decisions = DecisionStore.load(self.root / ".course-work/decisions.json")
         decisions.confirm(
@@ -208,12 +208,11 @@ class PublicationPreflightTests(unittest.TestCase):
 
         status = publication_preflight_status(self.root)
 
-        self.assertFalse(status["current"])
-        self.assertFalse(status["approved"])
-        self.assertIn("g8-not-current", status["staleReasons"])
-        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
-        with self.assertRaisesRegex(PublicationBlocked, "G8 final review"):
-            self.prepare()
+        self.assertTrue(status["current"])
+        self.assertTrue(status["approved"])
+        self.assertNotIn("g8-not-current", status["staleReasons"])
+        self.assertIn("G8", load_session(self.root).completed_gate_ids)
+        self.prepare()
 
     def test_changed_course_after_approval_is_immediately_stale(self):
         self.prepare()

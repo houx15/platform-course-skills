@@ -113,14 +113,15 @@ class FakeMindApi:
         }
 
 
-def prepare_g8(root: Path):
+def prepare_g8(root: Path, *, catalog_identity: bool = True):
     prepare_g6(root, full=True)
-    blueprint_path = root / ".course-work/course-blueprint.json"
-    blueprint = load_json(blueprint_path)
-    blueprint["course"]["id"] = "course-01"
-    blueprint["course"]["title"] = "把争议放回证据里：立场光谱与视角对照矩阵"
-    write_json_atomic(blueprint_path, blueprint)
-    write_compilation_outputs_atomic(root, compile_blueprint(blueprint))
+    if catalog_identity:
+        blueprint_path = root / ".course-work/course-blueprint.json"
+        blueprint = load_json(blueprint_path)
+        blueprint["course"]["id"] = "course-01"
+        blueprint["course"]["title"] = "把争议放回证据里：立场光谱与视角对照矩阵"
+        write_json_atomic(blueprint_path, blueprint)
+        write_compilation_outputs_atomic(root, compile_blueprint(blueprint))
     report = build_course_validation_report(root)
     write_current_validation_report(root, report)
     sync_validation_issues(root, report, NOW)
@@ -168,14 +169,17 @@ class LivePublicationTests(unittest.TestCase):
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         prepare_g8(self.root)
-        self.slug = load_json(self.root / "course/course.json")["course"]["id"]
+        self.reviewed_identity = copy.deepcopy(
+            load_json(self.root / "course/course.json")["course"]
+        )
         confirm_course_selection(
             self.root,
             "course-01",
             teacher_response="确认，这是第一门课。",
             confirmed_at=NOW,
         )
-        init_live_publish_state(self.root)
+        state = init_live_publish_state(self.root)
+        self.slug = state["slug"]
         self.api = FakeMindApi()
 
     def tearDown(self):
@@ -220,13 +224,57 @@ class LivePublicationTests(unittest.TestCase):
         self.assertEqual(self.api.last_cover_asset_path, "cover/course-cover.webp")
         self.assertEqual(len(self.api.cover_verifications), 1)
         self.assertEqual(result["coverVerification"]["coverUrlPresent"], True)
+        self.assertEqual(self.api.remote.definition["course"]["id"], "course-01")
+        self.assertEqual(
+            self.api.remote.definition["course"]["title"],
+            "把争议放回证据里：立场光谱与视角对照矩阵",
+        )
+        self.assertEqual(
+            load_json(self.root / "course/course.json")["course"],
+            self.reviewed_identity,
+        )
         self.assertEqual(
             result["coverVerification"]["sha256"],
             preflight["catalogCover"]["sha256"],
         )
         self.assertEqual(load_session(self.root).completed_gate_ids[-1], "G10")
 
-    def test_unproved_page_plan_blocks_live_preflight_before_remote_calls(self):
+    def test_late_catalog_selection_applies_fixed_identity_without_rewriting_reviewed_course(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            prepare_g8(root, catalog_identity=False)
+            reviewed = copy.deepcopy(load_json(root / "course/course.json"))
+            self.assertNotEqual(reviewed["course"]["id"], "course-01")
+            confirm_course_selection(
+                root,
+                "course-01",
+                teacher_response="确认，这是第一门课。",
+                confirmed_at=NOW,
+            )
+            state = init_live_publish_state(root)
+            api = FakeMindApi()
+
+            preflight = prepare_live_preflight(root, api, action="publish", now=NOW)
+            decisions = DecisionStore.load(root / ".course-work/decisions.json")
+            decisions.confirm(
+                DECISION_ID,
+                {"choice": "approve", "rationale": "Approved for the production sandbox."},
+                NOW,
+            )
+            decisions.save()
+            session = load_session(root)
+            session.pending_decision_ids = []
+            save_session(root, session)
+            result = execute_live_publication(root, api, now=NOW)
+
+            self.assertEqual(state["slug"], "course-01")
+            self.assertTrue(preflight["definition"]["catalogIdentityApplied"])
+            self.assertEqual(api.remote.definition["course"]["id"], "course-01")
+            self.assertEqual(api.remote.definition["course"]["title"], preflight["catalog"]["title"])
+            self.assertEqual(load_json(root / "course/course.json"), reviewed)
+            self.assertEqual(result["status"], "published")
+
+    def test_legacy_completed_course_is_not_retroactively_blocked_by_new_page_plan_evidence(self):
         prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
         self.approve_preflight()
         session = load_session(self.root)
@@ -236,14 +284,10 @@ class LivePublicationTests(unittest.TestCase):
 
         status = live_preflight_status(self.root)
 
-        self.assertFalse(status["current"])
-        self.assertFalse(status["approved"])
-        self.assertIn("g8-not-current", status["staleReasons"])
-        self.assertEqual(load_session(self.root).completed_gate_ids, ["G0", "G1", "G2"])
-        calls_before = self.api.get_course_calls
-        with self.assertRaisesRegex(LivePublicationBlocked, "G8 final review"):
-            prepare_live_preflight(self.root, self.api, action="publish", now=NOW)
-        self.assertEqual(self.api.get_course_calls, calls_before)
+        self.assertTrue(status["current"])
+        self.assertTrue(status["approved"])
+        self.assertNotIn("g8-not-current", status["staleReasons"])
+        self.assertIn("G8", load_session(self.root).completed_gate_ids)
         self.assertEqual(self.api.uploads, [])
         self.assertEqual(self.api.saved, 0)
         self.assertEqual(self.api.shipped, 0)
