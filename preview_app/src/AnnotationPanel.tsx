@@ -33,11 +33,15 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
   const [message, setMessage] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState("");
+  const [annotationScope, setAnnotationScope] = useState<"current" | "all">("current");
 
   useEffect(() => {
     void loadAnnotations().then(setStore).catch((error: Error) => setMessage(error.message));
   }, []);
-  useEffect(() => setTargetKey("slice"), [entry?.slice.id]);
+  useEffect(() => {
+    setTargetKey("slice");
+    setAnnotationScope("current");
+  }, [entry?.slice.id]);
   useEffect(() => {
     if (selectedTargetKey) setTargetKey(selectedTargetKey);
   }, [selectedTargetKey]);
@@ -59,6 +63,13 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
   }, [entry]);
 
   const targetLabel = options.find((option) => option.key === targetKey)?.label ?? "当前 Slice";
+  const sliceMeta = useMemo(
+    () => new Map(entries.map(({ slice }, index) => [slice.id, { number: index + 1, title: slice.title }])),
+    [entries],
+  );
+  const visibleAnnotations = annotationScope === "all"
+    ? store.annotations
+    : store.annotations.filter((annotation) => annotation.target.sliceId === entry?.slice.id);
 
   const buildTarget = (): AnnotationTarget => {
     if (!entry) throw new Error("No active Slice");
@@ -215,9 +226,20 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
         {message ? <p className="panel-message">{message}</p> : null}
       </section>
       <section>
-        <h2>当前批注</h2>
-        <ol className="annotation-list">{store.annotations.map((annotation) => <li key={annotation.id} data-status={annotation.status}>
+        <div className="annotation-list__heading">
+          <h2>批注</h2>
+          <div className="annotation-scope" role="group" aria-label="批注显示范围">
+            <button type="button" aria-pressed={annotationScope === "current"} onClick={() => setAnnotationScope("current")}>当前页 · {store.annotations.filter((annotation) => annotation.target.sliceId === entry?.slice.id).length}</button>
+            <button type="button" aria-pressed={annotationScope === "all"} onClick={() => setAnnotationScope("all")}>全部 · {store.annotations.length}</button>
+          </div>
+        </div>
+        {visibleAnnotations.length === 0 ? <p className="annotation-list__empty">当前页还没有批注。</p> : null}
+        <ol className="annotation-list">{visibleAnnotations.map((annotation) => {
+          const annotationSlice = annotation.target.sliceId ? sliceMeta.get(annotation.target.sliceId) : undefined;
+          const detailTarget = annotation.target.itemId ?? annotation.target.blockId ?? annotation.target.workflowStepId;
+          return <li key={annotation.id} data-status={annotation.status}>
           <div className="annotation-list__meta"><span>{annotation.type}</span><em>{annotation.status === "dismissed" ? "已完成" : "待处理"}</em></div>
+          <strong className="annotation-list__slice">slice-{annotationSlice?.number ?? "?"} · {annotationSlice?.title ?? annotation.target.sliceId}</strong>
           {editingId === annotation.id ? (
             <div className="annotation-list__editor">
               <label>修改批注内容<textarea value={editingText} onChange={(event) => setEditingText(event.target.value)} /></label>
@@ -227,13 +249,13 @@ export function AnnotationPanel({ document, definitionHash, sliceIndex, events, 
               </div>
             </div>
           ) : <p>{annotation.text}</p>}
-          <small>{annotation.target.itemId ?? annotation.target.blockId ?? annotation.target.workflowStepId ?? annotation.target.sliceId}</small>
+          {detailTarget ? <small>{detailTarget}</small> : null}
           {editingId !== annotation.id ? <div className="annotation-list__actions">
             <button type="button" aria-label="修改批注" onClick={() => startEdit(annotation)}>修改</button>
             <button type="button" onClick={() => void toggleComplete(annotation)}>{annotation.status === "dismissed" ? "重新打开" : "标记已完成"}</button>
             <button type="button" className="danger" aria-label="删除批注" onClick={() => void deleteAnnotation(annotation)}>删除</button>
           </div> : null}
-        </li>)}</ol>
+        </li>})}</ol>
       </section>
       <section className="review-completion">
         <h2>完成本轮审查</h2>

@@ -255,10 +255,17 @@ button, select, textarea, input { font: inherit; }
 .panel-message { margin: 0; color: #245c3b; font-size: 13px; }
 
 .annotation-list, .event-list { margin: 0; padding: 0; list-style: none; }
+.annotation-list__heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.annotation-list__heading h2 { margin: 0; }
+.annotation-scope { display: flex; gap: 4px; padding: 3px; border: 1px solid #d8ded7; border-radius: 8px; background: #f4f6f4; }
+.annotation-scope button { min-height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #617067; font-size: 11px; cursor: pointer; }
+.annotation-scope button[aria-pressed="true"] { background: white; color: #245c3b; box-shadow: 0 1px 3px rgb(27 48 35 / 12%); font-weight: 750; }
+.annotation-list__empty { margin: 12px 0 0; color: #728078; font-size: 12px; }
 .annotation-list li { margin-top: 10px; padding: 12px; border: 1px solid #d8ded7; border-radius: 8px; background: white; }
 .annotation-list li[data-status="dismissed"] { opacity: .68; background: #f4f6f4; }
 .annotation-list__meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .annotation-list__meta em { color: #728078; font-size: 11px; font-style: normal; }
+.annotation-list__slice { display: block; margin-top: 8px; color: #3c4d42; font-size: 12px; line-height: 1.35; }
 .annotation-list span { color: #245c3b; font-size: 11px; font-weight: 800; text-transform: uppercase; }
 .annotation-list p { margin: 5px 0; font-size: 13px; }
 .annotation-list small { color: #728078; overflow-wrap: anywhere; }

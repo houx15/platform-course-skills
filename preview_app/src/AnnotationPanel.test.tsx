@@ -19,6 +19,11 @@ const document = {
           items: [{ id: "image-alpha", source: "assets/image.png", alt: "Example" }],
         }],
         workflow: { steps: [{ id: "show-gallery", action: "show", target: { blockId: "image-gallery" } }] },
+      }, {
+        id: "slice-two",
+        title: "Slice two",
+        blocks: [],
+        workflow: { steps: [] },
       }],
     }],
   },
@@ -55,6 +60,13 @@ describe("AnnotationPanel", () => {
     verifiedAgainstDefinitionHash: null,
     orphanReason: null,
     reboundFromDefinitionHash: null,
+  };
+
+  const otherSliceAnnotation = {
+    ...existingAnnotation,
+    id: "annotation-existing-two",
+    target: { ...existingAnnotation.target, sliceId: "slice-two", blockId: null },
+    text: "This belongs to the second page.",
   };
 
   it("saves an annotation against a stable item target", async () => {
@@ -99,7 +111,7 @@ describe("AnnotationPanel", () => {
         document={document}
         definitionHash={"a".repeat(64)}
         sliceIndex={0}
-        visitedSliceIds={["slice-one"]}
+        visitedSliceIds={["slice-one", "slice-two"]}
         events={[{ id: "event-one", type: "student.continue", sourceId: "course-nav", sliceId: "slice-one" }]}
         runtimeErrors={[]}
       />,
@@ -109,7 +121,7 @@ describe("AnnotationPanel", () => {
     await waitFor(() => expect(posted).toHaveLength(1));
     const payload = JSON.parse(String(posted[0]?.body));
     expect(payload).toMatchObject({
-      visitedSliceIds: ["slice-one"],
+      visitedSliceIds: ["slice-one", "slice-two"],
       teacherConfirmed: true,
       runtimeErrors: [],
     });
@@ -174,5 +186,22 @@ describe("AnnotationPanel", () => {
     fireEvent.click(screen.getByRole("button", { name: "删除批注" }));
     await waitFor(() => expect(requests).toHaveLength(3));
     expect(JSON.parse(String(requests[2]?.body)).annotations).toEqual([]);
+  });
+
+  it("shows current-page annotations by default and can reveal all Slice-labelled annotations", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ schemaVersion: "1.0", annotations: [existingAnnotation, otherSliceAnnotation] }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    )));
+
+    render(<AnnotationPanel document={document} definitionHash={"a".repeat(64)} sliceIndex={0} events={[]} visitedSliceIds={[]} runtimeErrors={[]} />);
+
+    expect(await screen.findByText("Make the caption clearer.")).toBeInTheDocument();
+    expect(screen.getByText("slice-1 · Slice one")).toBeInTheDocument();
+    expect(screen.queryByText("This belongs to the second page.")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "全部 · 2" }));
+    expect(screen.getByText("This belongs to the second page.")).toBeInTheDocument();
+    expect(screen.getByText("slice-2 · Slice two")).toBeInTheDocument();
   });
 });
