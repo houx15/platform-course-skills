@@ -242,9 +242,37 @@
 }
 .course-slot-block:has(> .course-block--pdf),
 .course-slot-block:has(> .course-block--video),
-.course-slot-block:has(> .course-block--images),
-.course-slot-block:has(> .course-block--interactive-html) {
+.course-slot-block:has(> .course-block--interactive-html),
+.course-slot-block:has(> .course-block--rich-text) {
   flex: 1 1 auto;
+}
+/* Images are the ONE fill-block that also reads fine at its natural height: a
+ * figure is width-driven, so it needs the slot's height only when it has the
+ * slot to itself. Letting it grow while it shares the slot with a caption/hint
+ * block consumed every pixel of free space, which left `justify-content: safe
+ * center` (below) nothing to distribute — the figure floated in the middle of
+ * the upper region and its text sibling was stranded at the very BOTTOM of the
+ * column, an obvious "not centered" break beside a correctly-centered opposite
+ * slot. Alone in a slot, growing and not growing look identical (the block
+ * centers its own figures), so restricting the grow to `:only-child` costs
+ * nothing and lets a stacked pair center as ONE group. PDF/video/HTML keep
+ * growing unconditionally — those genuinely need the height (a natural-height
+ * PDF squashes to a flat band), and their slots pay for it with a taller box. */
+.course-slot-block:only-child:has(> .course-block--images) {
+  flex: 1 1 auto;
+}
+/* A block hidden by the workflow reserves NO space. The `[hidden]` rule below
+ * keeps the BOX (so the block itself still renders and an interactive-HTML
+ * iframe still boots), but a reserved box the size of a 1:1 interaction ate the
+ * whole slot before the block was ever revealed: on a reveal-based Slice the
+ * visible question was jammed against the TOP of its column with a screen of
+ * blank space under it, and after the reveal BOTH boxes (the hidden question
+ * and the shown interaction) were in flow, overflowing the column. Collapsing
+ * the WRAPPER drops its height AND its slot gap, while everything inside keeps
+ * loading — verified: an iframe inside a `display:none` subtree still loads and
+ * runs. Siblings do reflow on a reveal; a one-frame reflow is the cheaper cost. */
+.course-slot-block:has(> .course-block[hidden]) {
+  display: none;
 }
 
 /* ---------- Media containment: video/pdf/image stay inside their slot ---------- */
@@ -401,11 +429,17 @@
  * Every block renderer marks its own root `hidden` + `aria-hidden` when its
  * layout flag is false (§10). The UA default style for `[hidden]` is
  * `display: none`, which removes the box entirely — revealing the block
- * later then reflows every sibling stacked in the same slot. This rule
- * (higher specificity than the UA `[hidden]` rule: one class + one
- * attribute) keeps the box — so siblings never move — while the block stays
- * invisible, non-interactive, and — via the `hidden` attribute + `aria-hidden`
- * the renderer already sets — out of the accessibility tree.
+ * later then reflows every sibling stacked in the same slot. This rule (higher
+ * specificity than the UA `[hidden]` rule: one class + one attribute) keeps the
+ * box, while the block stays invisible, non-interactive, and — via the `hidden`
+ * attribute + `aria-hidden` the renderer already sets — out of the
+ * accessibility tree.
+ *
+ * It is no longer what decides whether a hidden block occupies the SLOT: the
+ * wrapper rule above collapses the whole `.course-slot-block` instead, because
+ * a reserved box the size of a 1:1 interaction was eating the entire column
+ * before its block was ever revealed. This rule survives for any block rendered
+ * OUTSIDE that wrapper, and as the statement of intent for `[hidden]` itself.
  */
 .course-block[hidden] {
   display: block;
@@ -740,11 +774,45 @@
 .course-block--text.prose strong { font-weight: 650; color: var(--course-ink); }
 .course-block--text.prose a { color: var(--course-accent); text-underline-offset: 2px; }
 
+/* ---------- Rich-text block (authored static HTML in a sandboxed card) ----------
+ * A reading CARD that fills its slot and scrolls INSIDE itself — the one block
+ * that is allowed to be taller than its slot, because that is the point: dense
+ * editorial content the student scrolls through without the Slice ever
+ * page-scrolling (D6 holds; the overflow is the frame's, not the shell's).
+ * The card owns the chrome (surface/border/radius); the authored document
+ * inside is transparent and supplies only type and spacing, so a course's CSS
+ * can never reach the frame's edges — or anything outside them. */
+.course-block--rich-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  overflow: hidden;
+  background: var(--course-surface);
+  border: 1px solid var(--course-border);
+  border-radius: var(--course-radius-lg);
+  box-shadow: var(--course-shadow-sm);
+}
+.course-rich-text__frame {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  border: 0;
+  /* The frame paints the card's own surface; the document inside is transparent
+     so this one declaration controls the background. */
+  background: transparent;
+  /* An anti-collapse floor for an unusually short slot — the fill above is the
+     target height, this only keeps the card readable if the chain is broken. */
+  min-height: 120px;
+}
+
 /* ---------- Images block ---------- */
 /* The images block fills its (now-growing) slot-block and centers its figures
  * in the available space rather than pinning them to the top. */
 .course-block--images {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
 }

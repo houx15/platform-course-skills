@@ -16,7 +16,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
     def test_catalog_covers_every_closed_runtime_choice(self):
         catalog = self.load_catalog()
 
-        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.5.2")
+        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.6.0")
         self.assertEqual(
             catalog["layout"]["presets"],
             ["full", "split-horizontal", "split-vertical", "grid"],
@@ -29,6 +29,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
             catalog["blocks"]["types"],
             [
                 "text",
+                "richText",
                 "images",
                 "pdf",
                 "video",
@@ -90,8 +91,17 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
                 "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
                 "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
                 "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
+                "richText": "static structured reading card; use full or a tall horizontal-split side and split long reading across slices",
             },
         )
+
+    def test_catalog_exposes_safe_display_only_rich_text(self):
+        rich_text = self.load_catalog()["blocks"]["richText"]
+
+        self.assertEqual(rich_text["requiredFields"], ["id", "type", "html"])
+        self.assertEqual(rich_text["optionalFields"], ["title"])
+        self.assertTrue(rich_text["displayOnly"])
+        self.assertEqual(rich_text["maxHtmlChars"], 65536)
 
     def test_catalog_marks_events_without_a_real_renderer_producer(self):
         catalog = self.load_catalog()

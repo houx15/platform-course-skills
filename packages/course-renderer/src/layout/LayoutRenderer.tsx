@@ -29,6 +29,12 @@ function ratioTracks(ratio: SplitRatio | undefined): string {
   return `minmax(0, ${left}fr) minmax(0, ${right}fr)`;
 }
 
+/** `n` equal, shrinkable tracks — used when empty slots collapse and the ratio
+ * no longer applies (the surviving slots just share the axis evenly). */
+function equalTracks(n: number): string {
+  return `repeat(${Math.max(1, n)}, minmax(0, 1fr))`;
+}
+
 /**
  * §10 / §17.5 — owns only the grid/flex frame that positions slots; the block
  * content is supplied by `renderSlot`. Maps the four presets to stable desktop
@@ -38,10 +44,13 @@ function ratioTracks(ratio: SplitRatio | undefined): string {
  * - `split-vertical` → two rows from the ratio (`top` | `bottom`);
  * - `grid` → a 2-column grid of `cell-1..N`.
  *
- * Every slot in the layout is rendered exactly once, in authored order. Hidden
- * blocks inside a slot keep their box (the course stylesheet overrides
- * `[hidden]` to `visibility: hidden` rather than `display: none` — see
- * `styles/course.css`), so revealing a block never reflows its siblings.
+ * Every slot that carries blocks is rendered exactly once, in authored order;
+ * a slot with zero authored blocks is collapsed (its grid track dropped) so a
+ * lopsided split fills the region instead of stranding content in a partial
+ * column — see the collapse note in the function body. Hidden blocks inside a
+ * *non-empty* slot keep their box (the course stylesheet overrides `[hidden]`
+ * to `visibility: hidden` rather than `display: none` — see `styles/course.css`),
+ * so revealing a block never reflows its siblings.
  *
  * Slot gaps, per-slot `overflow: auto`, and media containment are the course
  * stylesheet's job (`.course-layout` / `.course-layout__slot` — §Slice5 /
@@ -49,27 +58,55 @@ function ratioTracks(ratio: SplitRatio | undefined): string {
  * ratio and so stay inline.
  */
 export function LayoutRenderer({ layout, renderSlot }: LayoutRendererProps) {
+  // An empty slot (no *authored* blocks) contributes only dead space. The scene
+  // generator routinely emits a lopsided split — e.g. `split-horizontal 3:1`
+  // with an empty `right` — which would otherwise strand every block in a
+  // partial column beside a blank track, reading as "shoved to one side, not
+  // centered." Collapse those: render only the slots that carry blocks and size
+  // the grid to them, so a split-with-one-empty-half fills the whole region.
+  //
+  // "Empty" means zero authored `blockIds` — NOT a slot whose blocks are merely
+  // hidden at runtime. A slot with blockIds keeps its box even when every block
+  // is `[hidden]` (the stylesheet maps `[hidden]` to `visibility: hidden`), so
+  // revealing a block never reflows its siblings; collapsing such a slot would
+  // break that guarantee. Runtime hiding never empties `blockIds`, so filtering
+  // on `blockIds.length` is safe.
+  const filled = layout.slots.filter((slot) => slot.blockIds.length > 0);
+  // Degenerate all-empty layout: keep the authored slots so the frame still has
+  // its structure rather than collapsing to nothing.
+  const slots = filled.length > 0 ? filled : layout.slots;
+  const collapsed = slots.length < layout.slots.length;
+
   const style: CSSProperties = { display: "grid" };
   switch (layout.preset) {
     case "full":
       style.gridTemplateColumns = "minmax(0, 1fr)";
       break;
     case "split-horizontal":
-      style.gridTemplateColumns = ratioTracks(layout.ratio);
+      // With a slot collapsed the ratio no longer maps to two tracks — the
+      // survivors share the row evenly (one survivor → a single full-width one).
+      style.gridTemplateColumns = collapsed ? equalTracks(slots.length) : ratioTracks(layout.ratio);
       break;
     case "split-vertical":
-      style.gridTemplateRows = ratioTracks(layout.ratio);
       style.gridTemplateColumns = "minmax(0, 1fr)";
+      style.gridTemplateRows = collapsed ? equalTracks(slots.length) : ratioTracks(layout.ratio);
       break;
     case "grid":
-      style.gridTemplateColumns = "repeat(2, minmax(0, 1fr))";
+      // A lone surviving cell fills the row instead of clinging to a half-width
+      // column; two or more keep the 2-up grid.
+      style.gridTemplateColumns = slots.length <= 1 ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))";
       style.gridAutoRows = "minmax(0, 1fr)";
       break;
   }
 
   return (
-    <div className={`course-layout course-layout--${layout.preset}`} data-preset={layout.preset} style={style}>
-      {layout.slots.map((slot) => (
+    <div
+      className={`course-layout course-layout--${layout.preset}`}
+      data-preset={layout.preset}
+      data-collapsed={collapsed ? "" : undefined}
+      style={style}
+    >
+      {slots.map((slot) => (
         <div key={slot.id} data-slot={slot.id} className={`course-layout__slot course-layout__slot--${slot.id}`}>
           {renderSlot(slot.id, slot.blockIds)}
         </div>

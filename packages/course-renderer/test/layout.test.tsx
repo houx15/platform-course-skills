@@ -104,4 +104,102 @@ describe("LayoutRenderer", () => {
     const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
     expect(container.querySelector('[data-slot-content="main"]')).toHaveTextContent("a,b");
   });
+
+  it("collapses an empty split-horizontal slot → the filled slot fills the full width, ratio dropped", () => {
+    // The generator's lopsided pattern: `split-horizontal 3:1` with an empty right.
+    const layout: LayoutDefinition = {
+      preset: "split-horizontal",
+      ratio: "3:1",
+      slots: [
+        { id: "left", blockIds: ["a", "b"] },
+        { id: "right", blockIds: [] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    // One full-width track — NOT the 3:1 the empty slot would have imposed.
+    expect(frame.style.gridTemplateColumns).toBe("repeat(1, minmax(0, 1fr))");
+    expect(frame).toHaveAttribute("data-collapsed");
+    // Only the filled slot is in the DOM; the empty one is gone entirely.
+    const ids = [...container.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(ids).toEqual(["left"]);
+  });
+
+  it("collapses an empty LEFT slot too — the surviving right slot is no longer stranded on one side", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-horizontal",
+      ratio: "1:3",
+      slots: [
+        { id: "left", blockIds: [] },
+        { id: "right", blockIds: ["a"] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateColumns).toBe("repeat(1, minmax(0, 1fr))");
+    const ids = [...container.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(ids).toEqual(["right"]);
+  });
+
+  it("collapses an empty split-vertical slot → the filled row fills the full height", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-vertical",
+      ratio: "2:1",
+      slots: [
+        { id: "top", blockIds: ["a"] },
+        { id: "bottom", blockIds: [] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateRows).toBe("repeat(1, minmax(0, 1fr))");
+    const ids = [...container.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(ids).toEqual(["top"]);
+  });
+
+  it("keeps the authored ratio when BOTH split slots carry blocks (no collapse, no data-collapsed)", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-horizontal",
+      ratio: "3:1",
+      slots: [
+        { id: "left", blockIds: ["a"] },
+        { id: "right", blockIds: ["b"] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateColumns).toBe("minmax(0, 3fr) minmax(0, 1fr)");
+    expect(frame).not.toHaveAttribute("data-collapsed");
+  });
+
+  it("grid with one empty cell → the surviving cells drop the empty one; a lone survivor fills the row", () => {
+    const layout: LayoutDefinition = {
+      preset: "grid",
+      slots: [
+        { id: "cell-1", blockIds: ["a"] },
+        { id: "cell-2", blockIds: [] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    const ids = [...container.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(ids).toEqual(["cell-1"]);
+  });
+
+  it("degenerate all-empty layout keeps its authored slots rather than collapsing to nothing", () => {
+    const layout: LayoutDefinition = {
+      preset: "split-horizontal",
+      ratio: "1:1",
+      slots: [
+        { id: "left", blockIds: [] },
+        { id: "right", blockIds: [] },
+      ],
+    };
+    const { container } = render(<LayoutRenderer layout={layout} renderSlot={renderSlot} />);
+    const ids = [...container.querySelectorAll("[data-slot]")].map((n) => n.getAttribute("data-slot"));
+    expect(ids).toEqual(["left", "right"]);
+    const frame = container.querySelector("[data-preset]") as HTMLElement;
+    expect(frame).not.toHaveAttribute("data-collapsed");
+  });
 });

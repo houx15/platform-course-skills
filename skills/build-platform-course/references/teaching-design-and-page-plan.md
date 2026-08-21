@@ -104,6 +104,8 @@ When `teachingDesign` exists, every Slice row also requires:
 
 Follow the `learningArc` order. Use the same method-step IDs declared by `teachingDesign`. The before/after states must name a real change. `whyOwnSlice` must justify an instructional unit, not merely say that a source file or image exists.
 
+At page-plan time, choose the intended information shape without writing final HTML yet. Mark `richText` as the likely modality when a static method, worked model, comparison, evidence ladder, definition set, table, rubric, or synthesis needs visible grouping that Markdown would flatten. Keep short prose as `text`; keep real media in their media Blocks; keep anything the learner manipulates or submits out of `richText`. The internal rich-text specialist writes the inline HTML only after the teacher approves the complete teaching design and page plan.
+
 ## Student-perspective review
 
 Review exactly these criteria and record concrete page/phase evidence:
@@ -115,5 +117,7 @@ Review exactly these criteria and record concrete page/phase evidence:
 - `cumulative-progress`
 - `motivation-and-pacing`
 - `transfer`
+
+When reviewing `method-before-practice` and `scaffolding`, check whether a dense method or worked example needs a structured `richText` teaching surface before the learner is asked to apply it. When reviewing `assessment-load`, reject open-language prompts whose progress depends on an exact keyword or regex match; reflection should accept any meaningful submission, while a closed short-answer check needs feedback and a finite attempt path.
 
 Use `revise` while any criterion fails. Repair the teaching design and derived page plan before changing the overall status to `ready-for-teacher`. A passing record must show what the student experiences; generic claims such as “the design is clear” are not evidence.

@@ -333,6 +333,8 @@ def _slice_known_ids(
 
 
 _DEICTIC_REFERENCE = re.compile(r"\b(?:this|that|these|those|above|below)\b|这|该|此|上图|下图|上述|如下", re.IGNORECASE)
+_RICH_TEXT_NONCONTENT = re.compile(r"<(?:style|script)\b[^>]*>.*?</(?:style|script)\s*>", re.IGNORECASE | re.DOTALL)
+_RICH_TEXT_TAG = re.compile(r"<[^>]+>")
 
 
 def _learner_visible_block_text(block: Mapping[str, object]) -> List[str]:
@@ -340,6 +342,9 @@ def _learner_visible_block_text(block: Mapping[str, object]) -> List[str]:
     block_type = block.get("type")
     if block_type == "text":
         return [block["content"]] if isinstance(block.get("content"), str) else []
+    if block_type == "richText" and isinstance(block.get("html"), str):
+        without_noncontent = _RICH_TEXT_NONCONTENT.sub(" ", block["html"])
+        return [_RICH_TEXT_TAG.sub(" ", without_noncontent)]
     if block_type == "images":
         texts: List[str] = []
         for item in block.get("items", []) if isinstance(block.get("items"), list) else []:

@@ -139,6 +139,24 @@ class IndexRendererTests(unittest.TestCase):
         )
         self.assertNotIn("- 阻塞：", text)
 
+    def test_renders_rich_text_as_readable_static_content(self):
+        data = minimal_course()
+        data["course"]["parts"][0]["pieces"][0]["blocks"] = [
+            {
+                "id": "method-card",
+                "type": "richText",
+                "title": "三步核查法",
+                "html": "<style>.note{color:red}</style><h2>先看主张</h2><p class='note'>再核对来源。</p>",
+            }
+        ]
+
+        text = render_index(data)
+
+        self.assertIn("[富文本卡片]", text)
+        self.assertIn("- 标题：三步核查法", text)
+        self.assertIn("先看主张 再核对来源。", text)
+        self.assertNotIn("color:red", text)
+
     def test_renders_images_video_html_and_assessments(self):
         data = minimal_course()
         data["course"]["parts"][0]["pieces"][0]["blocks"] = [

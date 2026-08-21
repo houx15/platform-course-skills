@@ -4126,6 +4126,30 @@ var submitCorrectOrExhausted = external_exports.object({ rule: external_exports.
 var SingleChoiceCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
 var FillBlankCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
 var TextBlock = external_exports.object({ id: blockIdSchema, type: external_exports.literal("text"), content: external_exports.string() }).strict();
+var RICH_TEXT_MAX_CHARS = 64 * 1024;
+var RICH_TEXT_FORBIDDEN = [
+  { pattern: /<\s*script\b/i, what: "<script>", instead: "richText never executes code \u2014 use an interactiveHtml block if the student must interact" },
+  { pattern: /<\s*(iframe|object|embed)\b/i, what: "<iframe>/<object>/<embed>", instead: "embed media with a video/pdf/images block instead" },
+  { pattern: /<\s*form\b/i, what: "<form>", instead: "collect answers with a fillBlank/singleChoice block instead" },
+  { pattern: /<\s*(link|base)\b/i, what: "<link>/<base>", instead: "the card has no base URL \u2014 put your CSS in an inline <style> block" },
+  { pattern: /<[a-z][^>]*\son[a-z]+\s*=/i, what: "an inline event handler (onclick=\u2026)", instead: "richText never executes code" },
+  { pattern: /javascript\s*:/i, what: "a javascript: URL", instead: "richText never executes code" }
+];
+var RichTextHtml = external_exports.string().min(1).max(RICH_TEXT_MAX_CHARS, `richText html exceeds ${RICH_TEXT_MAX_CHARS} characters \u2014 split it across slices`).superRefine((html, ctx) => {
+  for (const { pattern, what, instead } of RICH_TEXT_FORBIDDEN) {
+    if (pattern.test(html)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `richText html must not contain ${what} \u2014 ${instead}` });
+    }
+  }
+});
+var RichTextBlock = external_exports.object({
+  id: blockIdSchema,
+  type: external_exports.literal("richText"),
+  /** A self-contained HTML fragment. An inline `<style>` is expected and encouraged. */
+  html: RichTextHtml,
+  /** Accessible name for the scrollable region; the renderer supplies a generic one when absent. */
+  title: external_exports.string().min(1).optional()
+}).strict();
 var ImageItem = external_exports.object({ id: external_exports.string().min(1), source: relativeAssetPathSchema, alt: external_exports.string().min(1), caption: external_exports.string().optional() }).strict();
 var ImagesBlock = external_exports.object({
   id: blockIdSchema,
@@ -4184,6 +4208,7 @@ var SingleChoiceBlock = external_exports.object({
 }).strict();
 var BlockDefinition = external_exports.discriminatedUnion("type", [
   TextBlock,
+  RichTextBlock,
   ImagesBlock,
   PdfBlock,
   VideoBlock,
@@ -4831,6 +4856,7 @@ function stronglyConnectedComponents(steps, stepIds) {
 var MAX_ASSETS = 256;
 var EVIDENCE_PRODUCING_BLOCK_TYPES = /* @__PURE__ */ new Set(["singleChoice", "fillBlank", "video", "interactiveHtml"]);
 var MINUTES_MISMATCH_TOLERANCE = 0.35;
+var EXTERNAL_REF = /(?:\b(?:src|href)\s*=\s*["']?\s*https?:)|(?:url\(\s*["']?\s*https?:)/i;
 function validateQuality(document) {
   const { course } = document;
   const issues = [];
@@ -4850,6 +4876,13 @@ function validateQuality(document) {
         const blockPath = `${slicePath}.blocks[${bi}]`;
         if (block.type === "text" && block.content.trim().length === 0) {
           add(blockPath, `text block '${block.id}' has empty content \u2014 it will render nothing`, "warn");
+        }
+        if (block.type === "richText" && EXTERNAL_REF.test(block.html)) {
+          add(
+            blockPath,
+            `richText block '${block.id}' references an off-page URL \u2014 a card is rendered from srcdoc (no base URL, CSP-restricted), so it will not load. Inline it as a data: URI, or use an images/video/pdf block.`,
+            "warn"
+          );
         }
         if (block.type === "images") {
           const counts = /* @__PURE__ */ new Map();

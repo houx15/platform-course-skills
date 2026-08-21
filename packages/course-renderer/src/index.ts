@@ -1,9 +1,10 @@
 export const COURSE_RENDERER_VERSION = "0.0.0";
 
-export type { BlockRendererProps, BlockRenderer, TextBlock, ImagesBlock, ImageItem, FillBlankBlock, SingleChoiceBlock } from "./blocks/types";
+export type { BlockRendererProps, BlockRenderer, TextBlock, RichTextBlock, ImagesBlock, ImageItem, FillBlankBlock, SingleChoiceBlock } from "./blocks/types";
 export { blockRenderers, getBlockRenderer } from "./blocks/registry";
 export { NotImplementedRenderer } from "./blocks/NotImplementedRenderer";
 export { TextRenderer } from "./blocks/TextRenderer";
+export { RichTextRenderer, buildRichTextDocument } from "./blocks/RichTextRenderer";
 export { ImagesRenderer } from "./blocks/ImagesRenderer";
 export { FillBlankRenderer } from "./blocks/assessment/FillBlankRenderer";
 export { SingleChoiceRenderer } from "./blocks/assessment/SingleChoiceRenderer";

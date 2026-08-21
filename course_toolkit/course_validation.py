@@ -7,6 +7,7 @@ from .errors import ValidationIssue
 ID_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 BLOCK_TYPES = {
     "text",
+    "richText",
     "images",
     "pdf",
     "video",
@@ -260,6 +261,12 @@ def _validate_block(
 
     if block_type == "text":
         _string(block.get("content"), f"{path}.content", issues)
+        return
+
+    if block_type == "richText":
+        _string(block.get("html"), f"{path}.html", issues)
+        if "title" in block:
+            _string(block.get("title"), f"{path}.title", issues)
         return
 
     if block_type == "images":

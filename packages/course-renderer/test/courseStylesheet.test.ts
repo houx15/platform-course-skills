@@ -30,6 +30,37 @@ describe("course stylesheet (styles/course.css)", () => {
     expect(courseCssText).toMatch(/\.course-layout__slot\s*\{[^}]*justify-content:\s*safe\s+center/);
   });
 
+  it("lets an images block fill its growing wrapper so its figures can center vertically", () => {
+    expect(courseCssText).toMatch(/\.course-block--images\s*\{[^}]*flex:\s*1\s+1\s+auto/);
+  });
+
+  it("an images wrapper grows ONLY as the slot's only child — a figure sharing its slot must not strand its text sibling at the bottom", () => {
+    // The grow list that applies unconditionally is the genuinely
+    // height-hungry media; images is deliberately NOT in it.
+    const unconditionalGrow = courseCssText.match(
+      /\.course-slot-block:has\(> \.course-block--pdf\),[\s\S]*?\{[^}]*flex:\s*1\s+1\s+auto[^}]*\}/,
+    );
+    expect(unconditionalGrow).not.toBeNull();
+    expect(unconditionalGrow![0]).not.toMatch(/course-block--images/);
+    expect(courseCssText).toMatch(
+      /\.course-slot-block:only-child:has\(> \.course-block--images\)\s*\{[^}]*flex:\s*1\s+1\s+auto/,
+    );
+  });
+
+  it("a richText card fills its slot and scrolls INSIDE itself — the one block allowed to overflow, without the shell ever page-scrolling", () => {
+    expect(courseCssText).toMatch(
+      /\.course-slot-block:has\(> \.course-block--pdf\),[\s\S]*?course-block--rich-text\)[\s\S]*?\{[^}]*flex:\s*1\s+1\s+auto/,
+    );
+    expect(courseCssText).toMatch(/\.course-block--rich-text\s*\{[^}]*overflow:\s*hidden/);
+    expect(courseCssText).toMatch(/\.course-rich-text__frame\s*\{[^}]*flex:\s*1\s+1\s+auto/);
+  });
+
+  it("a wrapper holding a hidden block collapses, so a not-yet-revealed block never holds the slot's space open", () => {
+    expect(courseCssText).toMatch(
+      /\.course-slot-block:has\(> \.course-block\[hidden\]\)\s*\{[^}]*display:\s*none/,
+    );
+  });
+
   it("ships the click-to-enlarge image lightbox — dismissable backdrop + contained enlarged image", () => {
     expect(courseCssText).toMatch(/\.course-lightbox\s*\{[^}]*position:\s*fixed/);
     expect(courseCssText).toMatch(/\.course-lightbox__backdrop\s*\{[^}]*cursor:\s*zoom-out/);

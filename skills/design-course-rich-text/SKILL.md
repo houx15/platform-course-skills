@@ -1,0 +1,51 @@
+---
+name: design-course-rich-text
+description: Use when an approved course page needs a static richText Block to present a methodology, worked example, comparison, reference table, definition set, or synthesis more clearly than Markdown, without learner interaction.
+---
+
+# Design Course Rich Text
+
+Turn already-approved teaching content into one safe, readable `richText` Block. This is an internal production specialist: preserve the page plan, method step, source meaning, terminology, and learner-state change. Improve editorial structure and visual hierarchy; do not invent a new methodology, example, claim, question, or assessment.
+
+## When to use it
+
+Use `richText` when visual structure carries instructional meaning, especially:
+
+- a methodology with ordered steps, purposes, and common mistakes;
+- a worked example that separates observation, reasoning, and conclusion;
+- a two-way comparison, evidence ladder, source taxonomy, rubric, or decision table;
+- a definition set, annotated checklist, synthesis map, or compact reference card;
+- an explanation whose callouts, grouping, labels, or hierarchy would be flattened by Markdown.
+
+Keep `text` for short prose. Use `images`, `pdf`, or `video` for real media. Use `interactiveHtml`, `fillBlank`, or `singleChoice` whenever the learner must act or submit evidence. A `richText` Block is display-only and never completes a Slice.
+
+## Authoring workflow
+
+1. Read the approved teaching design, page-plan row, source bindings, and the Slice's neighbouring Blocks. Identify the one teaching job the card performs and the method step or learner-state change it supports.
+2. Choose the smallest editorial structure that makes that job easier to understand. Do not add panels merely to make the screen look decorated.
+3. Write a self-contained HTML fragment in the Block's `html` field. Inline one `<style>` block when needed. Use semantic headings, lists, tables, `blockquote`, `dl`, and labelled sections before adding generic containers.
+4. Prefer `--course-ink`, `--course-secondary`, `--course-muted`, `--course-surface`, `--course-border`, `--course-accent`, `--course-accent-weak`, and `--course-radius`. Keep body text at least `15px`, secondary text at least `14px`, and use readable line lengths and spacing.
+5. Keep the fragment within 64 KB. If the learner must scroll through several distinct ideas, split the teaching sequence into separate Slices rather than building one long card.
+6. Insert the Block into `.course-work/course-blueprint.json`, assign it to a tall slot (`full` or one side of `split-horizontal`), then compile and inspect it in the offline preview that uses the pinned student renderer. Never edit generated `course/course.json` directly.
+
+## Hard boundaries
+
+- No `<script>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<link>`, `<base>`, inline `on...=` handlers, or `javascript:` URLs.
+- No external stylesheets, webfonts, remote images, or relative asset paths. Use an `images` Block for course images; only very small decorative images may be inlined as data URIs.
+- Do not simulate buttons, inputs, tabs, accordions, drag targets, or other affordances. If it looks actionable, it must actually be an interactive Block.
+- Do not hard-code a separate brand palette. Use the course variables so the card follows the student's chosen accent.
+- Do not encode crucial meaning through colour alone. Retain visible labels and logical reading order.
+- Do not copy planning notes, source IDs, AI rationale, or answer keys into learner-facing HTML.
+
+## Quality check
+
+Before returning the Block, verify:
+
+- every visible claim is already supported by the approved sources or teaching design;
+- the first screen makes the card's purpose and hierarchy apparent;
+- the layout improves comprehension of the method, example, or comparison;
+- the card remains understandable without its colours;
+- there is no interaction or completion expectation;
+- the shared validator accepts it and the real offline renderer shows no clipping, unreadable text, or unnecessary internal scrolling.
+
+Read [examples.md](references/examples.md) when writing a methodology/process card or a comparison/worked-example card. Adapt their structure, not their subject matter or wording.

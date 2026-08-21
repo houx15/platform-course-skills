@@ -388,7 +388,7 @@ class SkillPackageTests(unittest.TestCase):
         combined = "\n".join((blueprint, runtime, readme))
 
         for phrase in (
-            "course-authoring-v1.5.2",
+            "course-authoring-v1.6.0",
             "放大阅读",
             "near-fullscreen modal",
             "text-and-PDF split remains `1:1`",

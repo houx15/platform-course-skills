@@ -20,6 +20,11 @@ const EVIDENCE_PRODUCING_BLOCK_TYPES = new Set(["singleChoice", "fillBlank", "vi
 // contract-breaking mismatch (both are independently authored numbers), so WARN.
 const MINUTES_MISMATCH_TOLERANCE = 0.35;
 
+// An off-page reference inside a richText card's HTML: `src="http…"`,
+// `href="http…"`, or a CSS `url(http…)`. Google Fonts included — the card is
+// isolated, nothing outside it loads.
+const EXTERNAL_REF = /(?:\b(?:src|href)\s*=\s*["']?\s*https?:)|(?:url\(\s*["']?\s*https?:)/i;
+
 /**
  * Contract-quality checks (P2-09). Deterministic authoring invariants that go
  * beyond pure referential integrity (validateReferential): each check is
@@ -57,6 +62,20 @@ export function validateQuality(document: CourseDefinitionDocument): ValidationI
         // --- WARN: empty text content renders nothing.
         if (block.type === "text" && block.content.trim().length === 0) {
           add(blockPath, `text block '${block.id}' has empty content — it will render nothing`, "warn");
+        }
+
+        // --- WARN: a richText card is rendered from `srcdoc`, which has NO
+        // base URL and sits behind the app's CSP — so an off-page reference
+        // (a remote image, a webfont, a background-image URL) simply doesn't
+        // load, leaving a hole the author cannot see when previewing the raw
+        // HTML in a browser. Not a playability break (the text still reads),
+        // hence WARN, but it is the single most likely richText surprise.
+        if (block.type === "richText" && EXTERNAL_REF.test(block.html)) {
+          add(
+            blockPath,
+            `richText block '${block.id}' references an off-page URL — a card is rendered from srcdoc (no base URL, CSP-restricted), so it will not load. Inline it as a data: URI, or use an images/video/pdf block.`,
+            "warn",
+          );
         }
 
         // --- HARD: image item id uniqueness + presentation:"single" arity

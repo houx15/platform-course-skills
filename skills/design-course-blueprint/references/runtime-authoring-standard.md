@@ -2,7 +2,7 @@
 
 ## Authority order
 
-1. The three shared packages pinned at `course-authoring-v1.5.2` decide which JSON is accepted and how it is rendered. This tag keeps the v1.4.0 layout contract intact; it includes the v1.5.1 course-end visual fixes and the v1.5.2 PDF new-tab navigation fix.
+1. The three shared packages pinned at `course-authoring-v1.6.0` decide which JSON is accepted and how it is rendered. This tag keeps the existing layout and publication contract, includes the v1.5.x course-end/media fixes, and adds the inline static `richText` Block.
 2. `packages/course-runtime` and `packages/course-renderer` decide which accepted behavior is actually produced and rendered.
 3. `2026-08-15-student-course-runtime-data-and-renderer-design.md` explains product meaning.
 4. Golden examples demonstrate coverage; they never limit the available options.
@@ -26,9 +26,10 @@ The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. S
 
 Choose the layout from the learning action and natural media aspect while keeping `1:1` as the strong horizontal default:
 
-- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself. In `course-authoring-v1.5.2`, every PDF header has a **放大阅读** action that opens the browser viewer in a large near-fullscreen modal, so the learner can inspect the original without the author giving the PDF a wider Slot. If the learner uses the external-open action, it must open a new tab and leave the course tab intact.
+- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself. In `course-authoring-v1.6.0`, every PDF header has a **放大阅读** action that opens the browser viewer in a large near-fullscreen modal, so the learner can inspect the original without the author giving the PDF a wider Slot. If the learner uses the external-open action, it must open a new tab and leave the course tab intact.
 - **Video is wide.** Use `full` for a focused video. The one normal asymmetric split exception is a dominant large video paired with only a small amount of supporting text; the video may receive the wider side. A video paired with substantial content remains `1:1` or is split into another Slice.
 - **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
+- **Rich text is a structured reading card.** Use it for static methodology, worked-example anatomy, comparison, definition, table, rubric, or synthesis content whose hierarchy would be flattened by Markdown. It fills and scrolls inside a tall Slot, carries its HTML inline, references no course asset, and never completes a Slice. Keep short prose as `text`; keep actions in interactive or assessment Blocks.
 - **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side, with the answerable Block in the right slot. Let the renderer's reading card constrain line length.
 
 All split Slots are vertically centred by the shared renderer. These are authoring decisions; the renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
@@ -36,6 +37,14 @@ All split Slots are vertically centred by the shared renderer. These are authori
 Keep the reference content required to answer a question in the same Slice whenever the combined page remains readable. Do not make learners flip backward during an answer merely because authoring separated the prompt from its evidence.
 
 For AI-authored single-choice questions, vary correct answer positions across the course and do not default every correct answer to the first option. Preserve teacher-provided questions and answer semantics.
+
+For free-text answers, separate reflection from closed-answer checking. Reflection and conceptual explanation use `reflection + submit-any`; they are not graded by keyword or regex. A graded `fillBlank` is reserved for a genuinely closed short answer, includes reasonable accepted variants and actionable `incorrectFeedback`, and uses `submit-correct-or-exhausted` with at most three attempts. The authoring workflow must provide explanation or continuation after exhaustion. Do not generate `submit-correct` for `fillBlank`, even though the shared contract retains it for compatibility.
+
+## Rich-text requirements
+
+`richText` contains one inline `html` string and an optional accessible `title`. It may use isolated inline CSS and the course variables `--course-ink`, `--course-secondary`, `--course-muted`, `--course-surface`, `--course-border`, `--course-accent`, `--course-accent-weak`, and `--course-radius`.
+
+It must not contain scripts, nested frames/objects/embeds, forms, external stylesheets/base tags, inline event handlers, or `javascript:` URLs. Its `srcdoc` has no base URL: remote URLs, relative assets, and webfonts do not load. Use an `images`, `video`, or `pdf` Block for media. Keep the HTML below 64 KB and split long reading across Slices. Always inspect the rendered card in the offline preview before publication.
 
 ## Workflow completeness
 

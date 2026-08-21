@@ -90,6 +90,19 @@ class CourseValidationTests(unittest.TestCase):
         data["course"]["parts"][0]["pieces"][0]["blocks"][0]["type"] = "audio"
         self.assertIn("unsupported-type", self.codes(data))
 
+    def test_rich_text_block_is_valid(self):
+        data = minimal_course()
+        data["course"]["parts"][0]["pieces"][0]["blocks"] = [
+            {
+                "id": "method-card",
+                "type": "richText",
+                "title": "方法卡",
+                "html": "<h2>三步法</h2><ol><li>观察</li><li>比较</li><li>判断</li></ol>",
+            }
+        ]
+
+        self.assertEqual(validate_course_data(data), [])
+
     def test_empty_image_alt_fails(self):
         data = minimal_course()
         data["course"]["parts"][0]["pieces"][0]["blocks"] = [

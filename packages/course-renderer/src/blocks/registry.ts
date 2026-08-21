@@ -2,6 +2,7 @@ import type { BlockType } from "@mind-imprint/course-contract";
 import type { BlockRenderer } from "./types";
 import { NotImplementedRenderer } from "./NotImplementedRenderer";
 import { TextRenderer } from "./TextRenderer";
+import { RichTextRenderer } from "./RichTextRenderer";
 import { ImagesRenderer } from "./ImagesRenderer";
 import { FillBlankRenderer } from "./assessment/FillBlankRenderer";
 import { SingleChoiceRenderer } from "./assessment/SingleChoiceRenderer";
@@ -16,6 +17,7 @@ import { HtmlInteractionRenderer } from "./html/HtmlInteractionRenderer";
  */
 export const blockRenderers: Record<BlockType, BlockRenderer<any>> = {
   text: TextRenderer,
+  richText: RichTextRenderer,
   images: ImagesRenderer,
   pdf: PdfRenderer,
   video: VideoRenderer,

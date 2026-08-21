@@ -1,0 +1,4 @@
+interface:
+  display_name: "设计课程富文本卡片"
+  short_description: "将结构化教学内容写成安全的 richText HTML/CSS 卡片"
+  default_prompt: "把已确认的教学内容制作成一个安全、清晰、可在课程 renderer 中预览的 richText Block。"

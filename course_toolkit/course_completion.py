@@ -282,8 +282,14 @@ def _block_issues(blocks: object, base: str) -> List[dict]:
         block_type = block.get("type")
         if not isinstance(block.get("id"), str) or not block["id"].strip():
             issues.append(_issue(f"{path}.id", "missing-block-id", "Give the Block a stable lower-case hyphenated ID."))
-        if block_type not in {"text", "images", "pdf", "video", "interactiveHtml", "fillBlank", "singleChoice"}:
-            issues.append(_issue(f"{path}.type", "missing-block-type", "Choose one of the seven runtime Block types."))
+        if block_type not in {"text", "richText", "images", "pdf", "video", "interactiveHtml", "fillBlank", "singleChoice"}:
+            issues.append(_issue(f"{path}.type", "missing-block-type", "Choose one of the eight runtime Block types."))
+            continue
+        if block_type == "richText":
+            if not isinstance(block.get("html"), str) or not block["html"].strip():
+                issues.append(_issue(f"{path}.html", "missing-rich-text-html", "Write one self-contained static HTML fragment for the richText Block."))
+            if block.get("completion") is not None:
+                issues.append(_issue(f"{path}.completion", "rich-text-cannot-complete", "richText is display-only and cannot carry a completion rule."))
             continue
         if block_type == "video" and isinstance(block.get("interaction"), dict) and not isinstance(block.get("completion"), dict):
             issues.append(_issue(f"{path}.completion", "missing-video-completion", "Choose whether completion requires the video end alone or the video end plus required cues."))
@@ -299,6 +305,46 @@ def _block_issues(blocks: object, base: str) -> List[dict]:
                 )
             if block.get("completion") is None:
                 issues.append(_issue(f"{path}.completion", "missing-html-completion", "Declare interaction-complete when this HTML produces completion evidence."))
+        if block_type == "fillBlank":
+            assessment = block.get("assessment") if isinstance(block.get("assessment"), dict) else {}
+            completion = block.get("completion") if isinstance(block.get("completion"), dict) else {}
+            if assessment.get("mode") == "graded":
+                if completion.get("rule") == "submit-correct":
+                    issues.append(
+                        _issue(
+                            f"{path}.completion.rule",
+                            "fillblank-unbounded-correctness-gate",
+                            "A graded fillBlank must not block forever waiting for an exact answer. Use submit-correct-or-exhausted with at most three attempts and a teaching exit.",
+                        )
+                    )
+                attempts = completion.get("maxAttempts")
+                if completion.get("rule") == "submit-correct-or-exhausted" and (
+                    not isinstance(attempts, int) or isinstance(attempts, bool) or not 1 <= attempts <= 3
+                ):
+                    issues.append(
+                        _issue(
+                            f"{path}.completion.maxAttempts",
+                            "fillblank-attempt-limit-required",
+                            "A graded fillBlank may allow no more than three attempts before explanation or continuation.",
+                        )
+                    )
+                feedback = assessment.get("incorrectFeedback")
+                if not isinstance(feedback, str) or not feedback.strip():
+                    issues.append(
+                        _issue(
+                            f"{path}.assessment.incorrectFeedback",
+                            "fillblank-missing-incorrect-feedback",
+                            "A graded fillBlank needs actionable incorrect feedback before the learner retries or continues.",
+                        )
+                    )
+            elif assessment.get("mode") == "reflection" and completion.get("rule") != "submit-any":
+                issues.append(
+                    _issue(
+                        f"{path}.completion.rule",
+                        "reflection-must-submit-any",
+                        "Open reflection must accept the learner's submission instead of grading it as an exact answer.",
+                    )
+                )
     return issues
 
 

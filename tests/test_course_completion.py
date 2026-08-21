@@ -116,6 +116,65 @@ class CourseCompletionTests(unittest.TestCase):
         self.assertEqual(plan["summary"]["statusCounts"], {"ready-for-contract-validation": 1})
         self.assertEqual(plan["slices"][0]["issues"], [])
 
+    def test_rich_text_is_a_display_only_runtime_block(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        block = blueprint["course"]["parts"][0]["slices"][0]["blocks"][0]
+        block["type"] = "richText"
+        block["html"] = "<h2>Evidence method</h2><p>Observe, compare, then qualify the claim.</p>"
+        block.pop("content", None)
+
+        plan = audit_course_draft(blueprint)
+
+        self.assertNotIn(
+            "missing-block-type",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+        self.assertNotIn(
+            "missing-rich-text-html",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+
+    def test_open_reflection_cannot_use_an_exact_answer_gate(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        question = blueprint["course"]["parts"][0]["slices"][0]["blocks"][1]
+        question.clear()
+        question.update(
+            {
+                "id": "evidence-question",
+                "type": "fillBlank",
+                "prompt": "Explain what you notice.",
+                "assessment": {"mode": "reflection", "rubric": "A source-based observation."},
+                "completion": {"rule": "submit-correct"},
+            }
+        )
+
+        plan = audit_course_draft(blueprint)
+
+        self.assertIn(
+            "reflection-must-submit-any",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+
+    def test_graded_fill_blank_needs_feedback_and_a_finite_exit(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        question = blueprint["course"]["parts"][0]["slices"][0]["blocks"][1]
+        question.clear()
+        question.update(
+            {
+                "id": "evidence-question",
+                "type": "fillBlank",
+                "prompt": "Name the source type.",
+                "assessment": {"mode": "graded", "acceptedAnswers": ["primary"]},
+                "completion": {"rule": "submit-correct"},
+            }
+        )
+
+        plan = audit_course_draft(blueprint)
+        codes = {issue["code"] for issue in plan["slices"][0]["issues"]}
+
+        self.assertIn("fillblank-unbounded-correctness-gate", codes)
+        self.assertIn("fillblank-missing-incorrect-feedback", codes)
+
     def test_html_without_audio_declaration_requires_a_capability_decision(self):
         draft = incomplete_draft()
         block = {

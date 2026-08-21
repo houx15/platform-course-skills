@@ -32,6 +32,8 @@ REFERENCE_TEXT = re.compile(
     r"\b(?:the\s+)?(?:original|source|material|figure|chart|image)\s+(?:above|below)\b",
     re.IGNORECASE,
 )
+RICH_TEXT_NONCONTENT = re.compile(r"<(?:style|script)\b[^>]*>.*?</(?:style|script)\s*>", re.IGNORECASE | re.DOTALL)
+RICH_TEXT_TAG = re.compile(r"<[^>]+>")
 ASSESSMENT_TYPES = frozenset({"singleChoice", "fillBlank"})
 COMPLETION_EVENT_TYPES = {
     "video": frozenset({"block.completed"}),
@@ -201,8 +203,8 @@ def _resolve_target(
         return None, _issue(_target_path(part_id, slice_id, block_id), "plan-target-wrong-slice", "plan target must resolve inside the planned Slice")
     if target_kind == "question" and block.get("type") not in ASSESSMENT_TYPES:
         return None, _issue(_target_path(part_id, slice_id, block_id), "plan-target-kind-mismatch", "question target must resolve to an answerable Block")
-    if target_kind == "claim" and block.get("type") != "text":
-        return None, _issue(_target_path(part_id, slice_id, block_id), "plan-target-kind-mismatch", "claim target must resolve to a text Block")
+    if target_kind == "claim" and block.get("type") not in {"text", "richText"}:
+        return None, _issue(_target_path(part_id, slice_id, block_id), "plan-target-kind-mismatch", "claim target must resolve to a text or richText Block")
     return block_id, None
 
 
@@ -638,6 +640,9 @@ def validate_plan_correspondence(root: Path, course: dict) -> List[ValidationIss
                 value = block.get(field)
                 if isinstance(value, str):
                     learner_text.append((block["id"], value))
+            if block.get("type") == "richText" and isinstance(block.get("html"), str):
+                without_noncontent = RICH_TEXT_NONCONTENT.sub(" ", block["html"])
+                learner_text.append((block["id"], RICH_TEXT_TAG.sub(" ", without_noncontent)))
         if any(REFERENCE_TEXT.search(value) for _, value in learner_text) and (
             not visible_source_files
             or not all(_has_reference_surface(actual_slice, source_file) for source_file in visible_source_files)
@@ -703,9 +708,9 @@ def validate_layout_assignment(course: dict) -> List[ValidationIssue]:
                     continue
                 slot_blocks = [next((block for block in blocks if block["id"] == block_id), None) for block_id in _items(slot.get("blockIds"))]
                 types = {block.get("type") for block in slot_blocks if isinstance(block, dict)}
-                if "text" in types and types.intersection(ASSESSMENT_TYPES):
-                    text_block = next(block for block in slot_blocks if isinstance(block, dict) and block.get("type") == "text")
-                    issues.append(_issue(_target_path(part_id, slice_id, text_block["id"]), "layout-split-stack-empty-side", "text and answerable Blocks are stacked in one split side while the other side is empty"))
+                if types.intersection({"text", "richText"}) and types.intersection(ASSESSMENT_TYPES):
+                    text_block = next(block for block in slot_blocks if isinstance(block, dict) and block.get("type") in {"text", "richText"})
+                    issues.append(_issue(_target_path(part_id, slice_id, text_block["id"]), "layout-split-stack-empty-side", "text/richText and answerable Blocks are stacked in one split side while the other side is empty"))
     return _ordered(issues)
 
 

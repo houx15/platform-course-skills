@@ -4087,6 +4087,30 @@ var submitCorrectOrExhausted = external_exports.object({ rule: external_exports.
 var SingleChoiceCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
 var FillBlankCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
 var TextBlock = external_exports.object({ id: blockIdSchema, type: external_exports.literal("text"), content: external_exports.string() }).strict();
+var RICH_TEXT_MAX_CHARS = 64 * 1024;
+var RICH_TEXT_FORBIDDEN = [
+  { pattern: /<\s*script\b/i, what: "<script>", instead: "richText never executes code \u2014 use an interactiveHtml block if the student must interact" },
+  { pattern: /<\s*(iframe|object|embed)\b/i, what: "<iframe>/<object>/<embed>", instead: "embed media with a video/pdf/images block instead" },
+  { pattern: /<\s*form\b/i, what: "<form>", instead: "collect answers with a fillBlank/singleChoice block instead" },
+  { pattern: /<\s*(link|base)\b/i, what: "<link>/<base>", instead: "the card has no base URL \u2014 put your CSS in an inline <style> block" },
+  { pattern: /<[a-z][^>]*\son[a-z]+\s*=/i, what: "an inline event handler (onclick=\u2026)", instead: "richText never executes code" },
+  { pattern: /javascript\s*:/i, what: "a javascript: URL", instead: "richText never executes code" }
+];
+var RichTextHtml = external_exports.string().min(1).max(RICH_TEXT_MAX_CHARS, `richText html exceeds ${RICH_TEXT_MAX_CHARS} characters \u2014 split it across slices`).superRefine((html, ctx) => {
+  for (const { pattern, what, instead } of RICH_TEXT_FORBIDDEN) {
+    if (pattern.test(html)) {
+      ctx.addIssue({ code: external_exports.ZodIssueCode.custom, message: `richText html must not contain ${what} \u2014 ${instead}` });
+    }
+  }
+});
+var RichTextBlock = external_exports.object({
+  id: blockIdSchema,
+  type: external_exports.literal("richText"),
+  /** A self-contained HTML fragment. An inline `<style>` is expected and encouraged. */
+  html: RichTextHtml,
+  /** Accessible name for the scrollable region; the renderer supplies a generic one when absent. */
+  title: external_exports.string().min(1).optional()
+}).strict();
 var ImageItem = external_exports.object({ id: external_exports.string().min(1), source: relativeAssetPathSchema, alt: external_exports.string().min(1), caption: external_exports.string().optional() }).strict();
 var ImagesBlock = external_exports.object({
   id: blockIdSchema,
@@ -4145,6 +4169,7 @@ var SingleChoiceBlock = external_exports.object({
 }).strict();
 var BlockDefinition = external_exports.discriminatedUnion("type", [
   TextBlock,
+  RichTextBlock,
   ImagesBlock,
   PdfBlock,
   VideoBlock,

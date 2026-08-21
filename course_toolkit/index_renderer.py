@@ -1,3 +1,5 @@
+import re
+from html import unescape
 from typing import Callable, Dict, List
 
 
@@ -7,6 +9,17 @@ def _blocking(value: bool) -> str:
 
 def _render_text(block: dict) -> List[str]:
     return ["[文字]", "", block["content"]]
+
+
+def _render_rich_text(block: dict) -> List[str]:
+    html = re.sub(r"<(?:style|script)\b[^>]*>.*?</(?:style|script)\s*>", " ", block["html"], flags=re.IGNORECASE | re.DOTALL)
+    plain = unescape(re.sub(r"<[^>]+>", " ", html))
+    plain = re.sub(r"\s+", " ", plain).strip()
+    lines = ["[富文本卡片]", ""]
+    if block.get("title"):
+        lines.append(f"- 标题：{block['title']}")
+    lines.append(f"- 内容：{plain}")
+    return lines
 
 
 def _render_images(block: dict) -> List[str]:
@@ -108,6 +121,7 @@ def _render_single_choice(block: dict) -> List[str]:
 
 RENDERERS: Dict[str, Callable[[dict], List[str]]] = {
     "text": _render_text,
+    "richText": _render_rich_text,
     "images": _render_images,
     "pdf": _render_pdf,
     "video": _render_video,

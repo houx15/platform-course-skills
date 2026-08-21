@@ -10,10 +10,10 @@ class RuntimePinTests(unittest.TestCase):
             (ROOT / "course-contract.snapshot.json").read_text(encoding="utf-8")
         )
 
-        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.5.2")
+        self.assertEqual(manifest["upstreamTag"], "course-authoring-v1.6.0")
         self.assertEqual(
             manifest["upstreamCommit"],
-            "222fb2f28844dc5fc0851d4e5e8fc27f7399f0b9",
+            "895ddfe664ba0790f196123ec590bf2eecdebed5",
         )
         self.assertEqual(
             set(manifest["packages"]),

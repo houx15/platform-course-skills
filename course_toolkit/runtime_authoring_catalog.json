@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "upstreamTag": "course-authoring-v1.5.2",
+  "upstreamTag": "course-authoring-v1.6.0",
   "targetContractVersion": "2.0",
   "authority": {
     "machine": "packages/course-contract",
@@ -76,12 +76,14 @@
     "mediaComposition": {
       "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
       "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
-      "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching"
+      "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
+      "richText": "static structured reading card; use full or a tall horizontal-split side and split long reading across slices"
     }
   },
   "blocks": {
     "types": [
       "text",
+      "richText",
       "images",
       "pdf",
       "video",
@@ -92,6 +94,15 @@
     "text": {
       "requiredFields": ["id", "type", "content"],
       "optionalFields": []
+    },
+    "richText": {
+      "requiredFields": ["id", "type", "html"],
+      "optionalFields": ["title"],
+      "displayOnly": true,
+      "completionEvidence": false,
+      "assetPaths": false,
+      "maxHtmlChars": 65536,
+      "authoringRule": "use only when static editorial structure improves teaching; use interactiveHtml for learner action"
     },
     "images": {
       "requiredFields": ["id", "type", "presentation", "items"],

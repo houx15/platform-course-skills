@@ -38,7 +38,8 @@ export function collectAssetPaths(document: CourseDefinitionDocument): string[] 
           case "interactiveHtml":
             add(block.source);
             break;
-          // text, fillBlank, singleChoice carry no assets
+          // text, richText, fillBlank, singleChoice carry no assets — richText
+          // deliberately carries its HTML INLINE, so it needs no signing at all.
         }
       }
     }
