@@ -72,7 +72,7 @@ Act as the 唯一教师入口 and course director. This Skill is the only teache
 11. 不得默认使用 text. Choose from `text`, `richText`, `images`, `pdf`, `video`, `interactiveHtml`, `fillBlank`, and `singleChoice` because the learning function requires it:
 
    - use concise text for explanation, framing, or synthesis;
-   - use `richText` when static editorial structure is itself instructional: method steps, worked-example anatomy, comparisons, evidence ladders, definition sets, decision tables, rubrics, or compact synthesis/reference cards. Plan the teaching content first and generate the inline HTML only after page-plan approval;
+   - use `richText` when static editorial structure is itself instructional: a reading lens beside an original source, method steps, worked-example anatomy, comparisons, evidence ladders, definition sets, decision tables, rubrics, or compact synthesis/reference cards. A reading lens must state the reading purpose, observable dimensions, and a question to carry into the source; it cannot replace the source with a summary. Plan the teaching content first and generate the inline HTML only after page-plan approval;
    - use images when spatial relations, comparison, observation, or visual evidence matter;
    - use `pdf` when students need to flip through, locate, compare, verify, or download a complete original document; state that action and where learning evidence is collected, or explicitly state that the file is for reference only;
    - use video for temporal demonstration or guided observation;

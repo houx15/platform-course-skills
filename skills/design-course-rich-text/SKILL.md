@@ -12,6 +12,7 @@ Turn already-approved teaching content into one safe, readable `richText` Block.
 Use `richText` when visual structure carries instructional meaning, especially:
 
 - a methodology with ordered steps, purposes, and common mistakes;
+- a reading lens beside a source: state why the learner is reading, name the dimensions to notice, and end with the question they should carry into the source;
 - a worked example that separates observation, reasoning, and conclusion;
 - a two-way comparison, evidence ladder, source taxonomy, rubric, or decision table;
 - a definition set, annotated checklist, synthesis map, or compact reference card;
@@ -23,6 +24,7 @@ Keep `text` for short prose. Use `images`, `pdf`, or `video` for real media. Use
 
 1. Read the approved teaching design, page-plan row, source bindings, and the Slice's neighbouring Blocks. Identify the one teaching job the card performs and the method step or learner-state change it supports.
 2. Choose the smallest editorial structure that makes that job easier to understand. Do not add panels merely to make the screen look decorated.
+   When the card prepares a source reading, keep the actual PDF, image, or excerpt in its own Block. The card should orient attention instead of replacing the source with a summary.
 3. Write a self-contained HTML fragment in the Block's `html` field. Inline one `<style>` block when needed. Use semantic headings, lists, tables, `blockquote`, `dl`, and labelled sections before adding generic containers.
 4. Prefer `--course-ink`, `--course-secondary`, `--course-muted`, `--course-surface`, `--course-border`, `--course-accent`, `--course-accent-weak`, and `--course-radius`. Keep body text at least `15px`, secondary text at least `14px`, and use readable line lengths and spacing.
 5. Keep the fragment within 64 KB. If the learner must scroll through several distinct ideas, split the teaching sequence into separate Slices rather than building one long card.
@@ -43,9 +45,10 @@ Before returning the Block, verify:
 
 - every visible claim is already supported by the approved sources or teaching design;
 - the first screen makes the card's purpose and hierarchy apparent;
+- a reading-lens card names the source-reading purpose, observable dimensions, and a concrete question without revealing the answer;
 - the layout improves comprehension of the method, example, or comparison;
 - the card remains understandable without its colours;
 - there is no interaction or completion expectation;
 - the shared validator accepts it and the real offline renderer shows no clipping, unreadable text, or unnecessary internal scrolling.
 
-Read [examples.md](references/examples.md) when writing a methodology/process card or a comparison/worked-example card. Adapt their structure, not their subject matter or wording.
+Read [examples.md](references/examples.md) when writing a reading-lens/method card or a comparison/worked-example card. Adapt their structure, not their subject matter or wording.

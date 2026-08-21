@@ -16,6 +16,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
   const [events, setEvents] = useState<Array<{ id: string; type: string; sourceId: string; sliceId: string | null }>>([]);
   const [visitedSliceIds, setVisitedSliceIds] = useState<string[]>([]);
   const [runtimeErrors, setRuntimeErrors] = useState<string[]>([]);
+  const [localCompletion, setLocalCompletion] = useState(false);
   const idFactory = useMemo(() => () => crypto.randomUUID(), []);
   const clock = useMemo(() => () => new Date().toISOString(), []);
   const adapters = useMemo(() => createPreviewAdapters(idFactory, clock), [idFactory, clock]);
@@ -71,6 +72,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
 
   useEffect(() => {
     setSelectedTargetKey(null);
+    setLocalCompletion(false);
   }, [progress.sliceIndex]);
 
   useEffect(() => {
@@ -183,7 +185,13 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
       <section ref={stageRef} className={`preview-stage${annotationMode ? " preview-stage--annotation-mode" : ""}`} aria-label="学生端课程预览" onClickCapture={selectAnnotationTarget}>
         <InteractionLoaderProvider value={loadVideoInteraction}>
           <AudioEngineProvider value={audio}>
-            {!inspection || inspectionSessionId ? <CoursePlayer
+            {localCompletion ? (
+              <section className="preview-local-completion" role="status" aria-label="本地预览已完成">
+                <p className="preview-local-completion__eyebrow">LOCAL PREVIEW COMPLETE</p>
+                <h2>本地预览已完成</h2>
+                <p>这个预览不会生成学生报告，也没有上传素材或发布课程。</p>
+              </section>
+            ) : !inspection || inspectionSessionId ? <CoursePlayer
               key={inspection ? inspectionSessionId : "teacher-preview"}
               document={document}
               definitionHash={definitionHash}
@@ -194,6 +202,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
               clock={clock}
               onBusReady={observe}
               onProgress={setProgress}
+              onComplete={() => setLocalCompletion(true)}
             /> : <p className="preview-loading">正在打开检查页面…</p>}
           </AudioEngineProvider>
         </InteractionLoaderProvider>

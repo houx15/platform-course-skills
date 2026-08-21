@@ -104,7 +104,7 @@ When `teachingDesign` exists, every Slice row also requires:
 
 Follow the `learningArc` order. Use the same method-step IDs declared by `teachingDesign`. The before/after states must name a real change. `whyOwnSlice` must justify an instructional unit, not merely say that a source file or image exists.
 
-At page-plan time, choose the intended information shape without writing final HTML yet. Mark `richText` as the likely modality when a static method, worked model, comparison, evidence ladder, definition set, table, rubric, or synthesis needs visible grouping that Markdown would flatten. Keep short prose as `text`; keep real media in their media Blocks; keep anything the learner manipulates or submits out of `richText`. The internal rich-text specialist writes the inline HTML only after the teacher approves the complete teaching design and page plan.
+At page-plan time, choose the intended information shape without writing final HTML yet. Mark `richText` as the likely modality when a reading lens, static method, worked model, comparison, evidence ladder, definition set, table, rubric, or synthesis needs visible grouping that Markdown would flatten. A reading lens sits beside the original source and tells the learner why to read, what dimensions to notice, and what question to carry into the material; it does not replace the material with a summary. Keep short prose as `text`; keep real media in their media Blocks; keep anything the learner manipulates or submits out of `richText`. The internal rich-text specialist writes the inline HTML only after the teacher approves the complete teaching design and page plan.
 
 ## Student-perspective review
 

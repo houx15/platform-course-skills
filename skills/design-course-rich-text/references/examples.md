@@ -2,16 +2,16 @@
 
 These examples demonstrate bounded editorial patterns. Replace all teaching content with source-backed course content and keep only the structure that serves the approved page plan.
 
-## Example 1: methodology steps with a mistake callout
+## Example 1: a reading lens beside the original source
 
-Use after the method has been introduced or when the learner needs one stable reference while following a model.
+Use before the learner reads a substantial PDF, excerpt, image, or video. Put the card in the left side of a `1:1` split and the real source on the right. It tells the learner what to notice without summarising away the evidence or supplying the eventual answer.
 
 ```json
 {
-  "id": "method-steps-card",
+  "id": "source-reading-lens",
   "type": "richText",
-  "title": "三步核查法",
-  "html": "<style>.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.step{border:1px solid var(--course-border);border-radius:var(--course-radius);padding:14px}.n{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--course-accent);color:white;font-weight:700}.step h3{margin:.6em 0 .3em}.mistake{margin-top:14px;padding:12px 14px;border-left:3px solid var(--course-accent);background:var(--course-accent-weak)}@media(max-width:680px){.steps{grid-template-columns:1fr}}</style><h2>三步核查法</h2><p>先确定主张，再寻找来源，最后判断证据能支持到哪一步。</p><div class=\"steps\"><section class=\"step\"><span class=\"n\">1</span><h3>圈出主张</h3><p>写清谁在什么情境下声称了什么。</p></section><section class=\"step\"><span class=\"n\">2</span><h3>找到来源</h3><p>区分原始材料、转述和评论。</p></section><section class=\"step\"><span class=\"n\">3</span><h3>限定结论</h3><p>只说证据实际支持的范围。</p></section></div><aside class=\"mistake\"><strong>常见错误</strong><br>把“有人提出质疑”直接写成“已经证明结论错误”。</aside>"
+  "title": "材料阅读提示",
+  "html": "<style>.eyebrow{margin:0 0 6px;color:var(--course-accent);font-size:14px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}.lead{color:var(--course-secondary)}.lenses{display:grid;gap:10px;margin:16px 0}.lens{display:grid;grid-template-columns:34px minmax(0,1fr);gap:12px;align-items:center;padding:11px 12px;border:1px solid var(--course-border);border-radius:var(--course-radius);background:var(--course-surface)}.n{display:grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--course-accent);color:white;font-weight:750}.lens h3,.lens p{margin:0}.lens p{margin-top:3px;color:var(--course-muted);font-size:14px}.prompt{margin-top:14px;padding:13px 14px;border-left:3px solid var(--course-accent);border-radius:0 var(--course-radius) var(--course-radius) 0;background:var(--course-accent-weak)}.prompt strong{display:block;margin-bottom:4px}</style><p class=\"eyebrow\">材料 01 · 企业主张</p><h2>这段话怎样让项目显得可靠又无害？</h2><p class=\"lead\">阅读右侧原文。先辨认反复出现的三类承诺，再判断这些承诺有没有充分证据。</p><div class=\"lenses\"><section class=\"lens\"><span class=\"n\">1</span><div><h3>经济承诺</h3><p>工作岗位、税收、旅游复苏与地方经济。</p></div></section><section class=\"lens\"><span class=\"n\">2</span><div><h3>环保承诺</h3><p>绿色空间、清洁能源与污染处理。</p></div></section><section class=\"lens\"><span class=\"n\">3</span><div><h3>生活叙事</h3><p>安全、可控、令人期待的休闲体验。</p></div></section></div><aside class=\"prompt\"><strong>阅读时抓住两件事</strong>他具体说了什么？用了哪些让人安心、期待或忽略风险的词？</aside>"
 }
 ```
 
@@ -30,7 +30,8 @@ Use when the learner needs to see why two concepts, sources, or reasoning moves 
 
 ## Adaptation rules
 
-- Three columns work for short, parallel steps; use a vertical sequence when each step needs substantial explanation.
+- The lens names observable dimensions and a reading purpose; it does not retell the source or reveal the later answer.
+- Use short vertical rows when each dimension needs a label plus one sentence. Use columns only for genuinely parallel, compact items.
 - A table works for repeated fields across several categories; two cards work better for a single contrast.
 - Put one worked example after the framework, not before the learner knows what to notice.
-- If the card must sit beside an assessment, keep only the reference needed to answer that assessment and place the answerable Block in the right slot.
+- If the card sits beside an assessment, keep only the reference needed for that assessment and place the answerable Block in the right slot.

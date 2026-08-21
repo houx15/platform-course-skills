@@ -121,6 +121,27 @@ button, select, textarea, input { font: inherit; }
   background: var(--mk-paper);
 }
 
+.preview-local-completion {
+  box-sizing: border-box;
+  width: min(560px, calc(100% - 64px));
+  margin: auto;
+  padding: 36px 40px;
+  border: 1px solid var(--mk-border);
+  border-radius: var(--mk-radius-lg);
+  background: var(--mk-surface);
+  box-shadow: var(--mk-shadow-md);
+  text-align: center;
+}
+.preview-local-completion__eyebrow {
+  margin: 0 0 8px;
+  color: var(--mk-accent);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .12em;
+}
+.preview-local-completion h2 { margin: 0; font-size: 28px; }
+.preview-local-completion p:last-child { margin: 12px 0 0; color: var(--mk-secondary); line-height: 1.65; }
+
 .preview-stage--annotation-mode { cursor: crosshair; }
 .preview-stage--annotation-mode [data-block-id],
 .preview-stage--annotation-mode [data-item-id] { cursor: crosshair; }

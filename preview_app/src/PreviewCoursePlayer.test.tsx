@@ -4,7 +4,7 @@ import type { CourseDefinitionDocument } from "@mind-imprint/course-contract";
 import { PreviewCoursePlayer } from "./PreviewCoursePlayer";
 
 vi.mock("@mind-imprint/course-renderer", () => ({
-  CoursePlayer: () => <div data-testid="course-player"><div data-block-id="case-question"><button type="button">Answer this question</button></div></div>,
+  CoursePlayer: ({ onComplete }: { onComplete?: () => void }) => <div data-testid="course-player"><div data-block-id="case-question"><button type="button">Answer this question</button></div><button type="button" onClick={onComplete}>Complete course locally</button></div>,
   InteractionLoaderProvider: ({ children }: { children: React.ReactNode }) => children,
   AudioEngineProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -67,6 +67,15 @@ describe("PreviewCoursePlayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Answer this question" }));
 
     expect(screen.getByLabelText("课程批注")).toHaveTextContent("Selected: block:case-question");
+  });
+
+  it("ends locally without pretending to generate a student report or publish", () => {
+    render(<PreviewCoursePlayer document={document} definitionHash={"a".repeat(64)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete course locally" }));
+
+    expect(screen.getByRole("status", { name: "本地预览已完成" })).toHaveTextContent("没有上传素材或发布课程");
+    expect(screen.queryByTestId("course-player")).not.toBeInTheDocument();
   });
 
   it("permits direct paging and keeps annotations available but collapsed in inspection mode", async () => {
