@@ -8,22 +8,27 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from course_toolkit.preview_server import create_preview_server, preview_scope_notice, validate_preview_prerequisites
-from course_toolkit.workflow import verify_g6_validation
-
-
+from course_toolkit.preview_server import (
+    create_preview_server,
+    preview_scope_notice,
+    validate_inspection_prerequisites,
+    validate_preview_prerequisites,
+)
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run an exact-renderer course preview on localhost")
     parser.add_argument("root", type=Path)
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--inspection", action="store_true", help="open the pre-teacher Agent visual inspection mode")
     args = parser.parse_args()
     try:
         root = args.root.resolve()
-        validation = validate_preview_prerequisites(root)
-        verify_g6_validation(root)
-        server = create_preview_server(root, port=args.port)
+        if args.inspection:
+            validation = validate_inspection_prerequisites(root)
+        else:
+            validation = validate_preview_prerequisites(root)
+        server = create_preview_server(root, port=args.port, inspection=args.inspection)
         host, port = server.server_address
         url = f"http://{host}:{port}/"
         payload = {
@@ -34,6 +39,7 @@ def main() -> int:
             "bind": host,
             "scope": "local-only",
             "sharing": "save or publish to the student platform",
+            "mode": "inspection" if args.inspection else "teacher-preview",
         }
         if args.json:
             print(json.dumps(payload, ensure_ascii=False), flush=True)

@@ -27,7 +27,19 @@ class PreviewServerTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         (self.root / "course" / "assets").mkdir(parents=True)
         (self.root / "course" / "course.json").write_text(
-            json.dumps({"schemaVersion": "2.0", "course": {"id": "preview-course"}}),
+            json.dumps({
+                "schemaVersion": "2.0",
+                "course": {
+                    "id": "preview-course",
+                    "parts": [{
+                        "id": "part-one",
+                        "slices": [
+                            {"id": "slice-one", "blocks": [{"id": "block-one"}]},
+                            {"id": "slice-two", "blocks": [{"id": "block-two"}]},
+                        ],
+                    }],
+                },
+            }),
             encoding="utf-8",
         )
         (self.root / "course" / "assets" / "note.txt").write_text("asset", encoding="utf-8")
@@ -138,6 +150,49 @@ class PreviewServerTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.code, 400)
         self.assertFalse((self.root / ".course-work" / "preview-manifest.json").exists())
+
+    def test_inspection_mode_accepts_slice_scoped_renderer_observations(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=2)
+        self.server = create_preview_server(self.root, static_dir=self.static, inspection=True)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        host, port = self.server.server_address
+        self.base = f"http://{host}:{port}"
+
+        status, _, body = self.get("/__course_preview/inspection/config")
+        self.assertEqual(status, 200)
+        config = json.loads(body)
+        self.assertEqual(config["expectedStates"], ["part-one/slice-one/default", "part-one/slice-two/default"])
+
+        observation = {
+            "nonce": config["nonce"],
+            "definitionHash": config["definitionHash"],
+            "stateId": "part-one/slice-one/default",
+            "sliceId": "slice-one",
+            "viewport": {"width": 1440, "height": 900},
+            "blocks": [{
+                "blockId": "block-one",
+                "x": 10,
+                "y": 20,
+                "width": 400,
+                "height": 300,
+                "visible": True,
+                "enabled": False,
+            }],
+            "overflow": {"horizontal": False, "vertical": False},
+            "runtimeErrors": [],
+        }
+        status, _ = self.post_json("/__course_preview/inspection/observations", observation)
+        self.assertEqual(status, 200)
+        saved = json.loads((self.root / ".course-work" / "visual-check" / "inspection-observations.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["observations"][0]["blocks"][0]["blockId"], "block-one")
+
+        observation["blocks"][0]["blockId"] = "block-two"
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self.post_json("/__course_preview/inspection/observations", observation)
+        self.assertEqual(caught.exception.code, 400)
 
     def test_prerequisites_fail_before_serving_missing_or_invalid_runtime(self):
         with self.assertRaises(ValueError):

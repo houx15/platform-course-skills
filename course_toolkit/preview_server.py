@@ -1,5 +1,6 @@
 import json
 import mimetypes
+import secrets
 import subprocess
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -8,6 +9,7 @@ from typing import Optional, Tuple
 from urllib.parse import unquote, urlsplit
 
 from course_toolkit.annotations import AnnotationStore, CourseAnnotation
+from course_toolkit.hashing import canonical_json_hash
 from course_toolkit.jsonio import load_json, write_json_atomic
 from course_toolkit.preview_evidence import record_preview_evidence
 
@@ -70,13 +72,37 @@ def _validate_annotation_document(payload: object, path: Path) -> None:
 class CoursePreviewHTTPServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: Tuple[str, int], root: Path, static_dir: Path):
+    def __init__(self, address: Tuple[str, int], root: Path, static_dir: Path, *, inspection: bool = False):
         self.course_project_root = root.resolve()
         self.course_root = self.course_project_root / "course"
         self.static_dir = static_dir.resolve()
         self.annotations_path = self.course_project_root / ".course-work" / "annotations.json"
+        self.inspection = inspection
+        self.inspection_nonce = secrets.token_urlsafe(24) if inspection else None
+        self.inspection_observations_path = self.course_project_root / ".course-work" / "visual-check" / "inspection-observations.json"
+        self.pinned_document = load_json(self.course_root / "course.json")
+        self.pinned_definition_hash = canonical_json_hash(self.pinned_document)
+        self.slice_block_ids = {
+            page["id"]: {
+                block["id"]
+                for block in page.get("blocks", [])
+                if isinstance(block, dict) and isinstance(block.get("id"), str)
+            }
+            for part in self.pinned_document.get("course", {}).get("parts", [])
+            for page in part.get("slices", [])
+            if isinstance(page, dict) and isinstance(page.get("id"), str)
+        }
+        self.known_slice_ids = set(self.slice_block_ids)
+        self.expected_inspection_states = [
+            f"{part['id']}/{page['id']}/default"
+            for part in self.pinned_document.get("course", {}).get("parts", [])
+            for page in part.get("slices", [])
+            if isinstance(part, dict)
+            and isinstance(part.get("id"), str)
+            and isinstance(page, dict)
+            and isinstance(page.get("id"), str)
+        ]
         super().__init__(address, CoursePreviewRequestHandler)
-
 
 class CoursePreviewRequestHandler(BaseHTTPRequestHandler):
     server: CoursePreviewHTTPServer
@@ -128,7 +154,21 @@ class CoursePreviewRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         try:
             if path == "/__course_preview/document":
-                self._send_json(HTTPStatus.OK, load_json(self.server.course_root / "course.json"))
+                self._send_json(HTTPStatus.OK, self.server.pinned_document)
+                return
+            if path == "/__course_preview/inspection/config":
+                if not self.server.inspection:
+                    self._error(HTTPStatus.NOT_FOUND, "inspection_disabled", "inspection mode is not active")
+                    return
+                self._send_json(
+                    HTTPStatus.OK,
+                    {
+                        "inspection": True,
+                        "nonce": self.server.inspection_nonce,
+                        "definitionHash": self.server.pinned_definition_hash,
+                        "expectedStates": self.server.expected_inspection_states,
+                    },
+                )
                 return
             if path == "/__course_preview/annotations":
                 if self.server.annotations_path.is_file():
@@ -172,6 +212,31 @@ class CoursePreviewRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
+        if path == "/__course_preview/inspection/observations":
+            if not self.server.inspection:
+                self._error(HTTPStatus.METHOD_NOT_ALLOWED, "inspection_disabled", "inspection mode is not active")
+                return
+            try:
+                payload = self._read_json()
+                observation = _validate_inspection_observation(payload, self.server)
+                existing = (
+                    load_json(self.server.inspection_observations_path)
+                    if self.server.inspection_observations_path.is_file()
+                    else {"schemaVersion": "1.0", "definitionHash": self.server.pinned_definition_hash, "observations": []}
+                )
+                observations = [item for item in existing.get("observations", []) if item.get("stateId") != observation["stateId"]]
+                observations.append(observation)
+                observations.sort(key=lambda item: item["stateId"])
+                write_json_atomic(
+                    self.server.inspection_observations_path,
+                    {"schemaVersion": "1.0", "definitionHash": self.server.pinned_definition_hash, "observations": observations},
+                )
+                self._send_json(HTTPStatus.OK, {"ok": True, "stateId": observation["stateId"]})
+            except ValueError as exc:
+                self._error(HTTPStatus.BAD_REQUEST, "invalid-inspection-observation", str(exc))
+            except Exception as exc:
+                self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "inspection-write-error", str(exc))
+            return
         if path != "/__course_preview/evidence":
             self._error(HTTPStatus.METHOD_NOT_ALLOWED, "write-forbidden", "unsupported preview write")
             return
@@ -197,11 +262,60 @@ def create_preview_server(
     host: str = LOOPBACK_HOST,
     port: int = 0,
     static_dir: Optional[Path] = None,
+    inspection: bool = False,
 ) -> CoursePreviewHTTPServer:
     if host != LOOPBACK_HOST:
         raise ValueError("course preview may bind only to 127.0.0.1")
     selected_static = static_dir or DEFAULT_STATIC_DIR
-    return CoursePreviewHTTPServer((host, port), root, selected_static)
+    return CoursePreviewHTTPServer((host, port), root, selected_static, inspection=inspection)
+
+
+def _validate_inspection_observation(payload: object, server: CoursePreviewHTTPServer) -> dict:
+    fields = {"nonce", "definitionHash", "stateId", "sliceId", "viewport", "blocks", "overflow", "runtimeErrors"}
+    if not isinstance(payload, dict) or set(payload) != fields:
+        raise ValueError("inspection observation has unknown or missing fields")
+    if payload.get("nonce") != server.inspection_nonce or payload.get("definitionHash") != server.pinned_definition_hash:
+        raise ValueError("inspection nonce or definition hash does not match this launch")
+    slice_id = payload.get("sliceId")
+    if slice_id not in server.known_slice_ids:
+        raise ValueError("inspection observation refers to an unknown Slice")
+    state_id = payload.get("stateId")
+    if state_id not in server.expected_inspection_states or not state_id.endswith(f"/{slice_id}/default"):
+        raise ValueError("inspection stateId does not match its Slice")
+    viewport = payload.get("viewport")
+    if not isinstance(viewport, dict) or set(viewport) != {"width", "height"} or not all(isinstance(viewport.get(key), int) and viewport[key] > 0 for key in ("width", "height")):
+        raise ValueError("inspection viewport is invalid")
+    blocks = payload.get("blocks")
+    if not isinstance(blocks, list):
+        raise ValueError("inspection blocks must be an array")
+    normalized_blocks = []
+    seen = set()
+    for block in blocks:
+        if not isinstance(block, dict) or set(block) != {"blockId", "x", "y", "width", "height", "visible", "enabled"}:
+            raise ValueError("inspection Block observation is invalid")
+        block_id = block.get("blockId")
+        if block_id not in server.slice_block_ids[slice_id] or block_id in seen:
+            raise ValueError("inspection Block ID is unknown or duplicated")
+        seen.add(block_id)
+        if not all(isinstance(block.get(key), (int, float)) and not isinstance(block.get(key), bool) for key in ("x", "y", "width", "height")):
+            raise ValueError("inspection Block rectangle is invalid")
+        if not isinstance(block.get("visible"), bool) or not isinstance(block.get("enabled"), bool):
+            raise ValueError("inspection Block state is invalid")
+        normalized_blocks.append(block)
+    overflow = payload.get("overflow")
+    if not isinstance(overflow, dict) or set(overflow) != {"horizontal", "vertical"} or not all(isinstance(overflow.get(key), bool) for key in overflow):
+        raise ValueError("inspection overflow observation is invalid")
+    errors = payload.get("runtimeErrors")
+    if not isinstance(errors, list) or any(not isinstance(item, str) for item in errors):
+        raise ValueError("inspection runtimeErrors must be strings")
+    return {
+        "stateId": state_id,
+        "sliceId": slice_id,
+        "viewport": viewport,
+        "blocks": sorted(normalized_blocks, key=lambda item: item["blockId"]),
+        "overflow": overflow,
+        "runtimeErrors": errors,
+    }
 
 
 def validate_preview_prerequisites(root: Path, *, static_dir: Optional[Path] = None) -> dict:
@@ -231,3 +345,10 @@ def validate_preview_prerequisites(root: Path, *, static_dir: Optional[Path] = N
         detail = issues[0].get("message") if isinstance(issues, list) and issues and isinstance(issues[0], dict) else payload.get("error", "invalid CourseDefinition")
         raise ValueError(f"course/course.json is not previewable: {detail}")
     return payload
+
+
+def validate_inspection_prerequisites(root: Path, *, static_dir: Optional[Path] = None) -> dict:
+    # Inspection is an action in the authoring flow, not a historical-evidence
+    # gate. Older courses may not have G5/G6 records, but they can still be
+    # inspected whenever their current CourseDefinition renders successfully.
+    return validate_preview_prerequisites(root, static_dir=static_dir)

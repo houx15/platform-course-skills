@@ -79,6 +79,36 @@ button, select, textarea, input { font: inherit; }
   overflow: hidden;
 }
 
+.preview-shell--inspection .preview-stage { width: 100%; }
+.inspection-toolbar {
+  position: absolute;
+  z-index: 40;
+  top: 12px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgb(23 34 27 / 86%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  transform: translateX(-50%);
+}
+.inspection-toolbar button {
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #fff;
+  color: #17221b;
+  cursor: pointer;
+}
+.inspection-toolbar button:disabled {
+  opacity: .45;
+  cursor: default;
+}
+
 .preview-stage {
   display: flex;
   flex: 1;

@@ -32,6 +32,32 @@ export interface AnnotationDocument {
   annotations: PreviewAnnotation[];
 }
 
+export interface InspectionConfig {
+  inspection: true;
+  nonce: string;
+  definitionHash: string;
+  expectedStates: string[];
+}
+
+export interface InspectionObservation {
+  nonce: string;
+  definitionHash: string;
+  stateId: string;
+  sliceId: string;
+  viewport: { width: number; height: number };
+  blocks: Array<{
+    blockId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    visible: boolean;
+    enabled: boolean;
+  }>;
+  overflow: { horizontal: boolean; vertical: boolean };
+  runtimeErrors: string[];
+}
+
 async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, init);
   if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
@@ -39,6 +65,18 @@ async function jsonRequest<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const loadCourseDocument = () => jsonRequest<unknown>("/__course_preview/document");
+export async function loadInspectionConfig(): Promise<InspectionConfig | null> {
+  const response = await fetch("/__course_preview/inspection/config");
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+  return (await response.json()) as InspectionConfig;
+}
+export const postInspectionObservation = (observation: InspectionObservation) =>
+  jsonRequest<{ ok: true; stateId: string }>("/__course_preview/inspection/observations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(observation),
+  });
 export const loadAnnotations = () => jsonRequest<AnnotationDocument>("/__course_preview/annotations");
 export const saveAnnotations = (document: AnnotationDocument) =>
   jsonRequest<{ ok: true }>("/__course_preview/annotations", {

@@ -14,7 +14,14 @@ vi.mock("./AnnotationPanel", () => ({
 }));
 
 vi.mock("./previewAdapters", () => ({
-  createPreviewAdapters: () => ({}),
+  createPreviewAdapters: () => ({
+    sessionAdapter: {
+      create: async () => ({ id: "inspection-session" }),
+      setStatus: async () => undefined,
+      setCurrent: async () => undefined,
+      setDefinitionHash: async () => undefined,
+    },
+  }),
   loadVideoInteraction: vi.fn(),
   SilentPreviewAudioEngine: class {},
 }));
@@ -60,5 +67,25 @@ describe("PreviewCoursePlayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Answer this question" }));
 
     expect(screen.getByLabelText("课程批注")).toHaveTextContent("Selected: block:case-question");
+  });
+
+  it("uses the full renderer surface, permits direct paging, and hides annotations in inspection mode", async () => {
+    render(<PreviewCoursePlayer
+      document={document}
+      definitionHash={"a".repeat(64)}
+      inspection={{
+        inspection: true,
+        nonce: "inspection-launch",
+        definitionHash: "a".repeat(64),
+        expectedStates: ["part-one/slice-one/default"],
+      }}
+    />);
+
+    expect(await screen.findByTestId("course-player")).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("检查模式 · 1 / 1");
+    expect(screen.getByRole("button", { name: "上一页" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "下一页" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "打开课程批注" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("学生端课程预览").parentElement).toHaveClass("preview-shell--inspection");
   });
 });
