@@ -144,7 +144,7 @@ Inputs: the exact definition hash, asset hashes, renderer version, and preview m
 
 Checks: use the same renderer implementation as the student platform; inspect layouts, media, navigation, workflow, iframe behavior, and completion events in a real browser. Collect structure-linked annotations outside the runtime definition.
 
-Invoke `preview-platform-course` and run `python scripts/preview-course.py ROOT`. The bundled browser host mounts the exact pinned student renderer, uses local assets and in-memory session adapters, and places annotation chrome beside the renderer. The teacher must visit every Slice, inspect meaningful interactions and branches, resolve required annotations and runtime errors, then explicitly complete the review. Do not complete G7 from `index.md`, static validation, a screenshot, or the fact that the page opened.
+Invoke `preview-platform-course` and run `python scripts/preview-course.py ROOT`. Inspection mode is the default, so the teacher can use the independent previous/next controls without completing every gate; use `--student-workflow` only for an explicitly requested exact-flow experience. The bundled browser host mounts the exact pinned student renderer, uses local assets and in-memory session adapters, and places annotation chrome beside the renderer. The teacher must visit every Slice, inspect meaningful interactions and branches, resolve required annotations and runtime errors, then explicitly complete the review. Do not complete G7 from `index.md`, static validation, a screenshot, or the fact that the page opened.
 
 The authoring-side annotation protocol is available before the UI integration. Reconcile stable targets with:
 

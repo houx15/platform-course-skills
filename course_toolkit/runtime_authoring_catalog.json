@@ -77,7 +77,7 @@
       "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
       "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
       "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
-      "richText": "static structured reading card; use full or a tall horizontal-split side and split long reading across slices"
+      "richText": "static structured reading card for course maps, method position, worked examples, comparisons, and synthesis; use full or a tall horizontal-split side and split long reading across slices"
     }
   },
   "blocks": {
@@ -102,7 +102,9 @@
       "completionEvidence": false,
       "assetPaths": false,
       "maxHtmlChars": 65536,
-      "authoringRule": "use only when static editorial structure improves teaching; use interactiveHtml for learner action"
+      "authoringRule": "use for learner-visible course maps, method position, worked examples, comparisons, synthesis, and static knowledge diagrams when editorial structure improves teaching; require at least two meaningful styled teaching regions, keep styling restrained, and use interactiveHtml for learner action",
+      "recommendedRegions": ["numbered-method-sequence", "current-step", "worked-example", "comparison", "hint-or-callout", "knowledge-diagram"],
+      "rejectAsThin": "heading plus ordinary prose or list stretched across a large card"
     },
     "images": {
       "requiredFields": ["id", "type", "presentation", "items"],
@@ -114,7 +116,8 @@
         "single": 1,
         "side-by-side": 2,
         "galleryMinimum": 2
-      }
+      },
+      "authoringRule": "use side-by-side only for exactly two images that must remain visible together; use gallery for more than two images or for portrait/tall images unless simultaneous comparison is the learning action"
     },
     "pdf": {
       "requiredFields": ["id", "type", "title", "source"],

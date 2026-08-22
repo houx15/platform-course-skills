@@ -2,6 +2,7 @@ import copy
 import hashlib
 import json
 from pathlib import Path
+import re
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
 from course_toolkit.jsonio import write_json_atomic
@@ -16,6 +17,8 @@ VALID_LAYOUT_SLOTS = {
     "split-vertical": ("top", "bottom"),
 }
 VALID_SPLIT_RATIOS = {"1:1", "3:2", "2:3", "2:1", "1:2", "3:1", "1:3"}
+RICH_TEXT_REGION_RE = re.compile(r"<(?:section|article|aside|table|dl)\b", re.IGNORECASE)
+RICH_TEXT_CLASS_RE = re.compile(r"\bclass\s*=", re.IGNORECASE)
 
 
 def _canonical_hash(data: object) -> str:
@@ -286,8 +289,21 @@ def _block_issues(blocks: object, base: str) -> List[dict]:
             issues.append(_issue(f"{path}.type", "missing-block-type", "Choose one of the eight runtime Block types."))
             continue
         if block_type == "richText":
-            if not isinstance(block.get("html"), str) or not block["html"].strip():
+            html = block.get("html")
+            if not isinstance(html, str) or not html.strip():
                 issues.append(_issue(f"{path}.html", "missing-rich-text-html", "Write one self-contained static HTML fragment for the richText Block."))
+            elif (
+                "<style" not in html.lower()
+                or len(RICH_TEXT_REGION_RE.findall(html)) < 2
+                or len(RICH_TEXT_CLASS_RE.findall(html)) < 2
+            ):
+                issues.append(
+                    _issue(
+                        f"{path}.html",
+                        "rich-text-structure-too-thin",
+                        "This richText is only decorated prose. Use text instead, or build at least two clearly styled teaching regions such as a restrained course map, numbered method cards, a worked example, or a hint block.",
+                    )
+                )
             if block.get("completion") is not None:
                 issues.append(_issue(f"{path}.completion", "rich-text-cannot-complete", "richText is display-only and cannot carry a completion rule."))
             continue

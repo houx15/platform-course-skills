@@ -20,7 +20,10 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=0)
     parser.add_argument("--no-open", action="store_true")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--inspection", action="store_true", help="open the pre-teacher Agent visual inspection mode")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--inspection", dest="inspection", action="store_true", help="open inspection mode (default)")
+    mode.add_argument("--student-workflow", dest="inspection", action="store_false", help="experience the authored student workflow without reviewer page skipping")
+    parser.set_defaults(inspection=True)
     args = parser.parse_args()
     try:
         root = args.root.resolve()

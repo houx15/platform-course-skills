@@ -20,6 +20,19 @@ Every Slice needs:
 - an explicit deterministic Workflow;
 - explicit navigation.
 
+For newly designed courses, the page plan also records a learner-visible `journeyContext`: where this Slice sits in the course, what it inherits from the previous Slice, what the learner is focusing on now, and what it prepares next. This planning field is not part of CourseDefinition 2.0; translate it into the Slice's actual learner-facing Blocks and narration. A hidden ID or an internal plan note does not orient a learner.
+
+Every Slice carries two scales of immediate context: its local connection to the previous page's observation, conclusion or artifact, and its position inside the overall method or learning arc. The learner should quickly see why this page appears now, what method or evidence to use, and where the result leads next. Use the lightest suitable surface; this does not require a separate `richText` Block on every page.
+
+Treat one Slice like one teaching slide. Before compiling it, check four things together:
+
+- **content density**: one dominant teaching idea or action fits without tiny text, excessive scrolling, or a large empty card;
+- **visual scene**: the focal content is obvious and the layout expresses the relationship between explanation, evidence, and action;
+- **continuity**: the learner can tell how this page follows the previous one and what the result will unlock next;
+- **student clarity**: the learner sees both the page-to-page connection and the overall framework; before any exercise, they know the current method step, why the exercise appears now, what evidence to use, and what to produce.
+
+A new course begins with an intentional student-facing introduction before the first required response. Choose the form that best fits the material: a story, case conflict, observation task, demonstration, problem situation, or course overview/map. It must make the learning problem and relevance clear and give enough direction for what follows. A complex multi-step method often benefits from a visible route, but a course map is not mandatory. Teach the methodology as a whole before asking the learner to apply one of its parts. Do not open a Slice with an unexplained question.
+
 The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple Blocks in `full`. All split Slots must be non-empty. If every Block would occupy one side, use `full`, redistribute the learning surfaces across both sides, or split the sequence into separate Slices; never reserve a dead column or row. The rule is: split-horizontal defaults to `1:1`. Grid supports two to four cells and is selected for a real comparison or grouping need, not from a rigid rule based only on Block count. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
 
 ### Media-aware composition
@@ -30,6 +43,7 @@ Choose the layout from the learning action and natural media aspect while keepin
 - **Video is wide.** Use `full` for a focused video. The one normal asymmetric split exception is a dominant large video paired with only a small amount of supporting text; the video may receive the wider side. A video paired with substantial content remains `1:1` or is split into another Slice.
 - **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
 - **Rich text is a structured reading card.** Use it for static methodology, worked-example anatomy, comparison, definition, table, rubric, or synthesis content whose hierarchy would be flattened by Markdown. It fills and scrolls inside a tall Slot, carries its HTML inline, references no course asset, and never completes a Slice. Keep short prose as `text`; keep actions in interactive or assessment Blocks.
+- **Image groups express a viewing task.** Use `side-by-side` only for exactly two images that must remain visible together for direct comparison. Use `gallery` for more than two images, or for portrait/tall images that would become too small side by side, unless simultaneous comparison is itself the learning action. The gallery already provides previous/next controls.
 - **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side, with the answerable Block in the right slot. Let the renderer's reading card constrain line length.
 
 All split Slots are vertically centred by the shared renderer. These are authoring decisions; the renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
@@ -45,6 +59,10 @@ For free-text answers, separate reflection from closed-answer checking. Reflecti
 `richText` contains one inline `html` string and an optional accessible `title`. It may use isolated inline CSS and the course variables `--course-ink`, `--course-secondary`, `--course-muted`, `--course-surface`, `--course-border`, `--course-accent`, `--course-accent-weak`, and `--course-radius`.
 
 It must not contain scripts, nested frames/objects/embeds, forms, external stylesheets/base tags, inline event handlers, or `javascript:` URLs. Its `srcdoc` has no base URL: remote URLs, relative assets, and webfonts do not load. Use an `images`, `video`, or `pdf` Block for media. Keep the HTML below 64 KB and split long reading across Slices. Always inspect the rendered card in the offline preview before publication.
+
+Use restrained editorial structure, not decorative noise. A meaningful `richText` card contains at least two clearly styled teaching regions, such as a numbered method sequence, a current-step card, a worked example, a comparison, or a hint/callout. Subtle tone variation may be derived from the course variables. Avoid rainbow dashboards, icon clouds, ornamental badges, and a heading plus an ordinary list stretched across a full screen. If the content has no real internal structure, use `text` instead.
+
+When the introduction uses an overview card, it should make the route, cases, and cumulative result visible. Other introduction forms still need to establish the problem, relevance, and direction. A practice-page method card should show the current step, why it is being used now, what prior observation it uses, and what the learner's answer will make possible next.
 
 ## Workflow completeness
 

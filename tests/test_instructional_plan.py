@@ -425,9 +425,9 @@ class InstructionalPlanTests(unittest.TestCase):
                 data["parts"][0]["slices"][0]["sliceId"] = invalid
                 self.assertIn("invalid-stable-id", {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())})
 
-    def test_teacher_markdown_has_rows_and_every_unused_material(self):
+    def test_teacher_markdown_highlights_only_unused_visual_and_interactive_media(self):
         coverage = coverage_document()
-        coverage["items"].append(
+        coverage["items"].extend([
             {
                 "sourceId": "source-exclude-approved",
                 "sourceFile": "materials/duplicate.pdf",
@@ -436,23 +436,70 @@ class InstructionalPlanTests(unittest.TestCase):
                 "disposition": "exclude-approved",
                 "reason": "与核心证据重复",
                 "bindings": [],
-            }
-        )
+            },
+            {
+                "sourceId": "source-unused-image",
+                "sourceFile": "materials/unused.webp",
+                "location": "image:1",
+                "summary": "未采用图片",
+                "disposition": "exclude-proposed",
+                "reason": "与核心案例无关",
+                "bindings": [],
+            },
+            {
+                "sourceId": "source-unused-html",
+                "sourceFile": "materials/unused.html",
+                "location": "document",
+                "summary": "未采用互动",
+                "disposition": "authoring-only",
+                "reason": "仅用于备课",
+                "bindings": [],
+            },
+            {
+                "sourceId": "source-unused-video",
+                "sourceFile": "materials/unused.mp4",
+                "location": "full",
+                "summary": "未采用视频",
+                "disposition": "optional-support",
+                "reason": "课程时长有限",
+                "bindings": [],
+            },
+        ])
         rendered = self.api().render_teacher_plan(plan_document(), coverage)
         self.assertIn("| 教学目的 |", rendered)
-        self.assertIn("未使用或仅用于备课", rendered)
-        for source_id in ("source&#45;support", "source&#45;authoring", "source&#45;exclude", "source&#45;exclude&#45;approved"):
+        self.assertIn("未使用或仅用于备课的图片、HTML、视频", rendered)
+        unused = rendered.split("## 未使用或仅用于备课", 1)[1]
+        for source_id in ("source&#45;unused&#45;image", "source&#45;unused&#45;html", "source&#45;unused&#45;video"):
             self.assertIn(source_id, rendered)
+        for source_id in ("source&#45;support", "source&#45;authoring", "source&#45;exclude", "source&#45;exclude&#45;approved"):
+            self.assertNotIn(source_id, unused)
         self.assertNotIn("G0", rendered)
         self.assertNotIn("workflow", rendered.lower())
 
-    def test_teacher_table_has_exactly_twelve_cells_per_header_delimiter_and_row(self):
+    def test_teacher_table_has_exactly_thirteen_cells_per_header_delimiter_and_row(self):
         rendered = self.api().render_teacher_plan(plan_document(), coverage_document())
         table = rendered.split("## 逐页计划", 1)[1].split("## 页面细节", 1)[0]
         rows = [line for line in table.splitlines() if line.startswith("|")]
         self.assertGreaterEqual(len(rows), 3)
         for row in rows:
-            self.assertEqual(len(row.split("|")[1:-1]), 12, row)
+            self.assertEqual(len(row.split("|")[1:-1]), 13, row)
+
+    def test_new_plan_can_make_the_student_journey_visible_without_invalidating_legacy_plans(self):
+        plan = teaching_plan_document()
+        plan["parts"][0]["slices"][0]["journeyContext"] = {
+            "coursePosition": "方法一：证据核查 / 示范",
+            "connectionFromPrevious": "课程总览已经说明今天要学会把直觉变成可复核判断。",
+            "currentFocus": "现在先看完整示范，认识主张—证据对照。",
+            "setsUpNext": "下一页将用同一方法完成第一次带练。",
+        }
+
+        self.assertEqual(self.api().validate_instructional_plan(plan, coverage_document()), [])
+        rendered = self.api().render_teacher_plan(plan, coverage_document())
+        self.assertIn("课程位置与衔接", rendered)
+        self.assertIn("方法一：证据核查 &#47; 示范", rendered)
+
+        legacy = teaching_plan_document()
+        self.assertEqual(self.api().validate_instructional_plan(legacy, coverage_document()), [])
 
     def test_unbound_optional_source_use_is_rejected_and_never_rendered_as_unused(self):
         coverage = coverage_document()

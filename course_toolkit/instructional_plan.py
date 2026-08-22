@@ -64,6 +64,13 @@ TEACHING_DESIGN_SLICE_FIELDS = (
     "artifactUpdate",
     "whyOwnSlice",
 )
+TEACHING_DESIGN_OPTIONAL_SLICE_FIELDS = ("journeyContext",)
+JOURNEY_CONTEXT_FIELDS = (
+    "coursePosition",
+    "connectionFromPrevious",
+    "currentFocus",
+    "setsUpNext",
+)
 INSTRUCTIONAL_ROLES = frozenset({
     "hook",
     "activate-prior-knowledge",
@@ -100,6 +107,17 @@ REFERENCE_LANGUAGE = re.compile(
 )
 REFERENCE_POLICIES = frozenset({"none", "co-visible", "justified-dependency"})
 PLAN_LOCK_RELATIVE_PATH = ".course-work/.course-storyboard.lock"
+TEACHER_UNUSED_MEDIA_SUFFIXES = frozenset({
+    ".gif",
+    ".htm",
+    ".html",
+    ".jpeg",
+    ".jpg",
+    ".mp4",
+    ".png",
+    ".svg",
+    ".webp",
+})
 
 
 class PlanValidationError(ValueError):
@@ -424,6 +442,7 @@ def _validate_slice(
     allowed_fields = set(REQUIRED_SLICE_FIELDS)
     if teaching_design is not None:
         allowed_fields.update(TEACHING_DESIGN_SLICE_FIELDS)
+        allowed_fields.update(TEACHING_DESIGN_OPTIONAL_SLICE_FIELDS)
     _unknown_fields(slice_data, allowed_fields, path, issues)
     for field in REQUIRED_SLICE_FIELDS:
         if field not in slice_data:
@@ -479,6 +498,16 @@ def _validate_slice(
                 issues.append(_issue(f"{path}.{field}", "required", f"teaching-design page plan requires {field}"))
         if _nonempty(slice_data.get("learnerStateBefore")) and slice_data.get("learnerStateBefore").strip() == str(slice_data.get("learnerStateAfter", "")).strip():
             issues.append(_issue(f"{path}.learnerStateAfter", "no-learning-state-change", "Slice must name a concrete learner-state change"))
+        journey = slice_data.get("journeyContext")
+        if journey is not None:
+            journey_path = f"{path}.journeyContext"
+            if not isinstance(journey, dict):
+                issues.append(_issue(journey_path, "invalid-shape", "journeyContext must be an object"))
+            else:
+                _unknown_fields(journey, set(JOURNEY_CONTEXT_FIELDS), journey_path, issues)
+                for field in JOURNEY_CONTEXT_FIELDS:
+                    if not _nonempty(journey.get(field)):
+                        issues.append(_issue(f"{journey_path}.{field}", "required", f"journeyContext requires {field}"))
 
     source_uses = slice_data.get("sourceUses")
     if not isinstance(source_uses, list):
@@ -1041,6 +1070,17 @@ def _dependency_text(slice_data: dict) -> str:
     ) or "—"
 
 
+def _journey_text(slice_data: dict) -> str:
+    journey = slice_data.get("journeyContext")
+    if not isinstance(journey, dict):
+        return "—"
+    return "；".join(
+        str(journey.get(field))
+        for field in JOURNEY_CONTEXT_FIELDS
+        if _nonempty(journey.get(field))
+    ) or "—"
+
+
 def _detail_list(value: object) -> str:
     if not isinstance(value, list) or not value:
         return "无"
@@ -1130,7 +1170,7 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
     if isinstance(teaching_design, dict):
         lines.extend(_render_teaching_design(teaching_design))
         lines.append("")
-    lines.extend(["## 逐页计划", "", "| Part / Slice | 教学阶段 | 教学角色 | 方法步骤 | 理解变化 | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"])
+    lines.extend(["## 逐页计划", "", "| Part / Slice | 教学阶段 | 教学角色 | 方法步骤 | 课程位置与衔接 | 理解变化 | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"])
     part_titles = {
         part.get("partId"): part.get("title", "—")
         for part in plan.get("parts", [])
@@ -1151,6 +1191,7 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
             slice_data.get("arcPhaseId", "—"),
             slice_data.get("instructionalRole", "—"),
             "、".join(slice_data.get("methodStepIds", [])) if isinstance(slice_data.get("methodStepIds"), list) else "—",
+            _journey_text(slice_data),
             f"{slice_data.get('learnerStateBefore', '—')} → {slice_data.get('learnerStateAfter', '—')}",
             slice_data.get("teachingPurpose", "—"),
             _source_text(source_uses),
@@ -1170,6 +1211,7 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
             f"- 学生看到：{_markdown_safe(slice_data.get('learnerSees', '—'))}",
             f"- 教学阶段与角色：{_markdown_safe(slice_data.get('arcPhaseId', '—'))}；{_markdown_safe(slice_data.get('instructionalRole', '—'))}",
             f"- 对应方法步骤：{_markdown_safe(slice_data.get('methodStepIds', []))}",
+            f"- 学生可见的课程位置与衔接：{_markdown_safe(_journey_text(slice_data))}",
             f"- 学生理解变化：{_markdown_safe(slice_data.get('learnerStateBefore', '—'))} → {_markdown_safe(slice_data.get('learnerStateAfter', '—'))}",
             f"- 累计成果更新：{_markdown_safe(slice_data.get('artifactUpdate', '—'))}",
             f"- 独立成页理由：{_markdown_safe(slice_data.get('whyOwnSlice', '—'))}",
@@ -1180,7 +1222,7 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
             f"- 未解决问题：{_markdown_safe(_detail_list(slice_data.get('unresolvedBlockers')))}",
             f"- 拟排除素材：{_markdown_safe(_detail_list(slice_data.get('proposedExclusions')))}",
         ])
-    lines.extend(["", "## 未使用或仅用于备课", "", "| 素材 | 处置 | 定位 | 原因 |", "| --- | --- | --- | --- |"])
+    lines.extend(["", "## 未使用或仅用于备课的图片、HTML、视频", "", "这里只展示最容易被遗漏的视觉与互动素材；文档、表格和教师备课文本仍保留在完整素材清单中。", "", "| 素材 | 处置 | 定位 | 原因 |", "| --- | --- | --- | --- |"])
     rows = []
     for item in coverage.get("items", []) if isinstance(coverage, dict) else []:
         if not isinstance(item, dict):
@@ -1189,7 +1231,9 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
         source_id = item.get("sourceId")
         bindings = item.get("bindings", [])
         relevant = disposition in {"authoring-only", "exclude-proposed", "exclude-approved"} or (disposition == "optional-support" and source_id not in used_source_ids and (not isinstance(bindings, list) or not bindings))
-        if relevant:
+        source_file = item.get("sourceFile")
+        is_teacher_review_media = isinstance(source_file, str) and Path(source_file).suffix.lower() in TEACHER_UNUSED_MEDIA_SUFFIXES
+        if relevant and is_teacher_review_media:
             rows.append((source_id or "—", disposition or "—", item.get("location") or "—", item.get("reason") or item.get("summary") or "—"))
     if rows:
         lines.extend("| " + " | ".join(_markdown_safe(value) for value in row) + " |" for row in rows)

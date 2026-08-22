@@ -140,7 +140,21 @@ button, select, textarea, input { font: inherit; }
   letter-spacing: .12em;
 }
 .preview-local-completion h2 { margin: 0; font-size: 28px; }
-.preview-local-completion p:last-child { margin: 12px 0 0; color: var(--mk-secondary); line-height: 1.65; }
+.preview-local-completion__copy,
+.preview-local-completion__message { margin: 12px 0 0; color: var(--mk-secondary); line-height: 1.65; }
+.preview-local-completion__message { font-size: 14px; }
+.preview-local-completion__action,
+.preview-local-completion__secondary {
+  min-height: 44px;
+  margin-top: 18px;
+  padding: 0 20px;
+  border-radius: var(--mk-radius-sm);
+  font-weight: 750;
+  cursor: pointer;
+}
+.preview-local-completion__action { border: 0; background: var(--mk-accent); color: #fff; }
+.preview-local-completion__action:disabled { opacity: .55; cursor: default; }
+.preview-local-completion__secondary { border: 1px solid var(--mk-input-border); background: var(--mk-surface); color: var(--mk-secondary); }
 
 .preview-stage--annotation-mode { cursor: crosshair; }
 .preview-stage--annotation-mode [data-block-id],

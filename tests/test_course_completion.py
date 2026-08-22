@@ -120,7 +120,7 @@ class CourseCompletionTests(unittest.TestCase):
         blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
         block = blueprint["course"]["parts"][0]["slices"][0]["blocks"][0]
         block["type"] = "richText"
-        block["html"] = "<h2>Evidence method</h2><p>Observe, compare, then qualify the claim.</p>"
+        block["html"] = "<style>.step{padding:12px}.hint{padding:12px}</style><h2>Evidence method</h2><section class=\"step\">Observe, compare, then qualify the claim.</section><aside class=\"hint\">Keep the evidence boundary visible.</aside>"
         block.pop("content", None)
 
         plan = audit_course_draft(blueprint)
@@ -131,6 +131,24 @@ class CourseCompletionTests(unittest.TestCase):
         )
         self.assertNotIn(
             "missing-rich-text-html",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+        self.assertNotIn(
+            "rich-text-structure-too-thin",
+            {issue["code"] for issue in plan["slices"][0]["issues"]},
+        )
+
+    def test_rich_text_rejects_a_full_screen_plain_list_disguised_as_a_card(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        block = blueprint["course"]["parts"][0]["slices"][0]["blocks"][0]
+        block["type"] = "richText"
+        block["html"] = "<style>li{margin:12px}</style><h2>Five steps</h2><ol><li>Pause</li><li>Question</li><li>Classify</li><li>Calibrate</li><li>Explain</li></ol>"
+        block.pop("content", None)
+
+        plan = audit_course_draft(blueprint)
+
+        self.assertIn(
+            "rich-text-structure-too-thin",
             {issue["code"] for issue in plan["slices"][0]["issues"]},
         )
 

@@ -13,6 +13,13 @@ Use this reference only for a new course or a course whose teaching structure is
 
 Do not start with a source-to-page mapping. A source may support several phases, several sources may share one Slice, and teacher/reference sources may remain outside the learner course.
 
+The output of teaching design is not only an internal traceability graph. Translate it into a student-visible spine before designing exercises:
+
+- the opening is an intentional student-facing introduction before the first required answer; choose a story, case conflict, observation task, demonstration, problem situation, or course overview/map, and make the learning problem, relevance and direction clear;
+- each methodology is introduced as a whole before its first application;
+- each practice Slice visibly identifies the active methodology and step, explains why the learner is doing this now, connects to the previous Slice, and previews what the result enables next;
+- assessment and interaction Blocks follow this orientation; they never appear as an unexplained cold open.
+
 ## `teachingDesign` shape
 
 ```json
@@ -102,9 +109,26 @@ When `teachingDesign` exists, every Slice row also requires:
 }
 ```
 
+For every newly designed Slice, also write the additive `journeyContext` object. Older approved plans without it remain valid and must not be reopened merely to add it.
+
+```json
+{
+  "journeyContext": {
+    "coursePosition": "方法一：主张拆解 / 步骤 2 of 5",
+    "connectionFromPrevious": "上一页已经看过完整方法图，这一页开始第一次带练。",
+    "currentFocus": "现在只练习把宽泛表述改写成可核查事实主张。",
+    "setsUpNext": "得到清晰主张后，下一页才能选择来源和核查路径。"
+  }
+}
+```
+
+These are learner-facing continuity statements, not production notes. The Blueprint must render their meaning in the Slice, normally in a compact rich-text method-position card beside the source or immediately above the action.
+
 Follow the `learningArc` order. Use the same method-step IDs declared by `teachingDesign`. The before/after states must name a real change. `whyOwnSlice` must justify an instructional unit, not merely say that a source file or image exists.
 
-At page-plan time, choose the intended information shape without writing final HTML yet. Mark `richText` as the likely modality when a reading lens, static method, worked model, comparison, evidence ladder, definition set, table, rubric, or synthesis needs visible grouping that Markdown would flatten. A reading lens sits beside the original source and tells the learner why to read, what dimensions to notice, and what question to carry into the material; it does not replace the material with a summary. Keep short prose as `text`; keep real media in their media Blocks; keep anything the learner manipulates or submits out of `richText`. The internal rich-text specialist writes the inline HTML only after the teacher approves the complete teaching design and page plan.
+At page-plan time, choose the intended information shape without writing final HTML yet. Mark `richText` as the likely modality when a course map, current-method position card, reading lens, static method, worked model, comparison, evidence ladder, definition set, table, rubric, or synthesis needs visible grouping that Markdown would flatten. A reading lens sits beside the original source and tells the learner why to read, what dimensions to notice, and what question to carry into the material; it does not replace the material with a summary. A method-position card names the current step, why it follows the prior page, the exact capability being practised, and what comes next. Keep short prose as `text`; keep real media in their media Blocks; keep anything the learner manipulates or submits out of `richText`. The internal rich-text specialist writes the inline HTML only after the teacher approves the complete teaching design and page plan.
+
+Treat each Slice like one teaching slide. Evaluate four things together: bounded information density; the visual scene and focal point; continuity with the previous and next Slice; and whether a novice immediately understands the page's purpose. Do not approve a row merely because its IDs and action are valid.
 
 ## Student-perspective review
 
@@ -118,6 +142,6 @@ Review exactly these criteria and record concrete page/phase evidence:
 - `motivation-and-pacing`
 - `transfer`
 
-When reviewing `method-before-practice` and `scaffolding`, check whether a dense method or worked example needs a structured `richText` teaching surface before the learner is asked to apply it. When reviewing `assessment-load`, reject open-language prompts whose progress depends on an exact keyword or regex match; reflection should accept any meaningful submission, while a closed short-answer check needs feedback and a finite attempt path.
+When reviewing `purpose-clarity`, reject an opening that asks for a question, judgment or answer before creating a meaningful entry into the learning problem. The introduction may be a story, case conflict, observation, demonstration, problem situation, or overview; judge whether the learner understands why this course begins here and what direction it will take. When reviewing `method-before-practice` and `scaffolding`, require each exercise to visibly state the active method step, its prerequisite and its consequence; check whether a structured `richText` teaching surface is needed before the learner is asked to apply it. When reviewing `assessment-load`, reject open-language prompts whose progress depends on an exact keyword or regex match; reflection should accept any meaningful submission, while a closed short-answer check needs feedback and a finite attempt path.
 
 Use `revise` while any criterion fails. Repair the teaching design and derived page plan before changing the overall status to `ready-for-teacher`. A passing record must show what the student experiences; generic claims such as “the design is clear” are not evidence.

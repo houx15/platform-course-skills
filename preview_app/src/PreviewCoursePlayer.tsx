@@ -5,7 +5,7 @@ import type { CourseProgress } from "@mind-imprint/course-renderer";
 import type { RuntimeEventBus } from "@mind-imprint/course-runtime";
 import { AnnotationPanel } from "./AnnotationPanel";
 import { createPreviewAdapters, loadVideoInteraction, SilentPreviewAudioEngine } from "./previewAdapters";
-import { postInspectionObservation } from "./previewApi";
+import { loadAnnotations, postInspectionObservation, postPreviewEvidence } from "./previewApi";
 import type { InspectionConfig } from "./previewApi";
 
 export function PreviewCoursePlayer({ document, definitionHash, inspection = null }: { document: CourseDefinitionDocument; definitionHash: string; inspection?: InspectionConfig | null }) {
@@ -17,6 +17,9 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
   const [visitedSliceIds, setVisitedSliceIds] = useState<string[]>([]);
   const [runtimeErrors, setRuntimeErrors] = useState<string[]>([]);
   const [localCompletion, setLocalCompletion] = useState(false);
+  const [completionPendingCount, setCompletionPendingCount] = useState<number | null>(null);
+  const [completionMessage, setCompletionMessage] = useState<string | null>(null);
+  const [completionRecording, setCompletionRecording] = useState(false);
   const idFactory = useMemo(() => () => crypto.randomUUID(), []);
   const clock = useMemo(() => () => new Date().toISOString(), []);
   const adapters = useMemo(() => createPreviewAdapters(idFactory, clock), [idFactory, clock]);
@@ -167,6 +170,38 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
     setSelectedTargetKey(item?.dataset.itemId ? `item:${blockId}:${item.dataset.itemId}` : `block:${blockId}`);
   };
 
+  const finishLocalPreview = async () => {
+    setLocalCompletion(true);
+    setCompletionPendingCount(null);
+    setCompletionMessage(null);
+    try {
+      const store = await loadAnnotations();
+      setCompletionPendingCount(store.annotations.filter((annotation) => !["verified", "dismissed"].includes(annotation.status)).length);
+    } catch (error) {
+      setCompletionMessage(`暂时无法读取批注状态：${(error as Error).message}`);
+    }
+  };
+
+  const recordPublicationHandoff = async () => {
+    setCompletionRecording(true);
+    setCompletionMessage(null);
+    try {
+      await postPreviewEvidence({
+        viewport: { width: window.innerWidth, height: window.innerHeight },
+        visitedSliceIds,
+        exercisedEvents: events,
+        runtimeErrors,
+        teacherConfirmed: true,
+        completedAt: new Date().toISOString(),
+      });
+      setCompletionMessage("预览确认已记录。请回到 AI 对话确认是否发布；正式上传前仍会展示发布计划并再次征得你的批准。");
+    } catch (error) {
+      setCompletionMessage(`暂时不能记录完整审查：${(error as Error).message}`);
+    } finally {
+      setCompletionRecording(false);
+    }
+  };
+
   return (
     <main className={`preview-shell${inspection ? " preview-shell--inspection" : ""}`}>
       {inspection ? <div className="inspection-toolbar" role="status">
@@ -189,7 +224,21 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
               <section className="preview-local-completion" role="status" aria-label="本地预览已完成">
                 <p className="preview-local-completion__eyebrow">LOCAL PREVIEW COMPLETE</p>
                 <h2>本地预览已完成</h2>
-                <p>这个预览不会生成学生报告，也没有上传素材或发布课程。</p>
+                <p className="preview-local-completion__copy">这个预览不会生成学生报告，也没有上传素材或发布课程。</p>
+                {completionPendingCount === null && !completionMessage ? <p className="preview-local-completion__message">正在检查批注状态…</p> : null}
+                {completionPendingCount === 0 ? (
+                  <p className="preview-local-completion__message">当前没有待处理批注，可以进入发布确认。</p>
+                ) : null}
+                {completionPendingCount !== null && completionPendingCount > 0 ? (
+                  <>
+                    <p className="preview-local-completion__message">还有 {completionPendingCount} 条批注。你可以检查、修改、标记完成或继续进入发布确认。</p>
+                    <button type="button" className="preview-local-completion__secondary" onClick={() => setAnnotationsOpen(true)}>打开批注栏</button>
+                  </>
+                ) : null}
+                <button type="button" className="preview-local-completion__action" disabled={completionRecording} onClick={() => void recordPublicationHandoff()}>
+                  {completionRecording ? "正在记录审查…" : "下一步：发布到学生端"}
+                </button>
+                {completionMessage ? <p className="preview-local-completion__message" aria-live="polite">{completionMessage}</p> : null}
               </section>
             ) : !inspection || inspectionSessionId ? <CoursePlayer
               key={inspection ? inspectionSessionId : "teacher-preview"}
@@ -202,7 +251,7 @@ export function PreviewCoursePlayer({ document, definitionHash, inspection = nul
               clock={clock}
               onBusReady={observe}
               onProgress={setProgress}
-              onComplete={() => setLocalCompletion(true)}
+              onComplete={() => void finishLocalPreview()}
             /> : <p className="preview-loading">正在打开检查页面…</p>}
           </AudioEngineProvider>
         </InteractionLoaderProvider>

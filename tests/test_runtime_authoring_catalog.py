@@ -91,7 +91,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
                 "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
                 "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
                 "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
-                "richText": "static structured reading card; use full or a tall horizontal-split side and split long reading across slices",
+                "richText": "static structured reading card for course maps, method position, worked examples, comparisons, and synthesis; use full or a tall horizontal-split side and split long reading across slices",
             },
         )
 
@@ -102,6 +102,18 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
         self.assertEqual(rich_text["optionalFields"], ["title"])
         self.assertTrue(rich_text["displayOnly"])
         self.assertEqual(rich_text["maxHtmlChars"], 65536)
+        self.assertIn("at least two meaningful styled teaching regions", rich_text["authoringRule"])
+        self.assertEqual(
+            rich_text["recommendedRegions"],
+            ["numbered-method-sequence", "current-step", "worked-example", "comparison", "hint-or-callout", "knowledge-diagram"],
+        )
+
+    def test_catalog_explains_when_images_should_use_gallery(self):
+        images = self.load_catalog()["blocks"]["images"]
+
+        self.assertIn("exactly two images", images["authoringRule"])
+        self.assertIn("portrait/tall images", images["authoringRule"])
+        self.assertIn("use gallery", images["authoringRule"])
 
     def test_catalog_marks_events_without_a_real_renderer_producer(self):
         catalog = self.load_catalog()

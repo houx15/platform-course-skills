@@ -1,7 +1,15 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CourseDefinitionDocument } from "@mind-imprint/course-contract";
 import { PreviewCoursePlayer } from "./PreviewCoursePlayer";
+
+const previewApiMocks = vi.hoisted(() => ({
+  loadAnnotations: vi.fn(),
+  postInspectionObservation: vi.fn(),
+  postPreviewEvidence: vi.fn(),
+}));
+
+vi.mock("./previewApi", () => previewApiMocks);
 
 vi.mock("@mind-imprint/course-renderer", () => ({
   CoursePlayer: ({ onComplete }: { onComplete?: () => void }) => <div data-testid="course-player"><div data-block-id="case-question"><button type="button">Answer this question</button></div><button type="button" onClick={onComplete}>Complete course locally</button></div>,
@@ -39,6 +47,12 @@ const document = {
 } as unknown as CourseDefinitionDocument;
 
 describe("PreviewCoursePlayer", () => {
+  beforeEach(() => {
+    previewApiMocks.loadAnnotations.mockReset().mockResolvedValue({ schemaVersion: "1.0", annotations: [] });
+    previewApiMocks.postInspectionObservation.mockReset().mockResolvedValue({ ok: true });
+    previewApiMocks.postPreviewEvidence.mockReset().mockResolvedValue(undefined);
+  });
+
   it("matches the student sidebar's collapsed and expanded widths", () => {
     render(<PreviewCoursePlayer document={document} definitionHash={"a".repeat(64)} />);
 
@@ -69,13 +83,33 @@ describe("PreviewCoursePlayer", () => {
     expect(screen.getByLabelText("课程批注")).toHaveTextContent("Selected: block:case-question");
   });
 
-  it("ends locally without pretending to generate a student report or publish", () => {
+  it("ends locally without publishing and offers a clear publication handoff when no annotation is pending", async () => {
     render(<PreviewCoursePlayer document={document} definitionHash={"a".repeat(64)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Complete course locally" }));
 
     expect(screen.getByRole("status", { name: "本地预览已完成" })).toHaveTextContent("没有上传素材或发布课程");
+    expect(await screen.findByRole("button", { name: "下一步：发布到学生端" })).toBeInTheDocument();
     expect(screen.queryByTestId("course-player")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "下一步：发布到学生端" }));
+    await waitFor(() => expect(previewApiMocks.postPreviewEvidence).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status", { name: "本地预览已完成" })).toHaveTextContent("正式上传前仍会展示发布计划");
+  });
+
+  it("keeps pending annotations under teacher control without adding a new publication restriction", async () => {
+    previewApiMocks.loadAnnotations.mockResolvedValue({
+      schemaVersion: "1.0",
+      annotations: [{ id: "annotation-one", status: "open" }],
+    });
+    render(<PreviewCoursePlayer document={document} definitionHash={"a".repeat(64)} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete course locally" }));
+
+    expect(await screen.findByText("还有 1 条批注。你可以检查、修改、标记完成或继续进入发布确认。")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "下一步：发布到学生端" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "打开批注栏" }));
+    expect(screen.getByLabelText("课程批注")).toBeInTheDocument();
   });
 
   it("permits direct paging and keeps annotations available but collapsed in inspection mode", async () => {
