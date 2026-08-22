@@ -272,6 +272,41 @@ def teaching_plan_document():
         "whyOwnSlice": "迁移任务必须与示范案例分开，才能观察独立应用。",
     }
     plan["parts"][0]["slices"] = [model_slice, practice_slice, transfer_slice]
+    plan["sliceSemanticReview"] = {
+        "status": "ready-for-teacher",
+        "summary": "三页依次完成方法示范、带练和独立迁移，每一页都说明当前方法位置和学习结果的去向。",
+        "sliceChecks": [
+            {
+                "sliceId": slice_data["sliceId"],
+                "status": "pass",
+                "context": f"已交代 {slice_data['title']} 所承接的已有理解。",
+                "frameworkPosition": f"位于 {slice_data['arcPhaseId']} 阶段。",
+                "purpose": slice_data["teachingPurpose"],
+                "evidence": f"学生看到的内容和行动共同支持 {slice_data['title']}。",
+                "revision": None,
+            }
+            for slice_data in plan["parts"][0]["slices"]
+        ],
+        "transitionChecks": [
+            {
+                "fromSliceId": "slice-model",
+                "toSliceId": "slice-compare",
+                "status": "pass",
+                "connection": "学生把示范中的主张—证据对照步骤用于第一次带练。",
+                "evidence": "前页形成判断结构，后页要求依照同一结构提交判断。",
+                "revision": None,
+            },
+            {
+                "fromSliceId": "slice-compare",
+                "toSliceId": "slice-transfer",
+                "status": "pass",
+                "connection": "学生把带练中完成的证据判断迁移到新主张。",
+                "evidence": "前页提供有支架练习，后页移除支架并保持同一方法。",
+                "revision": None,
+            },
+        ],
+        "revisionsMade": ["补充每页的课程位置、承接关系和下一步用途。"],
+    }
     return plan
 
 
@@ -388,6 +423,41 @@ class InstructionalPlanTests(unittest.TestCase):
         codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
         self.assertIn("student-review-not-ready", codes)
 
+    def test_new_plan_semantic_review_covers_every_slice_and_adjacent_transition(self):
+        data = teaching_plan_document()
+        self.assertEqual(self.api().validate_instructional_plan(data, coverage_document()), [])
+        rendered = self.api().render_teacher_plan(data, coverage_document())
+        self.assertLess(rendered.index("## Slice 语义连贯性审查"), rendered.index("## 逐页计划"))
+        self.assertIn("### 单页清晰性", rendered)
+        self.assertIn("### 相邻页衔接", rendered)
+        self.assertIn("slice&#45;model → slice&#45;compare", rendered)
+
+        missing_slice = teaching_plan_document()
+        missing_slice["sliceSemanticReview"]["sliceChecks"].pop()
+        codes = {issue.code for issue in self.api().validate_instructional_plan(missing_slice, coverage_document())}
+        self.assertIn("semantic-slice-coverage-mismatch", codes)
+
+        wrong_transition = teaching_plan_document()
+        wrong_transition["sliceSemanticReview"]["transitionChecks"][0]["toSliceId"] = "slice-transfer"
+        codes = {issue.code for issue in self.api().validate_instructional_plan(wrong_transition, coverage_document())}
+        self.assertIn("semantic-transition-coverage-mismatch", codes)
+
+        across_parts = teaching_plan_document()
+        transfer_slice = across_parts["parts"][0]["slices"].pop()
+        transfer_slice["partId"] = "part-transfer"
+        across_parts["parts"].append({"partId": "part-transfer", "title": "独立迁移", "slices": [transfer_slice]})
+        self.assertEqual(self.api().validate_instructional_plan(across_parts, coverage_document()), [])
+
+    def test_semantic_review_requires_concrete_evidence_and_consistent_status(self):
+        data = teaching_plan_document()
+        check = data["sliceSemanticReview"]["sliceChecks"][0]
+        check["status"] = "revise"
+        check["evidence"] = ""
+        check["revision"] = ""
+        data["sliceSemanticReview"]["status"] = "revise"
+        codes = {issue.code for issue in self.api().validate_instructional_plan(data, coverage_document())}
+        self.assertTrue({"semantic-review-evidence-required", "semantic-review-revision-required", "semantic-review-not-ready"}.issubset(codes))
+
     def test_teaching_design_rejects_question_first_or_unpractised_method_steps(self):
         data = teaching_plan_document()
         data["parts"][0]["slices"][0]["instructionalRole"] = "feedback"
@@ -402,7 +472,12 @@ class InstructionalPlanTests(unittest.TestCase):
 
     def test_teaching_design_is_additive_for_existing_courses(self):
         self.assertNotIn("teachingDesign", plan_document())
+        self.assertNotIn("sliceSemanticReview", plan_document())
         self.assertEqual(self.api().validate_instructional_plan(plan_document(), coverage_document()), [])
+
+        legacy_teaching_plan = teaching_plan_document()
+        del legacy_teaching_plan["sliceSemanticReview"]
+        self.assertEqual(self.api().validate_instructional_plan(legacy_teaching_plan, coverage_document()), [])
 
     def test_fixture_writer_refuses_repository_root(self):
         with self.assertRaisesRegex(AssertionError, "must not be the repository root"):

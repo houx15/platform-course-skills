@@ -8,8 +8,9 @@ Use this reference only for a new course or a course whose teaching structure is
 2. Draft `teachingDesign` without creating Slice rows.
 3. Derive the Part/Slice rows from the ordered `learningArc`.
 4. Re-read the entire journey from a novice student's perspective.
-5. Repair the design and rows until all student-perspective checks pass.
-6. Render the combined Markdown and ask the teacher for one approval.
+5. Inspect every Slice for local clarity and every adjacent Slice pair for a visible learning connection. Record this as `sliceSemanticReview`.
+6. Repair the design and rows until all student-perspective and Slice semantic checks pass.
+7. Render the combined Markdown and ask the teacher for one approval.
 
 Do not start with a source-to-page mapping. A source may support several phases, several sources may share one Slice, and teacher/reference sources may remain outside the learner course.
 
@@ -123,6 +124,41 @@ For every newly designed Slice, also write the additive `journeyContext` object.
 ```
 
 These are learner-facing continuity statements, not production notes. The Blueprint must render their meaning in the Slice, normally in a compact rich-text method-position card beside the source or immediately above the action.
+
+For a newly designed course, add one top-level `sliceSemanticReview` after the Slice rows are drafted. This is a lightweight AI review of the plan, not a new CourseDefinition field or publication API requirement. Existing approved plans without it remain valid.
+
+```json
+{
+  "sliceSemanticReview": {
+    "status": "ready-for-teacher",
+    "summary": "学生从导入进入方法示范，再通过带练形成可迁移的成果。",
+    "sliceChecks": [
+      {
+        "sliceId": "slice-id",
+        "status": "pass",
+        "context": "学生进入本页时已经知道什么，以及本页补充了哪些必要信息",
+        "frameworkPosition": "本页位于哪一个方法步骤或学习阶段",
+        "purpose": "学生为什么现在需要看这份材料或完成这个行动",
+        "evidence": "从标题、讲解、材料、行动或成果中看到的具体依据",
+        "revision": null
+      }
+    ],
+    "transitionChecks": [
+      {
+        "fromSliceId": "slice-a",
+        "toSliceId": "slice-b",
+        "status": "pass",
+        "connection": "前一页形成的观察、结论或成果怎样成为后一页的起点",
+        "evidence": "学生实际可见的承接线索",
+        "revision": null
+      }
+    ],
+    "revisionsMade": ["交给老师以前已经完成的具体修改"]
+  }
+}
+```
+
+`sliceChecks` must cover every Slice exactly once in course order. `transitionChecks` must cover every adjacent pair exactly once, including Part boundaries. Use `revise` when a page begins with an unexplained task, depends on hidden context, has no visible place in the method, or when two adjacent pages merely sit next to each other without carrying forward an observation, conclusion, method step, or learner artifact. Repair the page plan and rerun this review before using `ready-for-teacher`.
 
 Follow the `learningArc` order. Use the same method-step IDs declared by `teachingDesign`. The before/after states must name a real change. `whyOwnSlice` must justify an instructional unit, not merely say that a source file or image exists.
 

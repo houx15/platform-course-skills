@@ -93,6 +93,8 @@ STUDENT_REVIEW_CRITERIA = (
     "motivation-and-pacing",
     "transfer",
 )
+SEMANTIC_REVIEW_STATUSES = frozenset({"ready-for-teacher", "revise"})
+SEMANTIC_CHECK_STATUSES = frozenset({"pass", "revise"})
 ACTION_KINDS_REQUIRING_EVIDENCE = frozenset({"answer", "interaction"})
 STABLE_TARGET = re.compile(r"^(?:question|claim):" + ID_RE.pattern[1:-1] + r"$")
 BACKTRACKING = re.compile(r"backtrack|go back|previous (?:page|slice)|回看|回退|返回上一", re.IGNORECASE)
@@ -425,6 +427,92 @@ def _validate_teaching_design(value: object, path: str, issues: List[ValidationI
     return method_step_ids, phase_method_steps
 
 
+def _validate_slice_semantic_review(
+    value: object,
+    path: str,
+    ordered_slice_ids: Sequence[str],
+    issues: List[ValidationIssue],
+) -> None:
+    """Validate the optional new-course review without invalidating legacy plans."""
+    if not isinstance(value, dict):
+        issues.append(_issue(path, "invalid-shape", "sliceSemanticReview must be an object"))
+        return
+    _unknown_fields(value, {"status", "summary", "sliceChecks", "transitionChecks", "revisionsMade"}, path, issues)
+    overall_status = value.get("status")
+    if overall_status not in SEMANTIC_REVIEW_STATUSES:
+        issues.append(_issue(f"{path}.status", "invalid-semantic-review-status", "semantic review status must be ready-for-teacher or revise"))
+    if not _nonempty(value.get("summary")):
+        issues.append(_issue(f"{path}.summary", "required", "semantic review needs a concrete learner-journey summary"))
+    revisions = value.get("revisionsMade")
+    if not isinstance(revisions, list) or not all(_nonempty(item) for item in revisions):
+        issues.append(_issue(f"{path}.revisionsMade", "invalid-shape", "revisionsMade must be a string list"))
+
+    slice_checks = value.get("sliceChecks")
+    reviewed_slice_ids: List[str] = []
+    contains_revision = False
+    if not isinstance(slice_checks, list):
+        issues.append(_issue(f"{path}.sliceChecks", "required", "semantic review needs one check for every Slice"))
+    else:
+        for index, check in enumerate(slice_checks):
+            check_path = f"{path}.sliceChecks[{index}]"
+            if not isinstance(check, dict):
+                issues.append(_issue(check_path, "invalid-shape", "Slice semantic check must be an object"))
+                continue
+            _unknown_fields(check, {"sliceId", "status", "context", "frameworkPosition", "purpose", "evidence", "revision"}, check_path, issues)
+            slice_id = check.get("sliceId")
+            if not _nonempty(slice_id):
+                issues.append(_issue(f"{check_path}.sliceId", "required", "Slice semantic check needs sliceId"))
+            else:
+                reviewed_slice_ids.append(slice_id)
+            status = check.get("status")
+            if status not in SEMANTIC_CHECK_STATUSES:
+                issues.append(_issue(f"{check_path}.status", "invalid-semantic-check-status", "Slice semantic check status must be pass or revise"))
+            contains_revision = contains_revision or status == "revise"
+            for field in ("context", "frameworkPosition", "purpose", "evidence"):
+                if not _nonempty(check.get(field)):
+                    issues.append(_issue(f"{check_path}.{field}", "semantic-review-evidence-required", f"Slice semantic check needs concrete {field}"))
+            if status == "revise" and not _nonempty(check.get("revision")):
+                issues.append(_issue(f"{check_path}.revision", "semantic-review-revision-required", "a revise result must say what will change"))
+        if reviewed_slice_ids != list(ordered_slice_ids):
+            issues.append(_issue(f"{path}.sliceChecks", "semantic-slice-coverage-mismatch", "semantic review must check every Slice exactly once in course order"))
+
+    transition_checks = value.get("transitionChecks")
+    reviewed_pairs: List[Tuple[str, str]] = []
+    expected_pairs = list(zip(ordered_slice_ids, ordered_slice_ids[1:]))
+    if not isinstance(transition_checks, list):
+        issues.append(_issue(f"{path}.transitionChecks", "required", "semantic review needs one check for every adjacent Slice pair"))
+    else:
+        for index, check in enumerate(transition_checks):
+            check_path = f"{path}.transitionChecks[{index}]"
+            if not isinstance(check, dict):
+                issues.append(_issue(check_path, "invalid-shape", "transition semantic check must be an object"))
+                continue
+            _unknown_fields(check, {"fromSliceId", "toSliceId", "status", "connection", "evidence", "revision"}, check_path, issues)
+            from_id, to_id = check.get("fromSliceId"), check.get("toSliceId")
+            if not _nonempty(from_id) or not _nonempty(to_id):
+                issues.append(_issue(check_path, "required", "transition semantic check needs fromSliceId and toSliceId"))
+            else:
+                reviewed_pairs.append((from_id, to_id))
+            status = check.get("status")
+            if status not in SEMANTIC_CHECK_STATUSES:
+                issues.append(_issue(f"{check_path}.status", "invalid-semantic-check-status", "transition semantic check status must be pass or revise"))
+            contains_revision = contains_revision or status == "revise"
+            for field in ("connection", "evidence"):
+                if not _nonempty(check.get(field)):
+                    issues.append(_issue(f"{check_path}.{field}", "semantic-review-evidence-required", f"transition semantic check needs concrete {field}"))
+            if status == "revise" and not _nonempty(check.get("revision")):
+                issues.append(_issue(f"{check_path}.revision", "semantic-review-revision-required", "a revise result must say what will change"))
+        if reviewed_pairs != expected_pairs:
+            issues.append(_issue(f"{path}.transitionChecks", "semantic-transition-coverage-mismatch", "semantic review must check every adjacent Slice pair exactly once in course order"))
+
+    if overall_status == "ready-for-teacher" and contains_revision:
+        issues.append(_issue(f"{path}.status", "semantic-review-not-ready", "ready-for-teacher requires every Slice and transition check to pass"))
+    if overall_status == "revise":
+        if not contains_revision:
+            issues.append(_issue(f"{path}.status", "semantic-review-status-mismatch", "revise status requires at least one revise check"))
+        issues.append(_issue(f"{path}.status", "semantic-review-not-ready", "semantic review revisions must be resolved before teacher confirmation"))
+
+
 def _validate_slice(
     slice_data: object,
     path: str,
@@ -654,7 +742,7 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
     issues.extend(index_issues)
     if not isinstance(document, dict):
         return issues + [_issue(PLAN_RELATIVE_PATH, "invalid-shape", "page plan must be an object")]
-    _unknown_fields(document, {"schemaVersion", "title", "teachingDesign", "parts", "approval"}, PLAN_RELATIVE_PATH, issues)
+    _unknown_fields(document, {"schemaVersion", "title", "teachingDesign", "sliceSemanticReview", "parts", "approval"}, PLAN_RELATIVE_PATH, issues)
     if document.get("schemaVersion") != "2.0":
         issues.append(_issue(f"{PLAN_RELATIVE_PATH}.schemaVersion", "invalid-version", "page plan schemaVersion must be 2.0"))
     teaching_design = document.get("teachingDesign")
@@ -672,6 +760,7 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
         return issues
     part_ids: Set[str] = set()
     slice_ids: Set[str] = set()
+    ordered_slice_ids: List[str] = []
     planned_phase_ids: List[str] = []
     method_roles: Dict[str, Set[str]] = {step_id: set() for step_id in method_step_ids}
     all_roles: Set[str] = set()
@@ -710,6 +799,7 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
                 if slice_id in slice_ids:
                     issues.append(_issue(f"{part_path}.slices[{slice_index}].sliceId", "duplicate-slice-id", "sliceId must be unique"))
                 slice_ids.add(slice_id)
+                ordered_slice_ids.append(slice_id)
             if isinstance(teaching_design, dict) and isinstance(slice_data, dict):
                 phase_id = slice_data.get("arcPhaseId")
                 role = slice_data.get("instructionalRole")
@@ -742,6 +832,14 @@ def validate_instructional_plan(document: object, coverage: object) -> List[Vali
             issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "worked-example-required", "teaching-design page plan needs at least one worked model"))
         if "transfer" not in all_roles:
             issues.append(_issue(f"{PLAN_RELATIVE_PATH}.parts", "transfer-slice-required", "teaching-design page plan needs at least one transfer Slice"))
+    semantic_review = document.get("sliceSemanticReview")
+    if semantic_review is not None:
+        _validate_slice_semantic_review(
+            semantic_review,
+            f"{PLAN_RELATIVE_PATH}.sliceSemanticReview",
+            ordered_slice_ids,
+            issues,
+        )
     _validate_coverage_placement(document, coverage, issues)
     return issues
 
@@ -1162,6 +1260,49 @@ def _render_teaching_design(design: dict) -> List[str]:
     return lines
 
 
+def _render_slice_semantic_review(review: dict) -> List[str]:
+    lines = [
+        "## Slice 语义连贯性审查",
+        "",
+        f"- 结论：{_markdown_safe(review.get('status', '—'))}",
+        f"- 学生旅程摘要：{_markdown_safe(review.get('summary', '—'))}",
+        f"- 预审后已修改：{_markdown_safe(_detail_list(review.get('revisionsMade')))}",
+        "",
+        "### 单页清晰性",
+        "",
+        "| Slice | 结论 | 本页上下文 | 整体框架位置 | 本页目的 | 具体依据 | 待修改 |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for check in review.get("sliceChecks", []) if isinstance(review.get("sliceChecks"), list) else []:
+        if isinstance(check, dict):
+            lines.append("| " + " | ".join(_markdown_safe(value) for value in (
+                check.get("sliceId", "—"),
+                check.get("status", "—"),
+                check.get("context", "—"),
+                check.get("frameworkPosition", "—"),
+                check.get("purpose", "—"),
+                check.get("evidence", "—"),
+                check.get("revision") or "—",
+            )) + " |")
+    lines.extend([
+        "",
+        "### 相邻页衔接",
+        "",
+        "| 从 → 到 | 结论 | 承接关系 | 具体依据 | 待修改 |",
+        "| --- | --- | --- | --- | --- |",
+    ])
+    for check in review.get("transitionChecks", []) if isinstance(review.get("transitionChecks"), list) else []:
+        if isinstance(check, dict):
+            lines.append("| " + " | ".join(_markdown_safe(value) for value in (
+                f"{check.get('fromSliceId', '—')} → {check.get('toSliceId', '—')}",
+                check.get("status", "—"),
+                check.get("connection", "—"),
+                check.get("evidence", "—"),
+                check.get("revision") or "—",
+            )) + " |")
+    return lines
+
+
 def render_teacher_plan(plan: dict, coverage: dict) -> str:
     """Generate the teacher view; this Markdown is deliberately never approval evidence."""
     title = plan.get("title") if _nonempty(plan.get("title")) else "课程页计划"
@@ -1169,6 +1310,10 @@ def render_teacher_plan(plan: dict, coverage: dict) -> str:
     teaching_design = plan.get("teachingDesign")
     if isinstance(teaching_design, dict):
         lines.extend(_render_teaching_design(teaching_design))
+        lines.append("")
+    semantic_review = plan.get("sliceSemanticReview")
+    if isinstance(semantic_review, dict):
+        lines.extend(_render_slice_semantic_review(semantic_review))
         lines.append("")
     lines.extend(["## 逐页计划", "", "| Part / Slice | 教学阶段 | 教学角色 | 方法步骤 | 课程位置与衔接 | 理解变化 | 教学目的 | 素材 | 学生看到 | 学生行动 | 完成证据 | 排版 | 同页参考/依赖 |", "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"])
     part_titles = {
