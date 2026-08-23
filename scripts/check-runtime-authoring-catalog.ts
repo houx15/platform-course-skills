@@ -83,7 +83,7 @@ const expectedTopLevel = [
   "workflow",
 ];
 same("top-level fields", Object.keys(catalog).sort(), expectedTopLevel);
-same("upstream tag", catalog.upstreamTag, "course-authoring-v1.6.0");
+same("upstream tag", catalog.upstreamTag, "course-authoring-v1.8.0");
 same("layout presets", catalog.layout.presets, enumValues(LayoutPreset));
 same("split ratios", catalog.layout.splitRatios, enumValues(SplitRatio));
 same("block types", catalog.blocks.types, unionDiscriminators(BlockDefinition, "type"));

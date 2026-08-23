@@ -25,8 +25,10 @@ Use the bundled student renderer with local assets. Preview never uploads, publi
    - each image, PDF, video, HTML activity, and question belongs to the intended explanation;
    - material mentioned by a prompt is available on the same Slice whenever the learner needs it to answer;
    - controls and core text are visible, media aspect ratio is sensible, and the page has no runtime error.
+   - every `openAs: "modal"` launcher is understandable, every modal opens and closes, and substantive rich text, media, or HTML uses a large share of the viewport rather than a narrow question-card width; clipping or a small fixed panel is a renderer blocker, not a reason to squeeze the authored content;
+   - every interactive HTML fills the complete frame supplied by the renderer and remains usable at 1280×720 and 1200×520, with its task, feedback, unmet-requirement explanation, and completion control reachable.
 
-5. If a screenshot shows an obvious problem, update the Blueprint, compile, validate, and inspect the affected Slice again. Stop when the course is reasonable to show a teacher. Do not create an elaborate visual-proof process or ask the teacher to supervise these repair rounds.
+5. Open every authored modal at least once and capture the opened state when it contains substantive media, HTML, or an assessment. Scroll inside interactive HTML when needed so the check covers the complete activity rather than only its first viewport. If a screenshot or interaction shows an obvious problem, update the Blueprint or HTML delivery copy, compile, validate, and inspect the affected Slice again. Stop when the course is reasonable to show a teacher. Do not create an elaborate visual-proof process or ask the teacher to supervise these repair rounds.
 
 ## Teacher preview and annotations
 

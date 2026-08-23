@@ -4125,7 +4125,15 @@ var submitCorrect = external_exports.object({ rule: external_exports.literal("su
 var submitCorrectOrExhausted = external_exports.object({ rule: external_exports.literal("submit-correct-or-exhausted"), maxAttempts: external_exports.number().int().positive() }).strict();
 var SingleChoiceCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
 var FillBlankCompletionRule = external_exports.discriminatedUnion("rule", [submitAny, submitCorrect, submitCorrectOrExhausted]);
-var TextBlock = external_exports.object({ id: blockIdSchema, type: external_exports.literal("text"), content: external_exports.string() }).strict();
+var BlockOpenAs = external_exports.enum(["inline", "modal"]);
+var blockModalLabelSchema = external_exports.string().min(1).max(120);
+var TextBlock = external_exports.object({
+  id: blockIdSchema,
+  type: external_exports.literal("text"),
+  content: external_exports.string(),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
+}).strict();
 var RICH_TEXT_MAX_CHARS = 64 * 1024;
 var RICH_TEXT_FORBIDDEN = [
   { pattern: /<\s*script\b/i, what: "<script>", instead: "richText never executes code \u2014 use an interactiveHtml block if the student must interact" },
@@ -4148,21 +4156,27 @@ var RichTextBlock = external_exports.object({
   /** A self-contained HTML fragment. An inline `<style>` is expected and encouraged. */
   html: RichTextHtml,
   /** Accessible name for the scrollable region; the renderer supplies a generic one when absent. */
-  title: external_exports.string().min(1).optional()
+  title: external_exports.string().min(1).optional(),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
 }).strict();
 var ImageItem = external_exports.object({ id: external_exports.string().min(1), source: relativeAssetPathSchema, alt: external_exports.string().min(1), caption: external_exports.string().optional() }).strict();
 var ImagesBlock = external_exports.object({
   id: blockIdSchema,
   type: external_exports.literal("images"),
   presentation: external_exports.enum(["single", "side-by-side", "gallery"]),
-  items: external_exports.array(ImageItem).min(1)
+  items: external_exports.array(ImageItem).min(1),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
 }).strict();
 var PdfBlock = external_exports.object({
   id: blockIdSchema,
   type: external_exports.literal("pdf"),
   title: external_exports.string().min(1),
   source: relativeAssetPathSchema,
-  initialPage: external_exports.number().int().positive().optional()
+  initialPage: external_exports.number().int().positive().optional(),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
 }).strict();
 var VideoBlock = external_exports.object({
   id: blockIdSchema,
@@ -4175,20 +4189,32 @@ var VideoBlock = external_exports.object({
   completion: external_exports.discriminatedUnion("rule", [
     external_exports.object({ rule: external_exports.literal("video-ended") }).strict(),
     external_exports.object({ rule: external_exports.literal("video-ended-and-interactions-completed") }).strict()
-  ]).optional()
+  ]).optional(),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
 }).strict();
 var InteractiveHtmlBlock = external_exports.object({
   id: blockIdSchema,
   type: external_exports.literal("interactiveHtml"),
   source: relativeAssetPathSchema,
   protocolVersion: external_exports.literal("1.0"),
-  aspectRatio: external_exports.enum(["1:1", "4:3"]),
+  // An authoring HINT describing the shape the interaction was DESIGNED for,
+  // never a host clamp: the renderer gives every interactive-HTML block the
+  // full slot and lets the frame scroll its own document, whatever this says
+  // (see `.course-block--interactive-html` in course.css). Clamping the frame
+  // to the ratio used to cut wide interactions down to a narrow column and
+  // put their own 完成 button outside the visible box — with
+  // `manualNext: "after-completion"` that trapped the student on the slice.
+  // `fill` is the explicit "no preferred shape, just give me the slot" value.
+  aspectRatio: external_exports.enum(["1:1", "4:3", "fill"]),
   completion: external_exports.object({ rule: external_exports.literal("interaction-complete") }).strict().optional(),
   // Optional, back-compat: an authored HTML interaction opts INTO audio only
   // by declaring this capability (Slice 7 Task 2 gates `allow="autoplay"`
   // and the media-lifecycle wiring on it). Absent → no audio capability, so
   // existing courses authored before this field existed stay valid as-is.
-  capabilities: external_exports.object({ audio: external_exports.boolean().optional() }).strict().optional()
+  capabilities: external_exports.object({ audio: external_exports.boolean().optional() }).strict().optional(),
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional()
 }).strict();
 var FillBlankBlock = external_exports.object({
   id: blockIdSchema,
@@ -4196,7 +4222,17 @@ var FillBlankBlock = external_exports.object({
   prompt: external_exports.string().min(1),
   placeholder: external_exports.string().optional(),
   assessment: FillBlankAssessment,
-  completion: FillBlankCompletionRule
+  completion: FillBlankCompletionRule,
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional(),
+  /**
+   * DEPRECATED alias for `openAs`, accepted so a definition authored against
+   * course-authoring-v1.7.0 (which briefly named this field `presentation`
+   * on assessment blocks) keeps validating and playing. Author `openAs`.
+   * Only assessment blocks ever carried it — `images.presentation` is the
+   * unrelated item-layout field and is NOT this.
+   */
+  presentation: BlockOpenAs.optional()
 }).strict();
 var SingleChoiceBlock = external_exports.object({
   id: blockIdSchema,
@@ -4204,7 +4240,17 @@ var SingleChoiceBlock = external_exports.object({
   prompt: external_exports.string().min(1),
   options: external_exports.array(ChoiceOption).min(2),
   assessment: SingleChoiceAssessment,
-  completion: SingleChoiceCompletionRule
+  completion: SingleChoiceCompletionRule,
+  openAs: BlockOpenAs.optional(),
+  modalLabel: blockModalLabelSchema.optional(),
+  /**
+   * DEPRECATED alias for `openAs`, accepted so a definition authored against
+   * course-authoring-v1.7.0 (which briefly named this field `presentation`
+   * on assessment blocks) keeps validating and playing. Author `openAs`.
+   * Only assessment blocks ever carried it — `images.presentation` is the
+   * unrelated item-layout field and is NOT this.
+   */
+  presentation: BlockOpenAs.optional()
 }).strict();
 var BlockDefinition = external_exports.discriminatedUnion("type", [
   TextBlock,

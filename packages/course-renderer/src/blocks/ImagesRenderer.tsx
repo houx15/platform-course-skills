@@ -72,23 +72,39 @@ export const ImagesRenderer: BlockRenderer<ImagesBlock> = ({ block, assetResolve
     return (
       <div {...wrapperProps}>
         <div className="course-images__gallery" role="group" aria-label="图片画廊">
-          <Figure
-            item={active}
-            src={assetResolver.resolve(active.source)}
-            focused={active.id === focusedItemId}
-            onZoom={() => setZoomedId(active.id)}
-          />
-          <div className="course-images__nav">
-            <button type="button" data-nav="prev" aria-label="上一张" onClick={() => goTo(safeIndex - 1)}>
-              上一张
+          {/* Prev/next are overlay arrows on the LEFT/RIGHT edges of the image
+              (the familiar carousel affordance), not a text bar below it: a tall
+              image used to push a below-the-figure nav out of the slot's visible
+              area, so the controls only appeared after scrolling. */}
+          <div className="course-images__gallery-stage">
+            <button
+              type="button"
+              className="course-images__nav-arrow course-images__nav-arrow--prev"
+              data-nav="prev"
+              aria-label="上一张"
+              onClick={() => goTo(safeIndex - 1)}
+            >
+              <span aria-hidden="true">‹</span>
             </button>
-            <span data-gallery-position aria-hidden="true">
-              {safeIndex + 1} / {items.length}
-            </span>
-            <button type="button" data-nav="next" aria-label="下一张" onClick={() => goTo(safeIndex + 1)}>
-              下一张
+            <Figure
+              item={active}
+              src={assetResolver.resolve(active.source)}
+              focused={active.id === focusedItemId}
+              onZoom={() => setZoomedId(active.id)}
+            />
+            <button
+              type="button"
+              className="course-images__nav-arrow course-images__nav-arrow--next"
+              data-nav="next"
+              aria-label="下一张"
+              onClick={() => goTo(safeIndex + 1)}
+            >
+              <span aria-hidden="true">›</span>
             </button>
           </div>
+          <span className="course-images__gallery-position" data-gallery-position aria-hidden="true">
+            {safeIndex + 1} / {items.length}
+          </span>
         </div>
         {lightbox}
       </div>

@@ -131,12 +131,25 @@ def _layout_issues(slice_data: dict, base: str) -> List[dict]:
             )
         )
 
-    if preset == "full" and len(block_ids) > 1:
+    inline_block_ids = [
+        block.get("id")
+        for block in blocks
+        if isinstance(block, dict) and block.get("openAs", "inline") != "modal"
+    ] if isinstance(blocks, list) else []
+    if preset == "full" and len(inline_block_ids) > 1:
         issues.append(
             _issue(
                 f"{base}.layout.slots",
                 "full-layout-stacks-blocks",
-                "A full layout may contain one focused Block only; use split-horizontal/grid or split the Slice instead of stacking Blocks.",
+                "A full layout may contain one focused inline Block plus supporting modal launchers; use split-horizontal/grid or split the Slice instead of stacking inline Blocks.",
+            )
+        )
+    if preset == "full" and block_ids and not inline_block_ids:
+        issues.append(
+            _issue(
+                f"{base}.layout.slots",
+                "full-layout-missing-inline-focus",
+                "Keep the Slice's primary teaching surface inline; modal launchers may support it but cannot be the whole page.",
             )
         )
 

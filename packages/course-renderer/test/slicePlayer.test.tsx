@@ -1,9 +1,9 @@
-import { act, render } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { RuntimeEventBus, InMemorySessionAdapter, type CourseRuntimeAdapters } from "@mind-imprint/course-runtime";
 import { SlicePlayer } from "../src/slice/SlicePlayer";
 import { AudioEngineProvider } from "../src/narration/audioEngine";
 import { FakeAudioEngine } from "./support/fakeAudioEngine";
-import { sliceOne, STATIC_PART_ID } from "./support/staticCourse";
+import { assessmentSlice, ASSESSMENT_PART_ID, sliceOne, STATIC_PART_ID } from "./support/staticCourse";
 
 function makeIdFactory() {
   let n = 0;
@@ -194,5 +194,65 @@ describe("SlicePlayer", () => {
     expect(container.querySelector('[data-focus-block="s1-reveal-text"]')).toBe(wrapper);
     expect(wrapper).not.toHaveAttribute("aria-hidden");
     expect(wrapper!.querySelector('[data-block-id="s1-reveal-text"]')).not.toHaveAttribute("hidden");
+  });
+
+  // Bug: after 完成本节 → 重新开始本节, an already-answered question could not be
+  // re-answered and 下一步 never re-enabled. Root cause: block renderers own
+  // internal UI state (an assessment's `locked`) the workflow reset never
+  // touched, so a replay left the inputs disabled. The fix remounts every block
+  // on replay (a per-replay React key). This drives that end-to-end.
+  it("重新开始本节 remounts blocks so an answered question is answerable again", async () => {
+    const { session, adapters, bus } = await setup();
+    const engine = new FakeAudioEngine();
+
+    let container!: HTMLElement;
+    await act(async () => {
+      const r = render(
+        <AudioEngineProvider value={engine}>
+          <SlicePlayer
+            slice={assessmentSlice}
+            partId={ASSESSMENT_PART_ID}
+            sessionId={session.id}
+            adapters={adapters}
+            bus={bus}
+            onSliceComplete={vi.fn()}
+            onNavigateNext={vi.fn()}
+          />
+        </AudioEngineProvider>,
+      );
+      container = r.container;
+    });
+
+    const question = () => container.querySelector('[data-block-id="as-question"]') as HTMLElement;
+    const firstRadio = () => within(question()).getAllByRole("radio")[0] as HTMLInputElement;
+
+    // intro narration.ended → wait-for-answer enables the question.
+    act(() => engine.fireEnded());
+    expect(firstRadio()).toBeEnabled();
+
+    // Answer correctly → the choice locks (inputs disabled), then summarize
+    // narration.ended completes the slice.
+    fireEvent.click(within(question()).getByRole("radio", { name: "还不能" }));
+    fireEvent.click(within(question()).getByRole("button", { name: "提交" }));
+    expect(firstRadio()).toBeDisabled(); // locked after a graded submit
+    act(() => engine.fireEnded()); // as-summary ended → next → completeSlice
+
+    // Completed → the replay control is offered.
+    const replay = screen.getByRole("button", { name: "重新开始本节" });
+    act(() => fireEvent.click(replay));
+
+    // Replay restarts the workflow (question starts un-enabled again); its intro
+    // narration.ended re-enables it. The remounted question must be a FRESH,
+    // answerable instance — not the old locked one.
+    act(() => engine.fireEnded());
+    expect(firstRadio()).toBeEnabled();
+    expect(firstRadio().checked).toBe(false);
+    // The previous run's feedback is gone (fresh component, not the locked one).
+    expect(question().querySelector("[data-single-choice-feedback]")).toBeNull();
+
+    // And it can actually be answered again.
+    fireEvent.click(within(question()).getByRole("radio", { name: "还不能" }));
+    fireEvent.click(within(question()).getByRole("button", { name: "提交" }));
+    expect(question().querySelector("[data-single-choice-feedback]")).not.toBeNull();
   });
 });

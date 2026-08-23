@@ -2,7 +2,7 @@
 
 ## Authority order
 
-1. The three shared packages pinned at `course-authoring-v1.6.0` decide which JSON is accepted and how it is rendered. This tag keeps the existing layout and publication contract, includes the v1.5.x course-end/media fixes, and adds the inline static `richText` Block.
+1. The three shared packages pinned at `course-authoring-v1.8.0` decide which JSON is accepted and how it is rendered. This tag includes the inline static `richText` Block, full-slot interactive HTML, `aspectRatio: "fill"`, read-only Slice completion on entry, and `openAs: "modal"` on every Block type.
 2. `packages/course-runtime` and `packages/course-renderer` decide which accepted behavior is actually produced and rendered.
 3. `2026-08-15-student-course-runtime-data-and-renderer-design.md` explains product meaning.
 4. Golden examples demonstrate coverage; they never limit the available options.
@@ -33,20 +33,26 @@ Treat one Slice like one teaching slide. Before compiling it, check four things 
 
 A new course begins with an intentional student-facing introduction before the first required response. Choose the form that best fits the material: a story, case conflict, observation task, demonstration, problem situation, or course overview/map. It must make the learning problem and relevance clear and give enough direction for what follows. A complex multi-step method often benefits from a visible route, but a course map is not mandatory. Teach the methodology as a whole before asking the learner to apply one of its parts. Do not open a Slice with an unexplained question.
 
-The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple Blocks in `full`. All split Slots must be non-empty. If every Block would occupy one side, use `full`, redistribute the learning surfaces across both sides, or split the sequence into separate Slices; never reserve a dead column or row. The rule is: split-horizontal defaults to `1:1`. Grid supports two to four cells and is selected for a real comparison or grouping need, not from a rigid rule based only on Block count. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
+The contract accepts `full`, `split-horizontal`, `split-vertical`, and `grid`. Split layouts accept `1:1`, `3:2`, `2:3`, `2:1`, `1:2`, `3:1`, and `1:3`; the first weight is left for a horizontal split and top for a vertical split. The teacher-side authoring policy is intentionally narrower: do not generate `split-vertical` by default, and do not stack multiple inline Blocks in `full`. All split Slots must be non-empty. If every Block would occupy one side, use `full`, redistribute the learning surfaces across both sides, or split the sequence into separate Slices; never reserve a dead column or row. The rule is: split-horizontal defaults to `1:1`. Grid supports two to four cells and is selected for a real comparison or grouping need, not from a rigid rule based only on Block count. Do not author nested layouts, coordinates, arbitrary CSS, or course-provided screen dimensions.
 
 ### Media-aware composition
 
 Choose the layout from the learning action and natural media aspect while keeping `1:1` as the strong horizontal default:
 
-- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself. In `course-authoring-v1.6.0`, every PDF header has a **放大阅读** action that opens the browser viewer in a large near-fullscreen modal, so the learner can inspect the original without the author giving the PDF a wider Slot. If the learner uses the external-open action, it must open a new tab and leave the course tab intact.
+- **PDF is portrait.** Render it as a centred portrait page within its Slot, never as a stretched wide shallow band. A text-and-PDF split remains `1:1`; PDF does not justify an asymmetric column by itself. Every PDF header has a **放大阅读** action that opens the browser viewer in a large near-fullscreen modal, so the learner can inspect the original without the author giving the PDF a wider Slot. If the learner uses the external-open action, it must open a new tab and leave the course tab intact.
 - **Video is wide.** Use `full` for a focused video. The one normal asymmetric split exception is a dominant large video paired with only a small amount of supporting text; the video may receive the wider side. A video paired with substantial content remains `1:1` or is split into another Slice.
-- **Interactive HTML preserves its authored aspect.** Keep the declared `1:1` or horizontal `4:3` ratio, scale and centre it, and never stretch it to fill an incompatible Slot. If it cannot fit clearly, change the layout or split the Slice.
+- **Interactive HTML owns the complete Slot.** `aspectRatio` is a design hint (`1:1`, `4:3`, or `fill`), not a renderer clamp. The host gives the iframe all available width and height; the document must use that space fluidly, scroll internally when its content is taller, and keep its main task and completion controls reachable. Use `fill` when the interaction has no preferred shape. Check the full interaction at both 1280×720 and a short 1200×520 frame, including its modal-open state when applicable.
 - **Rich text is a structured reading card.** Use it for static methodology, worked-example anatomy, comparison, definition, table, rubric, or synthesis content whose hierarchy would be flattened by Markdown. It fills and scrolls inside a tall Slot, carries its HTML inline, references no course asset, and never completes a Slice. Keep short prose as `text`; keep actions in interactive or assessment Blocks.
 - **Image groups express a viewing task.** Use `side-by-side` only for exactly two images that must remain visible together for direct comparison. Use `gallery` for more than two images, or for portrait/tall images that would become too small side by side, unless simultaneous comparison is itself the learning action. The gallery already provides previous/next controls.
 - **Text and assessments are reading surfaces.** Do not span them across an ultra-wide screen or compress them into a thin row. Pair explanation and action side by side, with the answerable Block in the right slot. Let the renderer's reading card constrain line length.
 
 All split Slots are vertically centred by the shared renderer. These are authoring decisions; the renderer remains responsible for centring, aspect preservation, letterboxing, and safe overflow when it receives a valid definition.
+
+### Inline versus modal Blocks
+
+Every Block may declare `openAs: "inline" | "modal"`; omission means `inline`. `modalLabel` supplies a concise launcher label when the Block's own title, prompt, or alt text would be unclear. Keep the Slice's primary explanation, focal evidence, and the context needed to understand the task inline. Use `modal` for supporting material that benefits from near-fullscreen space—an original document, detailed figure, replayable video, extended reference card, secondary interaction, or a question that would otherwise squeeze its evidence. A modal must release real space and preserve a clear learning sequence; do not hide the page's only instructions, the evidence the learner must notice before acting, or the Slice's core teaching move behind a launcher.
+
+Questions in modal presentation open automatically when the Workflow first enables them, close after completion, and reopen read-only. Resource modals open only when the learner presses their launcher and stay live when reopened. Presentation does not change events, answer payloads, or completion rules. Author `openAs`; the v1.7 assessment-only `presentation` spelling is accepted only for backward compatibility, while `images.presentation` continues to mean image-item layout.
 
 Keep the reference content required to answer a question in the same Slice whenever the combined page remains readable. Do not make learners flip backward during an answer merely because authoring separated the prompt from its evidence.
 
@@ -80,11 +86,15 @@ The pinned PDF renderer cannot emit `pdf.pageChanged`, so the authoring policy i
 
 A valid graph has one real initial Step, no unreachable Steps, no ambiguous matchers, no cross-Slice jump, no completion bypass, and a terminal path from every reachable branch. A terminal `navigate` Step has no outgoing transition.
 
+Progress must never depend on getting an answer right. Do not generate `submit-correct`, and do not make `answer.correct` the only route to completion; gate the ordinary exit on `block.completed` and reserve correctness for optional feedback branches. If several answerable Blocks are enabled together, do not wait for their completion events in one fixed order—reveal them sequentially or use an order-independent completion graph. A pure reading Slice completes on entry through an initial Step whose `enterActions` include `completeSlice`; do not hide its exit behind narration or a timer. Do not gate on passive reference Blocks. For a long video with required cues, preserve a visible continuation path so seeking past a cue cannot permanently trap the learner.
+
 ## HTML requirements
 
 The iframe protocol is `mind-course-interaction` version `1.0`. Frame messages are `ready`, `progress`, `completed`, and `error`. A `completed` payload must include at least one of `correct` or `value`; `resultId` is optional resend identity.
 
 HTML with audio declares `capabilities.audio: true`, handles `activate`, `deactivate`, `enable`, `disable`, `pauseMedia`, `resumeMedia`, and `stopMedia`, and reports autoplay rejection with error code `autoplay-blocked`. HTML without declared audio receives no autoplay capability.
+
+The HTML document must fill the frame it receives. Prefer `width: 100%`, `min-height: 100%`, responsive grid/flex sizing, and vertical overflow where needed. Do not centre and transform a fixed 1024×768 stage from `transform-origin: top left`, resize `body` to a scaled footprint, or combine a fixed `aspect-ratio` wrapper with `overflow: hidden`; those patterns make content unreachable when the frame is shorter or wider than the design box. The complete task, feedback, unmet-requirement explanation, and completion control must remain reachable at 1280×720 and 1200×520. When the Block is modal, inspect the launcher in the Slice and the full opened dialog separately.
 
 ## Review boundary
 

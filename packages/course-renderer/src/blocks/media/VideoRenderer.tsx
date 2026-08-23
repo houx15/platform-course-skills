@@ -83,6 +83,43 @@ export const VideoRenderer: BlockRenderer<VideoBlock> = ({ block, assetResolver,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [videoSrc]);
 
+  // Buffering/loading indicator (bug: a loading video showed a blank/black box
+  // with no feedback, reading as "nothing is clickable"). Driven straight off
+  // the element's native media events — a purely visual concern that doesn't
+  // belong on the playback-control VideoEngine seam (the same reason
+  // PdfRenderer binds its native `error` listener directly). Starts true and
+  // clears the moment the media can play; buffering mid-play (`waiting`/
+  // `stalled`) shows it again until playback resumes.
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    const busy = () => setLoading(true);
+    const ready = () => setLoading(false);
+    // Already ready when this (re)binds — e.g. a cached element or an src swap
+    // that resolved instantly — so we don't strand a spinner over playable media.
+    setLoading(el.readyState < 2 /* HAVE_CURRENT_DATA */);
+    el.addEventListener("loadstart", busy);
+    el.addEventListener("waiting", busy);
+    el.addEventListener("stalled", busy);
+    el.addEventListener("loadedmetadata", ready);
+    el.addEventListener("loadeddata", ready);
+    el.addEventListener("canplay", ready);
+    el.addEventListener("playing", ready);
+    el.addEventListener("error", ready); // a load error has its own surfacing paths; never leave the spinner up
+    return () => {
+      el.removeEventListener("loadstart", busy);
+      el.removeEventListener("waiting", busy);
+      el.removeEventListener("stalled", busy);
+      el.removeEventListener("loadedmetadata", ready);
+      el.removeEventListener("loadeddata", ready);
+      el.removeEventListener("canplay", ready);
+      el.removeEventListener("playing", ready);
+      el.removeEventListener("error", ready);
+    };
+    // Re-bind (and re-evaluate readiness) whenever the src swaps (P1-11 refresh).
+  }, [videoSrc]);
+
   const gated = block.completion?.rule === "video-ended-and-interactions-completed";
   const videoEndedRef = useRef(false);
   const requiredCuesCompleteRef = useRef(!gated);
@@ -201,6 +238,15 @@ export const VideoRenderer: BlockRenderer<VideoBlock> = ({ block, assetResolver,
           <track kind="captions" src={assetResolver.resolve(block.captions)} default />
         ) : null}
       </video>
+      {loading && visible ? (
+        // A live region (announced) but deliberately NOT role="status": the
+        // video-interaction cue layer already owns a role="status" node, and two
+        // would make an ambiguous status landmark on one video.
+        <div className="course-video__loading" aria-live="polite">
+          <span className="course-video__loading-spinner" aria-hidden="true" />
+          <span className="course-video__loading-label">视频加载中…</span>
+        </div>
+      ) : null}
       {/* No custom play/pause buttons: the native <video controls> already
           provides the familiar player transport (play/volume/fullscreen).
           Workflow-driven play/pause still reaches the element via the media

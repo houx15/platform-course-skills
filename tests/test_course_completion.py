@@ -254,6 +254,23 @@ class CourseCompletionTests(unittest.TestCase):
         self.assertIn("full-layout-stacks-blocks", {issue["code"] for issue in issues})
         self.assertFalse(plan["summary"]["ready"])
 
+    def test_full_layout_allows_one_inline_focus_with_modal_support(self):
+        blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
+        slice_data = blueprint["course"]["parts"][0]["slices"][0]
+        next(block for block in slice_data["blocks"] if block["id"] == "evidence-question")["openAs"] = "modal"
+        slice_data["layout"] = {
+            "preset": "full",
+            "slots": [
+                {"id": "main", "blockIds": ["claim-text", "evidence-question"]},
+            ],
+        }
+
+        plan = audit_course_draft(blueprint)
+
+        codes = {issue["code"] for issue in plan["slices"][0]["issues"]}
+        self.assertNotIn("full-layout-stacks-blocks", codes)
+        self.assertNotIn("full-layout-missing-inline-focus", codes)
+
     def test_horizontal_split_places_assessment_on_right(self):
         blueprint = json.loads(APPROVED.read_text(encoding="utf-8"))
         slice_data = blueprint["course"]["parts"][0]["slices"][0]

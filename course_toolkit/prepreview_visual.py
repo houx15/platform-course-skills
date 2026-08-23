@@ -535,6 +535,25 @@ def _validate_cue_activity(activity: object, *, path: str) -> dict:
                 and assessment.get("correctOptionId") in option_ids
                 and all(_nonempty(assessment[field]) for field in ("correctFeedback", "incorrectFeedback") if field in assessment)
             )
+        elif expected_kind == "interactiveHtml":
+            if (
+                raw.get("pdfPagePortrait") is not None
+                or not _number(raw.get("intrinsicAspectRatio"))
+                or not _number(raw.get("renderedAspectRatio"))
+                or float(raw["intrinsicAspectRatio"]) <= 0
+                or float(raw["renderedAspectRatio"]) <= 0
+            ):
+                raise VisualReportError("invalid-media-measurement", "interactive HTML must report a positive design hint and rendered frame ratio", path=item_path)
+            if float(raw["width"]) < 240 or float(raw["height"]) < 135:
+                raise VisualReportError("unreadable-content", "interactive HTML is too small to inspect", path=item_path)
+            declared = block.get("aspectRatio")
+            expected_hint = {"1:1": 1.0, "4:3": 4 / 3}.get(declared)
+            if expected_hint is not None and abs(float(raw["intrinsicAspectRatio"]) - expected_hint) > 0.01:
+                raise VisualReportError("aspect-distortion", "HTML measurement contradicts its declared design hint", path=item_path)
+            # v1.8.0 deliberately gives the iframe the complete Slot. Its
+            # rendered frame ratio may differ from the design hint; that is fit,
+            # not distortion. The document itself must be checked for reachable
+            # content and internal scrolling in the browser.
         else:
             assessment_valid = False
     else:
@@ -1135,14 +1154,13 @@ def _validate_media_measurements(value: object, *, slice_data: Mapping[str, obje
         else:
             if raw.get("pdfPagePortrait") is not None or not _number(raw.get("intrinsicAspectRatio")) or not _number(raw.get("renderedAspectRatio")) or float(raw["intrinsicAspectRatio"]) <= 0 or float(raw["renderedAspectRatio"]) <= 0:
                 raise VisualReportError("invalid-media-measurement", "visual media must bind intrinsic and rendered aspect ratios", path=item_path)
-            if abs(float(raw["intrinsicAspectRatio"]) - float(raw["renderedAspectRatio"])) / float(raw["intrinsicAspectRatio"]) > 0.03:
+            if (
+                expected_kind != "interactiveHtml"
+                and abs(float(raw["intrinsicAspectRatio"]) - float(raw["renderedAspectRatio"])) / float(raw["intrinsicAspectRatio"]) > 0.03
+            ):
                 raise VisualReportError("aspect-distortion", "visual media is stretched beyond the allowed tolerance", path=item_path)
             if float(raw["width"]) < 240 or float(raw["height"]) < 135:
                 raise VisualReportError("unreadable-content", "visual media is too small to inspect", path=item_path)
-            if expected_kind == "interactiveHtml":
-                declared = 1.0 if block.get("aspectRatio") == "1:1" else 4 / 3
-                if abs(float(raw["intrinsicAspectRatio"]) - declared) > 0.01:
-                    raise VisualReportError("aspect-distortion", "HTML measurement contradicts its declared aspect ratio", path=item_path)
         result.append(normalized)
     if seen != expected:
         raise VisualReportError("media-measurement-coverage", "every visible media surface needs type-appropriate measurements", path=path)

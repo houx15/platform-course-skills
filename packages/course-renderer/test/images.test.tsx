@@ -56,6 +56,23 @@ describe("ImagesRenderer", () => {
     expect(events[0]).toMatchObject({ sourceId: "pics", type: "image.selected", payload: { itemId: "item-2" } });
   });
 
+  it("gallery nav is overlay arrows on the image's sides, not a bar below it (bug: nav hidden until scroll)", () => {
+    const { container } = renderImages(block("gallery", 3));
+    const stage = container.querySelector(".course-images__gallery-stage");
+    expect(stage).toBeTruthy();
+    // Both arrows live INSIDE the image stage (overlaid on its left/right),
+    // so a tall image can no longer push them out of the visible slot area.
+    const prev = stage!.querySelector('[data-nav="prev"]');
+    const next = stage!.querySelector('[data-nav="next"]');
+    expect(prev).toHaveClass("course-images__nav-arrow");
+    expect(next).toHaveClass("course-images__nav-arrow");
+    // Accessible names are preserved (the arrows are the prev/next controls).
+    expect(prev).toHaveAttribute("aria-label", "上一张");
+    expect(next).toHaveAttribute("aria-label", "下一张");
+    // The position indicator is still shown.
+    expect(container.querySelector("[data-gallery-position]")).toHaveTextContent("1 / 3");
+  });
+
   it("focusedItemId marks the matching item", () => {
     const { container } = renderImages(block("side-by-side", 2), { focusedItemId: "item-2" });
     const focused = container.querySelectorAll('[data-focused="true"]');

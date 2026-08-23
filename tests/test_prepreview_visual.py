@@ -401,6 +401,11 @@ class PrepreviewVisualTests(unittest.TestCase):
         ]
         normalized = _validate_media_measurements(measurements, slice_data=slice_data, visible={"images", "pdf", "video", "html"}, path="measurements")
         self.assertEqual(len(normalized), 5)
+        full_slot_html = copy.deepcopy(measurements)
+        full_slot_html[4]["renderedAspectRatio"] = 16 / 9
+        normalized = _validate_media_measurements(full_slot_html, slice_data=slice_data, visible={"images", "pdf", "video", "html"}, path="measurements")
+        html_measurement = next(item for item in normalized if item["blockId"] == "html")
+        self.assertEqual(html_measurement["renderedAspectRatio"], 16 / 9)
         distorted_pdf = copy.deepcopy(measurements)
         distorted_pdf[2]["renderedAspectRatio"] = 1.2
         with self.assertRaisesRegex(VisualReportError, "portrait page/viewer"):

@@ -118,10 +118,17 @@ export function createHtmlMessageHandler(deps: HtmlMessageHandlerDeps): (data: u
   };
 }
 
-const ASPECT_CSS: Record<InteractiveHtmlBlock["aspectRatio"], string> = {
-  "1:1": "1 / 1",
-  "4:3": "4 / 3",
-};
+// `aspectRatio` is an authoring HINT (the shape the interaction was designed
+// for), NOT a host clamp — it is published as `data-aspect-ratio` for styling
+// and diagnostics, and deliberately does NOT become a CSS `aspect-ratio`.
+//
+// It used to: the wrapper was sized `height:100%; width:auto` off the ratio, so
+// a wide interaction in a wide slot rendered as a narrow centred column whose
+// own footer (完成任务) fell outside the visible box. On a slice with
+// `manualNext: "after-completion"` that is a dead end — the student cannot
+// finish the interaction, so the slice never completes and 下一步 never enables.
+// The host now hands the frame the whole slot and lets the sandboxed document
+// scroll itself whenever its content is taller, for every ratio value.
 
 const defaultTokenFactory = (): string => globalThis.crypto.randomUUID();
 
@@ -289,7 +296,7 @@ export const HtmlInteractionRenderer = ({
       aria-hidden={!visible}
       aria-disabled={!enabled}
       className="course-block course-block--interactive-html"
-      style={{ aspectRatio: ASPECT_CSS[block.aspectRatio], position: "relative" }}
+      style={{ position: "relative" }}
     >
       <iframe
         ref={iframeRef}

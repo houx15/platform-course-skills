@@ -16,7 +16,7 @@ VALID_HTML = """<!DOCTYPE html>
 <style>
 html, body { margin: 0; width: 100%; height: 100%; overflow-x: hidden; font-size: 16px; }
 button, input, select, textarea { font-size: inherit; }
-.canvas { width: 100%; height: 100%; aspect-ratio: 4 / 3; }
+.canvas { width: 100%; min-height: 100%; }
 </style>
 </head>
 <body>
@@ -45,7 +45,7 @@ VALID_HTML_V2 = """<!DOCTYPE html>
 <style>
 html, body { margin: 0; width: 100%; height: 100%; overflow-x: hidden; font-size: 16px; }
 button, input, select, textarea { font-size: inherit; }
-.canvas { width: 100%; height: 100%; aspect-ratio: 4 / 3; }
+.canvas { width: 100%; min-height: 100%; }
 </style>
 </head>
 <body>
@@ -132,9 +132,35 @@ class HtmlValidationTests(unittest.TestCase):
         )
         self.assertIn("external-resource", self.codes(text))
 
-    def test_missing_canvas_fails(self):
-        text = VALID_HTML.replace("aspect-ratio: 4 / 3;", "")
-        self.assertIn("missing-canvas", self.codes(text))
+    def test_missing_responsive_frame_fails(self):
+        text = (
+            VALID_HTML.replace("width: 100%;", "")
+            .replace("height: 100%;", "")
+            .replace("min-height: 100%;", "")
+        )
+        self.assertIn("missing-responsive-frame", self.codes(text))
+
+    def test_aspect_ratio_hint_is_allowed_without_clamping_the_document(self):
+        text = VALID_HTML.replace(
+            ".canvas { width: 100%; min-height: 100%; }",
+            ".canvas { width: 100%; min-height: 100%; aspect-ratio: 4 / 3; overflow-y: auto; }",
+        )
+        self.assertNotIn("self-clamped-canvas", self.codes(text))
+
+    def test_aspect_ratio_wrapper_may_not_clip_vertical_content(self):
+        text = VALID_HTML.replace(
+            ".canvas { width: 100%; min-height: 100%; }",
+            ".canvas { width: 100%; min-height: 100%; aspect-ratio: 4 / 3; overflow: hidden; }",
+        )
+        self.assertIn("self-clamped-canvas", self.codes(text))
+
+    def test_centred_fixed_stage_scaled_from_top_left_is_rejected(self):
+        text = VALID_HTML.replace(
+            ".canvas { width: 100%; min-height: 100%; }",
+            "body { display: flex; align-items: center; justify-content: center; }\n"
+            ".canvas { width: 1024px; height: 768px; transform-origin: top left; transform: scale(0.7); }",
+        )
+        self.assertIn("self-clamped-canvas", self.codes(text))
 
     def test_sample_fails_standardized_button_label(self):
         codes = {

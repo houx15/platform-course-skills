@@ -9,10 +9,12 @@
 
 ## Canvas
 
-- Use `aspect-ratio: 1 / 1` or horizontal `aspect-ratio: 4 / 3`.
-- Fit inside an iframe through whole-canvas scaling.
+- Fill the iframe surface with a fluid layout: normally `width: 100%`, `min-height: 100%`, responsive grid/flex tracks, and vertical overflow when content is taller.
+- Declare `aspectRatio: "1:1"`, `"4:3"`, or `"fill"` on the CourseDefinition Block as a design hint. Do not use that hint to clamp the HTML document itself.
+- Do not centre and transform a fixed design box from `transform-origin: top left`, resize `body` to the scaled footprint, or use a fixed `aspect-ratio` wrapper together with `overflow: hidden`.
 - Prevent horizontal scrolling.
-- Keep essential content and the completion control visible.
+- Keep essential content, feedback, unmet-requirement guidance, and the completion control reachable at 1280×720 and 1200×520.
+- When the Block uses `openAs: "modal"`, inspect both the launcher inside the Slice and the opened dialog. Keep primary teaching context inline; the modal may hold the large interaction when the launcher remains understandable.
 
 ## Completion
 

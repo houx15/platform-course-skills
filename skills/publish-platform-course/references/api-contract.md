@@ -1,6 +1,6 @@
 # Mind Imprint authoring API contract
 
-Pinned student handover tag: `course-authoring-v1.6.0`. The `richText` addition and accompanying renderer layout fixes do not change the authoring or publication API; the `coverAssetPath` behavior introduced in v1.4.0 remains unchanged.
+Pinned student handover tag: `course-authoring-v1.8.0`. The additive `openAs`, `modalLabel`, and interactive-HTML sizing changes do not change the authoring or publication endpoints; the `coverAssetPath` behavior introduced in v1.4.0 remains unchanged.
 
 Production base: `https://mind-api.uni-robot.cn`. Authentication is `Authorization: Bearer <OSS_ADMIN_KEY>`, read only from the environment.
 

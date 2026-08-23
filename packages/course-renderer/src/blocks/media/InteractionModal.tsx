@@ -14,6 +14,12 @@ export interface InteractionModalProps {
    * required cue omits this — there is no dismissal path until it completes.
    */
   onSkip?: () => void;
+  /**
+   * Label for the dismissal control. Defaults to the video cue's 跳过; a
+   * `presentation: "modal"` block passes 关闭 instead, because dismissing it
+   * hides the question rather than skipping a requirement (§9.8).
+   */
+  dismissLabel?: string;
   children: ReactNode;
 }
 
@@ -24,7 +30,7 @@ export interface InteractionModalProps {
  * `aria-modal="true"`, a focus trap that cycles Tab/Shift+Tab within the
  * panel, and focus restoration to whatever had focus before the cue opened.
  */
-export function InteractionModal({ ariaLabel, onSkip, children }: InteractionModalProps) {
+export function InteractionModal({ ariaLabel, onSkip, dismissLabel = "跳过", children }: InteractionModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const previouslyFocused = useRef<HTMLElement | null>(null);
 
@@ -83,7 +89,7 @@ export function InteractionModal({ ariaLabel, onSkip, children }: InteractionMod
         {children}
         {onSkip ? (
           <button type="button" className="course-video__cue-skip" onClick={onSkip}>
-            跳过
+            {dismissLabel}
           </button>
         ) : null}
       </div>

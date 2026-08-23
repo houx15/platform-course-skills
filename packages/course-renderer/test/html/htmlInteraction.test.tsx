@@ -92,6 +92,30 @@ describe("HtmlInteractionRenderer (component)", () => {
     expect(wrapper!.getAttribute("data-aspect-ratio")).toBe("4:3");
   });
 
+  it("publishes aspectRatio as a HINT only — never as a CSS clamp on the frame", () => {
+    // Clamping the wrapper to the ratio cropped wide interactions to a narrow
+    // column and pushed their own 完成 footer out of reach, which on an
+    // `after-completion` slice left the student with no way to finish. The
+    // ratio stays as a data attribute for styling; sizing comes from the slot.
+    const { emit } = recorder();
+    for (const aspectRatio of ["1:1", "4:3", "fill"] as const) {
+      const { container } = render(
+        <HtmlInteractionRenderer
+          block={{ ...block, aspectRatio }}
+          assetResolver={assetResolver}
+          state={baseState}
+          visible
+          enabled
+          emit={emit}
+          tokenFactory={() => "fixed-tok"}
+        />,
+      );
+      const wrapper = container.querySelector('[data-block-type="interactiveHtml"]') as HTMLElement;
+      expect(wrapper.getAttribute("data-aspect-ratio")).toBe(aspectRatio);
+      expect(wrapper.style.aspectRatio).toBe("");
+    }
+  });
+
   it("marks the block non-interactive when enabled=false (advisory; sandbox already isolates)", () => {
     const { emit } = recorder();
     const { container } = render(

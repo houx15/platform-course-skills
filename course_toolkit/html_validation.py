@@ -365,15 +365,49 @@ def validate_interactive_html(path: Path) -> List[ValidationIssue]:
     except Exception as exc:
         issues.append(ValidationIssue(str(path), "invalid-html", str(exc)))
 
-    if not re.search(
-        r"aspect-ratio\s*:\s*(?:1\s*/\s*1|4\s*/\s*3|1(?:\.0+)?|1\.333+)",
-        lowered,
+    if not re.search(r"\bwidth\s*:\s*100%", lowered) or not re.search(
+        r"\b(?:height|min-height)\s*:\s*100%", lowered
     ):
         issues.append(
             ValidationIssue(
                 str(path),
-                "missing-canvas",
-                "a 1:1 or horizontal 4:3 aspect-ratio canvas is required",
+                "missing-responsive-frame",
+                "HTML must fill the host frame with width: 100% and height/min-height: 100%",
+            )
+        )
+
+    css = "\n".join(
+        match.group(1)
+        for match in re.finditer(r"<style\b[^>]*>(.*?)</style>", text, re.I | re.S)
+    )
+    css_without_comments = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    for rule in re.finditer(r"([^{}]+)\{([^{}]*)\}", css_without_comments, re.S):
+        declarations = rule.group(2).lower()
+        if re.search(r"\baspect-ratio\s*:", declarations) and (
+            re.search(r"\boverflow\s*:\s*hidden\b", declarations)
+            or re.search(r"\boverflow-y\s*:\s*hidden\b", declarations)
+        ):
+            issues.append(
+                ValidationIssue(
+                    str(path),
+                    "self-clamped-canvas",
+                    "an aspect-ratio wrapper may not clip vertical overflow; let the host provide the frame",
+                )
+            )
+            break
+
+    if (
+        re.search(r"\btransform-origin\s*:\s*top\s+left\b", lowered)
+        and re.search(r"\btransform\s*:\s*scale\s*\(", lowered)
+        and re.search(r"\bwidth\s*:\s*\d+px", lowered)
+        and re.search(r"\bheight\s*:\s*\d+px", lowered)
+        and re.search(r"\b(?:display\s*:\s*flex|align-items\s*:\s*center|justify-content\s*:\s*center)", lowered)
+    ):
+        issues.append(
+            ValidationIssue(
+                str(path),
+                "self-clamped-canvas",
+                "a centred fixed stage scaled from top left can move content outside the iframe; use a fluid frame or centre the post-transform footprint",
             )
         )
 

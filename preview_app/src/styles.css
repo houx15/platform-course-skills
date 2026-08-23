@@ -67,7 +67,10 @@
 
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }
-body { margin: 0; min-width: 1280px; min-height: 100vh; background: var(--mk-paper); color: var(--mk-ink); }
+/* v1.8 HTML inspection explicitly includes a 1200px-wide short viewport. The
+   preview shell must yield that width to the renderer instead of forcing the
+   old 1280px canvas and adding a misleading horizontal scrollbar. */
+body { margin: 0; min-width: 0; min-height: 100vh; background: var(--mk-paper); color: var(--mk-ink); }
 button, select, textarea, input { font: inherit; }
 
 /* The pinned renderer grows the image slot wrapper. The preview host also lets

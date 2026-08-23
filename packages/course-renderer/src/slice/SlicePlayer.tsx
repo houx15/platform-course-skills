@@ -22,6 +22,7 @@ import {
 } from "@mind-imprint/course-runtime";
 import { LayoutRenderer } from "../layout/LayoutRenderer";
 import { getBlockRenderer } from "../blocks/registry";
+import { ModalBlockHost, isAssessmentBlock } from "../blocks/ModalBlockHost";
 import { FocusProvider, FocusTarget, focusedItemIdFor } from "../focus/FocusManager";
 import { NarrationController, NarrationPlayer } from "../narration/NarrationPlayer";
 import { useAudioEngine } from "../narration/audioEngine";
@@ -150,6 +151,16 @@ export function SlicePlayer({
   const stateRef = useRef<SliceSessionState>(restoreState ?? initSliceState(slice));
   const [, forceRender] = useReducer((n: number) => n + 1, 0);
   const [focus, setFocus] = useState<TargetRef | null>(slice.workflow.initialState?.focusedTarget ?? null);
+  // §revisit replay — bumped by "重新开始本节" so every block wrapper's React key
+  // changes and the block renderers REMOUNT. Block renderers own local UI state
+  // the workflow can't reach — an assessment's `locked`/`selected`/`feedback`,
+  // a video's ended/cue flags — and `handleReplay` only resets the workflow +
+  // persisted slice state, NOT that component-internal state. Without a remount
+  // an already-answered question stays `locked` (its inputs disabled) after a
+  // replay, so the student can neither re-answer nor re-complete → 下一步 never
+  // re-enables. Keying on the epoch throws those instances away and rebuilds
+  // them fresh from the reset slice state.
+  const [replayEpoch, setReplayEpoch] = useState(0);
 
   const controllerRef = useRef<NarrationController | null>(null);
   if (controllerRef.current === null) controllerRef.current = new NarrationController(engine, arbiter);
@@ -287,16 +298,24 @@ export function SlicePlayer({
       applyEffectsRef.current(runtimeRef.current!.send(toWorkflowInput(event)), event.occurredAt);
     });
 
-    // §revisit (restore-completed-state) — landing on an already-TERMINAL step
-    // (Previous/reload onto a finished Slice, OR a `navigate`-only terminal that
-    // never set status "completed") must NOT re-fire that step's
+    // §revisit (restore-completed-state) — RESTORING onto an already-TERMINAL
+    // step (Previous/reload onto a finished Slice, OR a `navigate`-only terminal
+    // that never set status "completed") must NOT re-fire that step's
     // `completeSlice`/`navigate`/narration effects — that would re-complete or
-    // bounce the student straight forward again. Gate on the runtime's terminal
-    // check (covers BOTH completeSlice and navigate terminals), not on the
-    // persisted status: `start()` still runs to install the restored step, but
-    // its effects apply only when the restored step is not itself terminal.
+    // bounce the student straight forward again. `start()` still runs to install
+    // the restored step; only its effects are withheld.
+    //
+    // The discriminator is RESTORING, not terminality. A slice whose *initial*
+    // step is itself terminal is a legitimately authored pure-reading screen
+    // ("look at this image, read this paragraph" — nothing for the student to
+    // DO, so entering it IS completing it), and the generator emits many of
+    // them. Suppressing on terminality alone swallowed those slices' one and
+    // only `completeSlice`, so `status` never became "completed" and — under
+    // `manualNext: "after-completion"` — 下一步 stayed disabled forever with no
+    // other exit. On a FRESH entry (`restoreStepId` undefined) the start
+    // effects must always apply.
     const startEffects = runtime.start();
-    if (!runtime.isTerminal) {
+    if (restoreStepId === undefined || !runtime.isTerminal) {
       applyEffectsRef.current(startEffects);
     }
 
@@ -328,6 +347,10 @@ export function SlicePlayer({
     runtimeRef.current = fresh;
     stateRef.current = initSliceState(slice);
     setFocus(slice.workflow.initialState?.focusedTarget ?? null);
+    // Remount every block renderer so its component-internal state (an
+    // assessment's locked/selected/feedback, a video's cue/ended flags) is
+    // discarded — the reset above only clears workflow + persisted state.
+    setReplayEpoch((n) => n + 1);
     applyEffectsRef.current(fresh.start());
   };
 
@@ -343,23 +366,50 @@ export function SlicePlayer({
               if (!block) return null;
               const Renderer = getBlockRenderer(block.type);
               const blockState = state.blockStates[id]!;
+              // §9.8 — a block authored `openAs: "modal"` is hosted behind a
+              // launcher button and opens in a dialog over the slice, instead
+              // of taking slot height from whatever the slice is actually
+              // about. A COMPLETED modal ASSESSMENT is handed `enabled: false`:
+              // reopening the dialog remounts the renderer, which would
+              // otherwise have lost its local `locked` flag and could emit a
+              // second `block.completed`. Other block types keep their enabled
+              // flag — replaying a video or re-reading a PDF is not a hazard
+              // (see ModalBlockHost).
+              // `presentation` is the DEPRECATED v1.7.0 spelling, still read so a
+              // definition authored against that tag keeps playing (contract note).
+              const openAs =
+                ("openAs" in block ? block.openAs : undefined) ??
+                ("presentation" in block && (block.presentation === "modal" || block.presentation === "inline")
+                  ? block.presentation
+                  : undefined);
+              const asModal = openAs === "modal";
+              const lockCompleted = asModal && isAssessmentBlock(block);
+              const rendered = (
+                <Renderer
+                  block={block}
+                  assetResolver={adapters.assetResolver}
+                  state={blockState}
+                  visible={blockState.visible}
+                  enabled={lockCompleted ? blockState.enabled && !blockState.completed : blockState.enabled}
+                  focusedItemId={focusedItemIdFor(focus, id)}
+                  emit={emitRef.current ?? (() => {})}
+                />
+              );
               return (
                 <FocusTarget
-                  key={id}
+                  key={`${id}#${replayEpoch}`}
                   blockId={id}
                   className="course-slot-block"
                   visible={blockState.visible}
                   label={blockAccessibleLabel(block)}
                 >
-                  <Renderer
-                    block={block}
-                    assetResolver={adapters.assetResolver}
-                    state={blockState}
-                    visible={blockState.visible}
-                    enabled={blockState.enabled}
-                    focusedItemId={focusedItemIdFor(focus, id)}
-                    emit={emitRef.current ?? (() => {})}
-                  />
+                  {asModal ? (
+                    <ModalBlockHost block={block} state={blockState}>
+                      {rendered}
+                    </ModalBlockHost>
+                  ) : (
+                    rendered
+                  )}
                 </FocusTarget>
               );
             })

@@ -61,6 +61,27 @@ describe("course stylesheet (styles/course.css)", () => {
     );
   });
 
+  it("natural-height slot wrappers do not shrink below their content — an over-full slot scrolls, never overlaps (bug: right column overlapped)", () => {
+    // The base wrapper is flex-shrink:0 so stacked blocks (e.g. a question above
+    // a fill-blank in a half-height grid cell) keep their content height and the
+    // slot's overflow:auto engages, instead of the flex algorithm compressing
+    // them until their content bleeds out and overlaps.
+    expect(courseCssText).toMatch(/\.course-slot-block\s*\{[^}]*flex-shrink:\s*0/);
+  });
+
+  it("ships a video loading overlay — a spinner that never blocks the native controls", () => {
+    expect(courseCssText).toMatch(/\.course-video__loading\s*\{[^}]*position:\s*absolute/);
+    expect(courseCssText).toMatch(/\.course-video__loading\s*\{[^}]*pointer-events:\s*none/);
+    expect(courseCssText).toMatch(/\.course-video__loading-spinner\s*\{[^}]*animation:\s*course-spin/);
+  });
+
+  it("gallery nav is overlay arrows anchored on the image's left/right edges", () => {
+    expect(courseCssText).toMatch(/\.course-images__gallery-stage\s*\{[^}]*position:\s*relative/);
+    expect(courseCssText).toMatch(/\.course-images__nav-arrow\s*\{[^}]*position:\s*absolute/);
+    expect(courseCssText).toMatch(/\.course-images__nav-arrow--prev\s*\{[^}]*left:/);
+    expect(courseCssText).toMatch(/\.course-images__nav-arrow--next\s*\{[^}]*right:/);
+  });
+
   it("ships the click-to-enlarge image lightbox — dismissable backdrop + contained enlarged image", () => {
     expect(courseCssText).toMatch(/\.course-lightbox\s*\{[^}]*position:\s*fixed/);
     expect(courseCssText).toMatch(/\.course-lightbox__backdrop\s*\{[^}]*cursor:\s*zoom-out/);

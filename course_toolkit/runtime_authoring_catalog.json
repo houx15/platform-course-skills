@@ -1,6 +1,6 @@
 {
   "schemaVersion": "1.0",
-  "upstreamTag": "course-authoring-v1.6.0",
+  "upstreamTag": "course-authoring-v1.8.0",
   "targetContractVersion": "2.0",
   "authority": {
     "machine": "packages/course-contract",
@@ -71,16 +71,31 @@
       "answerable-block-prefers-right-slot",
       "reference-and-answer-prefer-same-slice",
       "grid-supports-two-to-four-cells",
-      "split-slots-must-be-non-empty"
+      "split-slots-must-be-non-empty",
+      "primary-content-stays-inline",
+      "supporting-resource-may-open-as-modal",
+      "never-hide-required-context-behind-modal"
     ],
     "mediaComposition": {
       "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
       "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
-      "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
+      "interactiveHtml": "the host gives the iframe the complete slot; aspectRatio is only a design hint, use fill when no preferred shape exists, and the document must remain usable at 1280x720 and 1200x520 without imposing a clipped inner frame",
       "richText": "static structured reading card for course maps, method position, worked examples, comparisons, and synthesis; use full or a tall horizontal-split side and split long reading across slices"
     }
   },
   "blocks": {
+    "openAs": {
+      "values": ["inline", "modal"],
+      "default": "inline",
+      "modalLabelMaxChars": 120,
+      "authoringRules": [
+        "keep-primary-teaching-content-inline",
+        "use-modal-for-supporting-resources-that-need-near-fullscreen-reading-or-interaction",
+        "never-hide-context-required-to-understand-the-page-or-launch-the-task",
+        "assessment-modal-opens-when-workflow-enables-and-reopens-read-only",
+        "resource-modal-opens-only-on-learner-press"
+      ]
+    },
     "types": [
       "text",
       "richText",
@@ -93,11 +108,11 @@
     ],
     "text": {
       "requiredFields": ["id", "type", "content"],
-      "optionalFields": []
+      "optionalFields": ["openAs", "modalLabel"]
     },
     "richText": {
       "requiredFields": ["id", "type", "html"],
-      "optionalFields": ["title"],
+      "optionalFields": ["title", "openAs", "modalLabel"],
       "displayOnly": true,
       "completionEvidence": false,
       "assetPaths": false,
@@ -108,7 +123,7 @@
     },
     "images": {
       "requiredFields": ["id", "type", "presentation", "items"],
-      "optionalFields": [],
+      "optionalFields": ["openAs", "modalLabel"],
       "presentations": ["single", "side-by-side", "gallery"],
       "itemRequiredFields": ["id", "source", "alt"],
       "itemOptionalFields": ["caption"],
@@ -121,7 +136,7 @@
     },
     "pdf": {
       "requiredFields": ["id", "type", "title", "source"],
-      "optionalFields": ["initialPage"],
+      "optionalFields": ["initialPage", "openAs", "modalLabel"],
       "completionEvidence": false
     },
     "video": {
@@ -131,7 +146,9 @@
         "captions",
         "durationSeconds",
         "interaction",
-        "completion"
+        "completion",
+        "openAs",
+        "modalLabel"
       ],
       "completionRules": [
         "video-ended",
@@ -146,9 +163,12 @@
         "protocolVersion",
         "aspectRatio"
       ],
-      "optionalFields": ["completion", "capabilities"],
+      "optionalFields": ["completion", "capabilities", "openAs", "modalLabel"],
       "protocolVersions": ["1.0"],
-      "aspectRatios": ["1:1", "4:3"],
+      "aspectRatios": ["1:1", "4:3", "fill"],
+      "aspectRatioMeaning": "authoring-hint-not-host-clamp",
+      "fullSlotRule": "fill the available iframe width and height, allow internal vertical scrolling, and never re-impose a fixed clipped canvas",
+      "visualChecks": ["1280x720", "1200x520", "modal-open"],
       "completionRules": ["interaction-complete"],
       "capabilities": {"audio": "boolean-optional"},
       "frameMessageTypes": ["ready", "progress", "completed", "error"],
@@ -179,7 +199,7 @@
         "assessment",
         "completion"
       ],
-      "optionalFields": ["placeholder"],
+      "optionalFields": ["placeholder", "openAs", "modalLabel", "presentation"],
       "assessmentModes": ["graded", "reflection"],
       "completionRules": [
         "submit-any",
@@ -196,7 +216,7 @@
         "assessment",
         "completion"
       ],
-      "optionalFields": [],
+      "optionalFields": ["openAs", "modalLabel", "presentation"],
       "assessmentModes": ["graded", "survey"],
       "completionRules": [
         "submit-any",

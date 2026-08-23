@@ -388,11 +388,35 @@ class SkillPackageTests(unittest.TestCase):
         combined = "\n".join((blueprint, runtime, readme))
 
         for phrase in (
-            "course-authoring-v1.6.0",
+            "course-authoring-v1.8.0",
             "放大阅读",
             "near-fullscreen modal",
             "text-and-PDF split remains `1:1`",
             "does not justify an asymmetric column",
+        ):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, combined)
+
+    def test_v18_modal_and_full_slot_html_authoring_are_explicit(self):
+        files = (
+            ROOT / "README.md",
+            ROOT / "skills/build-platform-course/SKILL.md",
+            ROOT / "skills/design-course-blueprint/SKILL.md",
+            ROOT / "skills/design-course-blueprint/references/runtime-authoring-standard.md",
+            ROOT / "skills/design-course-html/SKILL.md",
+            ROOT / "skills/preview-platform-course/SKILL.md",
+            ROOT / "skills/review-platform-course/SKILL.md",
+        )
+        combined = "\n".join(path.read_text(encoding="utf-8") for path in files)
+
+        for phrase in (
+            'openAs: "modal"',
+            "primary teaching content",
+            "1280×720",
+            "1200×520",
+            "complete Slot",
+            "clipped inner canvas",
+            "Open every authored modal",
         ):
             with self.subTest(phrase=phrase):
                 self.assertIn(phrase, combined)

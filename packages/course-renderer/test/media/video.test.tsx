@@ -98,6 +98,37 @@ describe("VideoRenderer", () => {
     expect(track).toHaveAttribute("kind", "captions");
   });
 
+  it("shows a loading indicator until the media is ready, and again while buffering (bug: no loading status)", () => {
+    const { container } = renderVideo(endedRuleBlock);
+    const video = container.querySelector("video")!;
+
+    // Nothing has loaded yet (jsdom readyState 0) → the spinner is shown, so a
+    // blank/black video never reads as a dead, unclickable box.
+    expect(container.querySelector(".course-video__loading")).toBeInTheDocument();
+
+    // Media becomes playable → the indicator clears.
+    act(() => video.dispatchEvent(new Event("loadeddata")));
+    expect(container.querySelector(".course-video__loading")).not.toBeInTheDocument();
+
+    // Buffering mid-play re-shows it; resuming clears it again.
+    act(() => video.dispatchEvent(new Event("waiting")));
+    expect(container.querySelector(".course-video__loading")).toBeInTheDocument();
+    act(() => video.dispatchEvent(new Event("playing")));
+    expect(container.querySelector(".course-video__loading")).not.toBeInTheDocument();
+  });
+
+  it("the loading overlay sits ALONGSIDE the still-present <video> (an overlay, not a replacement)", () => {
+    const { container } = renderVideo(endedRuleBlock);
+    // The overlay is shown, and the real <video controls> is still in the DOM
+    // beneath it — the spinner is feedback over the player, never a stand-in
+    // that removes it. (pointer-events:none, asserted in the stylesheet test,
+    // keeps it from intercepting the controls.)
+    expect(container.querySelector(".course-video__loading")).toBeInTheDocument();
+    const video = container.querySelector("video")!;
+    expect(video).toBeInTheDocument();
+    expect(video).toHaveAttribute("controls");
+  });
+
   it("block.completed is emitted at most once even if ended fires twice", () => {
     const { engine, events } = renderVideo(endedRuleBlock);
     act(() => engine.fireEnded());

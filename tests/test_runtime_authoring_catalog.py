@@ -16,7 +16,7 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
     def test_catalog_covers_every_closed_runtime_choice(self):
         catalog = self.load_catalog()
 
-        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.6.0")
+        self.assertEqual(catalog["upstreamTag"], "course-authoring-v1.8.0")
         self.assertEqual(
             catalog["layout"]["presets"],
             ["full", "split-horizontal", "split-vertical", "grid"],
@@ -90,16 +90,31 @@ class RuntimeAuthoringCatalogTests(unittest.TestCase):
             {
                 "pdf": "portrait page centred within an equal 1:1 slot; never stretch into a wide shallow band",
                 "video": "full or equal 1:1 by default; only a dominant large video with short supporting text may own the larger split weight",
-                "interactiveHtml": "preserve declared 1:1 or 4:3 aspect ratio; scale and center without stretching",
+                "interactiveHtml": "the host gives the iframe the complete slot; aspectRatio is only a design hint, use fill when no preferred shape exists, and the document must remain usable at 1280x720 and 1200x520 without imposing a clipped inner frame",
                 "richText": "static structured reading card for course maps, method position, worked examples, comparisons, and synthesis; use full or a tall horizontal-split side and split long reading across slices",
             },
+        )
+
+    def test_catalog_exposes_modal_blocks_and_full_slot_html(self):
+        catalog = self.load_catalog()
+
+        self.assertEqual(catalog["blocks"]["openAs"]["values"], ["inline", "modal"])
+        self.assertIn("openAs", catalog["blocks"]["pdf"]["optionalFields"])
+        self.assertIn("modalLabel", catalog["blocks"]["interactiveHtml"]["optionalFields"])
+        self.assertEqual(
+            catalog["blocks"]["interactiveHtml"]["aspectRatios"],
+            ["1:1", "4:3", "fill"],
+        )
+        self.assertEqual(
+            catalog["blocks"]["interactiveHtml"]["visualChecks"],
+            ["1280x720", "1200x520", "modal-open"],
         )
 
     def test_catalog_exposes_safe_display_only_rich_text(self):
         rich_text = self.load_catalog()["blocks"]["richText"]
 
         self.assertEqual(rich_text["requiredFields"], ["id", "type", "html"])
-        self.assertEqual(rich_text["optionalFields"], ["title"])
+        self.assertEqual(rich_text["optionalFields"], ["title", "openAs", "modalLabel"])
         self.assertTrue(rich_text["displayOnly"])
         self.assertEqual(rich_text["maxHtmlChars"], 65536)
         self.assertIn("at least two meaningful styled teaching regions", rich_text["authoringRule"])
